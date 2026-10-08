@@ -152,9 +152,24 @@ function positionsDesBoulons(
     return [milieu - entraxe / 2, milieu + entraxe / 2].map((x) => Math.abs(x));
   }
   const demi = pr.b / 2;
-  const out = [pince];
-  if (pince + entraxe + 1.2 * d0 <= demi) out.push(pince + entraxe);
+  /*
+   * ⚠ L'about de la lisse est sur l'axe du poteau : à 26 mm de lui, la tête du
+   * boulon tombait dans le congé de l'âme — 4,3 + 21 mm sur un IPE 400 —, ni
+   * posable ni serrable. Le premier boulon s'écarte de l'âme du congé, plus le
+   * rayon de l'écrou, plus un jeu.
+   */
+  const ame = pr.shape === 'I' || pr.shape === 'U' ? pr.tw / 2 + pr.r : 0;
+  const premier = Math.ceil(Math.max(pince, ame + rayonDeCle(d0) + 2));
+  const out = [premier];
+  // Second boulon à 3 d0 si la demi-semelle le loge, jusqu'à l'entraxe mini de 2,2 d0.
+  const second = premier + Math.max(2.2 * d0, Math.min(entraxe, demi - 1.2 * d0 - premier));
+  if (second + 1.2 * d0 <= demi) out.push(Math.round(second));
   return out;
+}
+
+/** Demi-diagonale d'un écrou hexagonal pour un trou d0 : 0,87 × le diamètre nominal. */
+function rayonDeCle(d0: number): number {
+  return 0.87 * (d0 - 1);
 }
 
 /** Le poteau d'angle sur lequel une équerre est soudée : le plus proche. */

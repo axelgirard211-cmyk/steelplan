@@ -1,10 +1,14 @@
 import { getProfile } from '../catalog/index';
 import { memberFrame, squareCut, type Member, type MemberRole } from '../geometry/member';
-import { add, cross, normalize, scale, sub, v3, EX, type Vec3 } from '../math/vec3';
+import { add, cross, dot, normalize, scale, sub, v3, EX, type Vec3 } from '../math/vec3';
+import { sectionOutline } from '../geometry/section';
 import { frameStations, ridgeHeight, ridgeY, roofZ, type GridParams } from '../model/grid';
 import type { ProjectParams } from '../model/project';
 import { debordStructurel, pointDeRive } from './genou';
 import type { TrussParams } from '../model/truss';
+
+/** Jeu entre l'about d'une barre de treillis et la membrure qu'elle aborde (mm). */
+const JEU_DE_TREILLIS = 10;
 
 /**
  * Fermes treillis paramétriques.
@@ -105,11 +109,19 @@ function ferme(out: Member[], p: ProjectParams, x: number, i: number, file: stri
    * `d / sin θ` le long de la barre, θ étant l'angle entre les deux. Reculer de
    * `d` tout court laisse la diagonale plantée dans la membrure — d'autant plus
    * qu'elle est couchée.
+   *
+   * ⚠⚠ Et ce n'est pas l'AXE de la barre qui doit s'arrêter à la face, c'est
+   * toute sa section. Une cornière n'est pas centrée sur son axe : son aile
+   * s'étend à 72 mm d'un côté pour 28 de l'autre, et la membrure de même. Arrêtée
+   * sur l'axe à mi-hauteur de membrure, la diagonale couchait son aile sur la
+   * cornière de membrure, et ses boulons la traversaient. On dégage donc le
+   * point de la section le plus avancé vers la membrure, de la face réelle de
+   * celle-ci, plus un jeu d'atelier.
    */
-  const reculA = (p0: Vec3, versLInterieur: Vec3): number => {
+  const reculA = (p0: Vec3, versLInterieur: Vec3, axe: Vec3, profilBarre: string): number => {
     const surLeHaut = Math.abs(p0.z - roofZ(g, p0.y)) < Math.abs(p0.z - tieZ(g, t, p0.y));
     const chaine = surLeHaut ? T : B;
-    const demi = getProfile(surLeHaut ? t.topChordProfile : t.bottomChordProfile).h / 2;
+    const profilMembrure = surLeHaut ? t.topChordProfile : t.bottomChordProfile;
 
     // Direction locale de la membrure : celle du segment le plus proche.
     let meilleur = { d: Infinity, dir: v3(0, 1, 0) };
@@ -123,13 +135,16 @@ function ferme(out: Member[], p: ProjectParams, x: number, i: number, file: stri
       if (dist < meilleur.d) meilleur = { d: dist, dir: normalize(sub(q1, q0)) };
     }
 
-    const cos = Math.abs(
-      versLInterieur.x * meilleur.dir.x +
-        versLInterieur.y * meilleur.dir.y +
-        versLInterieur.z * meilleur.dir.z,
-    );
-    const sin = Math.sqrt(Math.max(0.15, 1 - cos * cos)); // borne : pas de recul infini
-    return demi / sin;
+    // Normale à la membrure, dans le plan de la ferme, tournée vers la barre.
+    const hautMembrure = upDansLePlan(meilleur.dir);
+    const signe = dot(versLInterieur, hautMembrure) >= 0 ? 1 : -1;
+    const n = scale(hautMembrure, signe);
+    const sin = Math.max(Math.sqrt(0.15), dot(versLInterieur, n)); // borne : pas de recul infini
+    const hauteurs = (id: string): number[] => sectionOutline(getProfile(id), 1).outer.map((q) => q.z);
+    const face = Math.max(...hauteurs(profilMembrure).map((z) => z * signe));
+    const penche = dot(upDansLePlan(axe), n);
+    const avance = Math.min(...hauteurs(profilBarre).map((z) => z * penche));
+    return (face + JEU_DE_TREILLIS - avance) / sin;
   };
 
   const emettre = (
@@ -153,8 +168,8 @@ function ferme(out: Member[], p: ProjectParams, x: number, i: number, file: stri
      * résoudre. La barre raccourcit, son épure ne bouge pas.
      */
     emit(out, p, id, role, profileId, a, b, position, {
-      debut: reculA(a, u),
-      fin: reculA(b, scale(u, -1)),
+      debut: reculA(a, u, u, profileId),
+      fin: reculA(b, scale(u, -1), u, profileId),
     });
   };
 

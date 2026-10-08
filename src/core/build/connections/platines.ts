@@ -1,12 +1,12 @@
 import { getProfile } from '../../catalog/index';
 import { boltGrid, hole, pitchFor, type Hole } from '../../geometry/holes';
 import { memberFrame, type Member } from '../../geometry/member';
-import { add, cross, normalize, scale, sub, v3 } from '../../math/vec3';
-import { holeDiameter, minEdgeDistance, type BoltSpec } from '../../model/connections';
+import { add, cross, dot, normalize, scale, sub, v3 } from '../../math/vec3';
+import { holeDiameter, minEdgeDistance, positionsDesAncrages, tigeDAncrage } from '../../model/connections';
 import type { ProjectParams } from '../../model/project';
 import type { Plate, PlateHole } from '../types';
 import { consoleDeDebord, genou } from '../genou';
-import { ridgeHeight } from '../../model/grid';
+import { leftSlopeRad, ridgeHeight, rightSlopeRad } from '../../model/grid';
 import { rectangle, surLAxe } from './geom';
 
 /**
@@ -32,8 +32,8 @@ export function piedsDePoteaux(
   plates: Plate[],
 ): void {
   const cb = p.connections.columnBase;
-  const bolt: BoltSpec = { d: Math.min(30, Math.max(12, cb.anchorDiameter)) as BoltSpec['d'], cls: '8.8' };
-  const dTrou = holeDiameter(bolt) + 4; // les trous d'ancrage sont volontairement généreux
+  const { dTrou } = tigeDAncrage(cb);
+  const trous: PlateHole[] = positionsDesAncrages(cb).map((at) => ({ at, d: dTrou }));
 
   for (const po of members.filter((m) => m.role === 'poteau')) {
     const f = memberFrame(po);
@@ -41,21 +41,6 @@ export function piedsDePoteaux(
     // u suit la largeur de platine (X), v sa longueur (Y).
     const u = f.ay;
     const vAxe = f.az;
-    const demiL = cb.length / 2;
-    const demiB = cb.width / 2;
-
-    // Tiges réparties symétriquement ; 2 tiges ⇒ une file, 4 ou plus ⇒ deux files.
-    const files = cb.anchorCount <= 2 ? 1 : 2;
-    const rangees = Math.max(1, Math.round(cb.anchorCount / files));
-    const pinceL = Math.max(1.5 * dTrou, minEdgeDistance(bolt));
-    const trous: PlateHole[] = [];
-    for (let i = 0; i < rangees; i++) {
-      const vy = rangees === 1 ? 0 : (i / (rangees - 1) - 0.5) * 2 * (demiL - pinceL);
-      for (let j = 0; j < files; j++) {
-        const uy = files === 1 ? 0 : (j - 0.5) * 2 * (demiB - pinceL);
-        trous.push({ at: { y: uy, z: vy }, d: dTrou });
-      }
-    }
 
     plates.push({
       id: `${po.id}-PLP`,
@@ -99,8 +84,7 @@ export function piedsDePotelets(
   plates: Plate[],
 ): void {
   const cb = p.connections.columnBase;
-  const bolt: BoltSpec = { d: Math.min(30, Math.max(12, cb.anchorDiameter)) as BoltSpec['d'], cls: '8.8' };
-  const dTrou = holeDiameter(bolt) + 4;
+  const { bolt, dTrou } = tigeDAncrage(cb);
   const pince = Math.max(1.5 * dTrou, minEdgeDistance(bolt));
   const ep = EPAISSEUR_PIED_POTELET;
   const arrondi = (v: number): number => Math.ceil(v / 10) * 10;
@@ -297,7 +281,8 @@ export function consoles(
  */
 /**
  * Dimensions de la platine de faîtage — largeur selon la semelle, hauteur selon
- * l'âme —, centrée sur le point de travail du faîtage.
+ * l'âme —, affleurant le dessus de traverse ; `dessous` est sa profondeur sous
+ * le point de travail du faîtage.
  *
  * ⚠ Exportée parce que le potelet placé sous le faîtage doit s'arrêter sous
  * elle : la platine déborde la traverse de `overhang` vers le bas, et le potelet,
@@ -306,14 +291,21 @@ export function consoles(
 export function dimensionsPlatineDeFaitage(
   p: ProjectParams,
   profilTraverse: string,
-): { largeur: number; hauteur: number; hauteurUtile: number } {
+): { largeur: number; hauteur: number; hauteurUtile: number; dessous: number } {
   const ep = p.connections.ridge;
+  const h = getProfile(profilTraverse).h;
   const hauteurUtile = p.frame.ridgeHaunch.enabled ? p.frame.ridgeHaunch.depth : getProfile(p.frame.rafterProfile).h;
-  return {
-    largeur: getProfile(profilTraverse).b + 2 * ep.overhang,
-    hauteur: hauteurUtile + 2 * ep.overhang,
-    hauteurUtile,
-  };
+  const sousJarret = p.frame.ridgeHaunch.enabled ? Math.max(0, p.frame.ridgeHaunch.depth - h) : 0;
+  // Le versant le plus raide donne la platine la plus basse.
+  const dessous = Math.max(
+    ...[leftSlopeRad(p.grid), rightSlopeRad(p.grid)].map(
+      (a) => ep.thickness * Math.tan(a) + h / 2 / Math.cos(a) + sousJarret + ep.overhang,
+    ),
+  );
+  const dessus = Math.min(
+    ...[leftSlopeRad(p.grid), rightSlopeRad(p.grid)].map((a) => h / 2 / Math.cos(a) - ep.thickness * Math.tan(a)),
+  );
+  return { largeur: getProfile(profilTraverse).b + 2 * ep.overhang, hauteur: dessus + dessous, hauteurUtile, dessous };
 }
 
 export function faitages(p: ProjectParams, members: readonly Member[], plates: Plate[]): void {
@@ -362,17 +354,43 @@ export function faitages(p: ProjectParams, members: readonly Member[], plates: P
     const n = normalize(plan.normal);
     const u = f.ay;
     const v = normalize(cross(u, n));
+    const vHaut = v.z >= 0 ? v : scale(v, -1);
+    const sens = v.z >= 0 ? 1 : -1;
+
+    /*
+     * ⚠ La platine AFFLEURE le dessus de la traverse et ne déborde que vers le
+     * bas, comme au genou. Centrée sur l'axe, celle d'un faîtage à jarret
+     * dépassait de cent millimètres au-dessus de la semelle : dans les pannes
+     * faîtières, et sous la couverture.
+     */
+    const pr = getProfile(tr.profileId);
+    const haut = f.az.z >= 0 ? f.az : scale(f.az, -1);
+    // Plan moyen de la platine : entre la face de coupe et le plan du faîtage.
+    const o = add(sommet, scale(n, -ep.thickness / 2));
+    const surLePlan = (k: number): number => {
+      const a = add(tr.start, scale(haut, (k * pr.h) / 2));
+      const t = dot(sub(o, a), n) / dot(f.ax, n);
+      return dot(sub(add(a, scale(f.ax, t)), o), vHaut);
+    };
+    const zHaut = surLePlan(1);
+    const sousJarret = p.frame.ridgeHaunch.enabled ? Math.max(0, p.frame.ridgeHaunch.depth - pr.h) : 0;
+    const zUtile = surLePlan(-1) - sousJarret / Math.max(0.2, vHaut.z);
+    const zBas = zUtile - ep.overhang;
+    const centre = (zHaut + zBas) / 2;
+    // Grille centrée sur la hauteur utile, exprimée dans le repère (u, v) de la tôle.
+    const decalage = sens * ((zHaut + zUtile) / 2 - centre);
+    const largeur = dimensionsPlatineDeFaitage(p, tr.profileId).largeur;
 
     plates.push({
       id: `${tr.id}-PLF`,
       kind: 'platine-about',
       grade: tr.grade,
       thickness: ep.thickness,
-      outline: rectangle(dimensionsPlatineDeFaitage(p, tr.profileId).largeur, dimensionsPlatineDeFaitage(p, tr.profileId).hauteur),
-      holes: trous,
+      outline: rectangle(largeur, zHaut - zBas),
+      holes: trous.map((h) => ({ ...h, at: { y: h.at.y, z: h.at.z + decalage } })),
       pairedWith: partenaire.get(`${tr.id}-PLF`) ?? null,
       porteur: tr.id,
-      origin: add(sommet, scale(n, ep.thickness / 2)),
+      origin: add(o, scale(vHaut, centre)),
       u,
       v,
       mark: '',

@@ -103,6 +103,35 @@ export interface BasePlateParams {
   readonly concrete: ClasseBeton;
 }
 
+/** Tige d'ancrage d'un pied de poteau, et son trou volontairement généreux. */
+export function tigeDAncrage(cb: BasePlateParams): { bolt: BoltSpec; dTrou: number } {
+  const bolt: BoltSpec = { d: Math.min(30, Math.max(12, cb.anchorDiameter)) as BoltSpec['d'], cls: '8.8' };
+  return { bolt, dTrou: holeDiameter(bolt) + 4 };
+}
+
+/**
+ * Implantation des tiges sous une platine de pied de poteau, dans son repère :
+ * `y` selon sa largeur, `z` selon sa longueur (la hauteur du poteau).
+ * 2 tiges ⇒ une file, 4 ou plus ⇒ deux files.
+ *
+ * ⚠ Une seule écriture : la construction pose les trous ici, la saisie vérifie
+ * ici qu'aucune tige ne tombe sous le poteau.
+ */
+export function positionsDesAncrages(cb: BasePlateParams): { y: number; z: number }[] {
+  const { bolt, dTrou } = tigeDAncrage(cb);
+  const files = cb.anchorCount <= 2 ? 1 : 2;
+  const rangees = Math.max(1, Math.round(cb.anchorCount / files));
+  const pince = Math.max(1.5 * dTrou, minEdgeDistance(bolt));
+  const out: { y: number; z: number }[] = [];
+  for (let i = 0; i < rangees; i++) {
+    const z = rangees === 1 ? 0 : (i / (rangees - 1) - 0.5) * 2 * (cb.length / 2 - pince);
+    for (let j = 0; j < files; j++) {
+      out.push({ y: files === 1 ? 0 : (j - 0.5) * 2 * (cb.width / 2 - pince), z });
+    }
+  }
+  return out;
+}
+
 /** Gousset de treillis. */
 export interface GussetParams {
   readonly thickness: number;

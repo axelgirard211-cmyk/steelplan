@@ -1,6 +1,6 @@
 import { findProfile } from '../catalog/index';
 import { rad2deg } from '../math/tolerance';
-import { minEdgeDistance, minGauge, type EndPlateParams } from './connections';
+import { minEdgeDistance, minGauge, positionsDesAncrages, tigeDAncrage, type EndPlateParams } from './connections';
 import { leftSlopeRad, rafterLength, ridgeY, rightSlopeRad } from './grid';
 import type { ProjectParams } from './project';
 import { CLASSES_EXECUTION } from './atelier';
@@ -216,6 +216,20 @@ export function validateProject(p: ProjectParams): Issue[] {
     }
     if (col && cb.width < col.b) {
       err('connections.columnBase.width', `Platine de pied (${cb.width} mm) plus étroite que la semelle du poteau ${col.id} (${col.b} mm).`);
+    }
+    /*
+     * Chaque écrou d'ancrage doit tomber HORS du poteau : une tige implantée sous
+     * la semelle traverse le profil — on ne la serre pas, on ne la monte même pas.
+     */
+    const cle = 0.87 * tigeDAncrage(cb).bolt.d;
+    const dessous = col
+      ? positionsDesAncrages(cb).some((a) => Math.abs(a.z) < col.h / 2 + cle && Math.abs(a.y) < col.b / 2 + cle)
+      : false;
+    if (col && dessous) {
+      err(
+        'connections.columnBase.length',
+        `Tiges d'ancrage sous le poteau ${col.id} : allongez la platine de pied (${cb.length} mm) — il faut au moins ${Math.ceil(col.h / 2 + cle)} mm de l'axe à chaque tige.`,
+      );
     }
   }
   if (p.frame.baseFixity === 'encastre' && cb.anchorCount < 4) {

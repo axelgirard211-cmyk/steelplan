@@ -35,15 +35,17 @@ const parRole = (ms: readonly Member[], r: Member['role']): Member[] =>
 /*
  * GENOU — détail retenu : le poteau MONTE jusqu'au plan du dessus de
  * traverse ; la traverse s'arrête sur sa platine d'about, plaquée sur la
- * semelle intérieure du poteau. Recalcul à la main, IPE 400 / IPE 360, pente
- * de 10 % (cos α = 0,99504), platine de 20 mm :
- *   poteau   : 6000 + 180 / 0,99504          = 6180,9 mm à l'axe
- *   traverse : (10 000 − 200 − 20) / 0,99504 = 9828,8 mm à l'axe
+ * semelle intérieure du poteau ; au faîtage, elle s'arrête à une épaisseur de
+ * platine de faîtage du point de travail. Recalcul à la main, IPE 400 / IPE 360,
+ * pente de 10 % (cos α = 0,99504), platines de 20 mm :
+ *   poteau   : 6000 + 180 / 0,99504               = 6180,9 mm à l'axe
+ *   traverse : (10 000 − 200 − 20 − 20) / 0,99504 = 9808,7 mm à l'axe
  */
 const COS = Math.cos(leftSlopeRad(P.grid));
 const PLATINE = P.connections.rafterToColumn.thickness;
+const PLATINE_FAITAGE = P.connections.ridge.thickness;
 const HPOTEAU = P.grid.eaveHeight + getProfile(P.frame.rafterProfile).h / 2 / COS;
-const LTRAVERSE = (10000 - getProfile(P.frame.columnProfile).h / 2 - PLATINE) / COS;
+const LTRAVERSE = (10000 - getProfile(P.frame.columnProfile).h / 2 - PLATINE - PLATINE_FAITAGE) / COS;
 
 describe('génération du portique', () => {
   it('produit un portique complet par file', () => {
@@ -90,10 +92,10 @@ describe('génération du portique', () => {
     expect(cutLengths(poteau).axis).toBeCloseTo(6180.9, 1);
   });
 
-  it('arrête la traverse au nu de sa platine de genou', () => {
+  it('arrête la traverse au nu de ses platines de genou et de faîtage', () => {
     const traverse = parRole(buildProject(P).members, 'traverse')[0] as Member;
     expect(cutLengths(traverse).axis).toBeCloseTo(LTRAVERSE, 6);
-    expect(cutLengths(traverse).axis).toBeCloseTo(9828.8, 1);
+    expect(cutLengths(traverse).axis).toBeCloseTo(9808.7, 1);
   });
 
   it('coupe la tête de poteau dans le plan de la couverture, et la traverse d’aplomb', () => {
