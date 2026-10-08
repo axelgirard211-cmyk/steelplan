@@ -113,6 +113,50 @@ export function listerBoulons(
   return groupes.map((g) => placer(g));
 }
 
+/**
+ * Diamètre NOMINAL d'un boulon posé, retrouvé depuis son perçage : le jeu
+ * normalisé (1, 2 ou 3 mm), plus la marge des trous d'ancrage.
+ */
+export function diametreNominal(b: Pick<BoltPlacement, 'd' | 'kind'>): number {
+  const d0 = b.kind === 'ancrage' ? b.d - 4 : b.d;
+  return d0 <= 15 ? d0 - 1 : d0 <= 26 ? d0 - 2 : d0 - 3;
+}
+
+/** Perçage d'une barre, situé dans l'espace : pour le montrer en 3D. */
+export interface PercageDeBarre {
+  /** Barre percée. */
+  readonly piece: string;
+  /** Milieu du trou, à mi-épaisseur de la paroi. */
+  readonly centre: Vec3;
+  readonly axe: Vec3;
+  readonly d: number;
+  readonly epaisseur: number;
+}
+
+/**
+ * Tous les trous percés dans les barres, boulonnés ou non. Une barre est
+ * extrudée pleine : sans eux, un trou en attente ou un passage de lierne ne se
+ * verrait nulle part.
+ */
+export function percagesDesBarres(members: readonly Member[]): PercageDeBarre[] {
+  const out: PercageDeBarre[] = [];
+  for (const m of members) {
+    if (m.holes.length === 0) continue;
+    const f = memberFrame(m);
+    const profil = getProfile(m.profileId);
+    for (const h of m.holes) {
+      out.push({
+        piece: m.id,
+        centre: sectionPointAt(f, m.start, h.s, milieuDeParoi(profil, h)),
+        axe: h.through === 'y' ? f.ay : f.az,
+        d: h.d,
+        epaisseur: epaisseurParoi(profil, h),
+      });
+    }
+  }
+  return out;
+}
+
 /** Nombre de boulons du modèle : la liste, comptée. */
 export function compterBoulons(
   members: readonly Member[],

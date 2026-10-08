@@ -6,6 +6,7 @@ import { distanceDeCadrage } from './cadrage';
 import { Jauge } from './jauge';
 import { cadrerOmbres, creerGrille, installerEclairage, type Eclairage } from './eclairage';
 import { creerBoulons, creerCordons, creerPiece } from './pieces';
+import { filtrerBoulonnerie, libererAssemblages, remplacerCordons } from './pieces';
 import {
   COULEUR_SELECTION,
   COULEUR_TOLE,
@@ -68,6 +69,9 @@ export class SteelScene {
   private boulons: THREE.InstancedMesh[] = [];
   /** Cordons de soudure : un seul maillage pour tout le bâtiment. */
   private cordons: THREE.Mesh | null = null;
+  /** Modèle affiché, et cordons restreints ou non aux pièces visibles. */
+  private modele: StructuralModel | null = null;
+  private cordonsFiltres = false;
 
   private pieces: Piece[] = [];
   private colorMode: ColorMode = 'realiste';
@@ -176,6 +180,8 @@ export class SteelScene {
     for (const b of this.boulons) this.racine.add(b);
     this.cordons = creerCordons(model);
     if (this.cordons) this.racine.add(this.cordons);
+    this.modele = model;
+    this.cordonsFiltres = false;
 
     this.boite = new THREE.Box3().setFromObject(this.racine);
     cadrerOmbres(this.eclairage, this.boite);
@@ -208,22 +214,9 @@ export class SteelScene {
     }
     this.pieces = [];
 
-    // La boulonnerie est instanciée : elle partage un matériau, mais ses trois
-    // géométries lui appartiennent et doivent être libérées avec elle.
-    for (const [i, b] of this.boulons.entries()) {
-      this.racine.remove(b);
-      b.geometry.dispose();
-      if (i === 0) (b.material as THREE.Material).dispose();
-      b.dispose();
-    }
+    libererAssemblages(this.racine, this.boulons, this.cordons);
     this.boulons = [];
-
-    if (this.cordons) {
-      this.racine.remove(this.cordons);
-      this.cordons.geometry.dispose();
-      (this.cordons.material as THREE.Material).dispose();
-      this.cordons = null;
-    }
+    this.cordons = null;
   }
 
   /* ---------------- Affichage ---------------- */
@@ -277,10 +270,19 @@ export class SteelScene {
   }
 
   private appliquerVisibilite(): void {
+    const visibles = new Set<string>();
     for (const p of this.pieces) {
       const visible = !this.masques.has(p.id) && (this.isole === null || this.isole.has(p.id));
       p.mesh.visible = visible;
       p.edges.visible = visible && p.edges.userData['cache'] !== true;
+      if (visible) visibles.add(p.id);
+    }
+    // Boulons et cordons suivent les pièces qu'ils assemblent.
+    const filtre = visibles.size === this.pieces.length ? null : visibles;
+    filtrerBoulonnerie(this.boulons, filtre);
+    if (this.modele && (filtre !== null || this.cordonsFiltres)) {
+      this.cordons = remplacerCordons(this.racine, this.cordons, this.modele, filtre);
+      this.cordonsFiltres = filtre !== null;
     }
     this.appliquerCouleurs();
   }

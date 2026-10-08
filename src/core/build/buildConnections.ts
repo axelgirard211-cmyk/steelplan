@@ -12,7 +12,7 @@ import { attachesDePannes, percerEnSymetrie } from './connections/attaches';
 import { attachesDeLisses, percerPoteauxEnSymetrie } from './connections/lisses';
 import { passagesDeLiernes, percerPannesPourLiernes } from './connections/liernes';
 import { eclisses, goussets } from './connections/eclisses';
-import { consoles, faitages, genoux, piedsDePoteaux, piedsDePotelets } from './connections/platines';
+import { consoles, faitages, genoux, piedsDePoteaux, piedsDePotelets, tetesDePoteauxSousFerme } from './connections/platines';
 import {
   attachesDeContreventement,
   fenteDuPlat,
@@ -70,12 +70,15 @@ export function buildConnections(
     consoles(p, members, plates, ajouter);
     faitages(p, members, plates);
   }
-  if (p.truss.enabled) goussets(p, members, plates, ajouter);
+  if (p.truss.enabled) {
+    goussets(p, members, plates, ajouter);
+    tetesDePoteauxSousFerme(p, members, plates, ajouter);
+  }
   if (p.frame.enabled && p.connections.splice.enabled) eclisses(p, members, plates, ajouter);
   attachesDePannes(p, members, ajouter);
   const porteursEquerres = attachesDeLisses(p, members, ajouter);
   passagesDeLiernes(p, members, ajouter);
-  attachesDeContreventement(p, attachesCV, plates);
+  attachesDeContreventement(p, attachesCV, plates, ajouter);
   // Après les platines de faîtage et les goussets de contreventement, que la
   // tête de potelet doit trouver — et éviter.
   tetesDePotelets(p, members, plates, ajouter);

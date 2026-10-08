@@ -1,6 +1,7 @@
 import { getProfile } from '../../catalog/index';
 import { boltGrid, hole, pitchFor, type Hole } from '../../geometry/holes';
 import { memberFrame, type Member } from '../../geometry/member';
+import { sectionOutline } from '../../geometry/section';
 import { add, cross, dot, normalize, scale, sub, v3 } from '../../math/vec3';
 import { holeDiameter, minEdgeDistance, positionsDesAncrages, tigeDAncrage } from '../../model/connections';
 import type { ProjectParams } from '../../model/project';
@@ -8,6 +9,7 @@ import type { Plate, PlateHole } from '../types';
 import { consoleDeDebord, genou } from '../genou';
 import { leftSlopeRad, ridgeHeight, rightSlopeRad } from '../../model/grid';
 import { rectangle, surLAxe } from './geom';
+import { trusquinage } from './eclisses';
 
 /**
  * Platines : pieds de poteaux, genoux traverse-poteau, faîtages.
@@ -57,6 +59,83 @@ export function piedsDePoteaux(
       v: vAxe,
       mark: '',
       position: `pied de poteau — ${po.position}`,
+    });
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Têtes de poteaux sous ferme                                          */
+/* ------------------------------------------------------------------ */
+
+/** Épaisseur de la platine de tête d'un poteau qui reçoit une ferme (mm). */
+export const EPAISSEUR_PLATINE_DE_TETE = 15;
+
+/**
+ * Distance de l'axe de l'entrait au dessus du poteau qui le porte : le dessous
+ * de l'entrait, puis la platine de tête.
+ *
+ * ⚠ Le poteau montait jusqu'à l'axe de l'entrait, à travers son aile couchée.
+ */
+export function sousLEntrait(p: ProjectParams): number {
+  const dessous = -Math.min(...sectionOutline(getProfile(p.truss.bottomChordProfile), 1).outer.map((q) => q.z));
+  return dessous + EPAISSEUR_PLATINE_DE_TETE;
+}
+
+/**
+ * Platine de tête soudée sur le poteau, boulonnée sous les ailes couchées des
+ * cornières d'entrait — quatre boulons, deux par cornière, entre les semelles
+ * du poteau où se serrent les écrous.
+ */
+export function tetesDePoteauxSousFerme(
+  p: ProjectParams,
+  members: readonly Member[],
+  plates: Plate[],
+  ajouter: (memberId: string, h: Hole[]) => void,
+): void {
+  const bolt = p.connections.gusset.bolt;
+  const d0 = holeDiameter(bolt);
+  const cle = (0.75 * bolt.d) / Math.cos(Math.PI / 6);
+  const entraits = members.filter((m) => m.role === 'membrure-inf');
+  for (const po of members.filter((m) => m.role === 'poteau')) {
+    const pr = getProfile(po.profileId);
+    if (pr.shape !== 'I') continue;
+    const f = memberFrame(po);
+    const tete = add(po.end, scale(f.ax, -(sousLEntrait(p) - EPAISSEUR_PLATINE_DE_TETE / 2)));
+    // Entre les semelles, l'écrou dégagé de la semelle et de son congé.
+    const yb = Math.floor((pr.h / 2 - pr.tf - cle - 5) / 5) * 5;
+    const trous: PlateHole[] = [];
+    for (const c of entraits) {
+      const fc = memberFrame(c);
+      const prc = getProfile(c.profileId);
+      if (prc.shape !== 'L' || Math.abs(c.start.x - po.end.x) > pr.b / 2) continue;
+      const q = sub(v3(c.start.x, po.end.y, po.end.z), c.start);
+      const sNoeud = dot(q, fc.ax);
+      const ecart = sub(q, scale(fc.ax, sNoeud));
+      if (Math.hypot(ecart.x, ecart.y, ecart.z) > 1) continue;
+      // Ligne de trusquinage de l'aile couchée, comptée depuis le dos de la grande aile.
+      const fibre = { y: -prc.cy + trusquinage({ a: prc.a2, t: prc.t, r: prc.r }, bolt), z: -prc.cz + prc.t / 2 };
+      const abscisses = [sNoeud - yb / Math.abs(fc.ax.y || 1), sNoeud + yb / Math.abs(fc.ax.y || 1)];
+      ajouter(c.id, abscisses.map((s) => hole(s, fibre, bolt, 'z', 'semelle-inf', `${po.id}-PLT`)));
+      for (const s of abscisses) {
+        const r = sub(add(c.start, add(scale(fc.ax, s), scale(fc.ay, fibre.y))), tete);
+        trous.push({ at: { y: dot(r, f.ay), z: dot(r, f.az) }, d: d0 });
+      }
+    }
+    if (trous.length === 0) continue;
+    plates.push({
+      id: `${po.id}-PLT`,
+      kind: 'platine-about',
+      grade: po.grade,
+      thickness: EPAISSEUR_PLATINE_DE_TETE,
+      outline: rectangle(pr.b, pr.h),
+      holes: trous,
+      pairedWith: null,
+      porteur: po.id,
+      origin: tete,
+      u: f.ay,
+      v: f.az,
+      mark: '',
+      position: `platine de tête — appui de ferme — ${po.position}`,
     });
   }
 }

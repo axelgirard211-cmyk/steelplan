@@ -416,29 +416,53 @@ function cylindre(segments: number): THREE.BufferGeometry {
 /**
  * Matrices d'instance d'un boulon : tête, tige, écrou.
  *
- * Proportions usuelles de la visserie métrique : tête et écrou d'entreplat
- * 1,6 d, hauteur de tête 0,7 d, hauteur d'écrou 0,8 d. Le résultat se lit
- * immédiatement comme de la boulonnerie sans qu'il soit utile de modéliser le
- * filetage, invisible à l'échelle où l'on regarde un portique.
+ * Proportions de la visserie métrique ISO, sur le diamètre NOMINAL et non sur
+ * celui du trou : entreplat 1,5 d, hauteur de tête 0,65 d, hauteur d'écrou
+ * 0,8 d. Une tige du diamètre du perçage bouchait le trou ; dessinée à son
+ * diamètre, elle laisse voir le jeu — c'est à cela qu'on reconnaît qu'un boulon
+ * est DANS son trou.
  */
 export function boltMatrices(b: {
   at: Vec3;
   axis: Vec3;
   d: number;
   grip: number;
+  /** Diamètre nominal de la tige (mm). */
+  nominal: number;
 }): { tete: THREE.Matrix4; tige: THREE.Matrix4; ecrou: THREE.Matrix4 } {
   const axe = new THREE.Vector3(b.axis.x, b.axis.y, b.axis.z).normalize();
   const at = new THREE.Vector3(b.at.x, b.at.y, b.at.z);
-  const rayonTete = 0.92 * (b.d / 2) * 1.8;
-  const hTete = 0.7 * b.d;
-  const hEcrou = 0.8 * b.d;
+  // Hexagone circonscrit : sur les angles, l'entreplat divisé par cos 30°.
+  const rayonTete = (1.5 * b.nominal) / 2 / Math.cos(Math.PI / 6);
+  const hTete = 0.65 * b.nominal;
+  const hEcrou = 0.8 * b.nominal;
 
   // La tête s'appuie sur la face et DÉPASSE vers l'extérieur : elle part du
   // point d'appui en remontant à contre-sens de la tige.
   const tete = placer(at, axe.clone().negate(), rayonTete, hTete);
-  const tige = placer(at, axe, b.d / 2, b.grip + hEcrou);
+  const tige = placer(at, axe, b.nominal / 2, b.grip + hEcrou);
   const ecrou = placer(at.clone().addScaledVector(axe, b.grip), axe, rayonTete, hEcrou);
   return { tete, tige, ecrou };
+}
+
+/**
+ * Matrice d'un perçage de barre : un cylindre fermé du diamètre du trou, à
+ * peine plus long que la paroi est épaisse. Ses deux fonds affleurent les faces
+ * et s'y lisent comme l'ouverture du trou.
+ */
+export function matriceDePercage(t: { centre: Vec3; axe: Vec3; d: number; epaisseur: number }): THREE.Matrix4 {
+  const axe = new THREE.Vector3(t.axe.x, t.axe.y, t.axe.z).normalize();
+  const h = t.epaisseur + 0.6;
+  const base = new THREE.Vector3(t.centre.x, t.centre.y, t.centre.z).addScaledVector(axe, -h / 2);
+  return placer(base, axe, t.d / 2, h);
+}
+
+/** Cylindre FERMÉ, base en z = 0, sommet en z = 1, rayon 1 : un perçage. */
+export function percageGeometry(): THREE.BufferGeometry {
+  const g = new THREE.CylinderGeometry(1, 1, 1, 20, 1, false);
+  g.rotateX(Math.PI / 2);
+  g.translate(0, 0, 0.5);
+  return g;
 }
 
 /** Matrice plaçant une géométrie unitaire +Z à `base`, dirigée selon `dir`. */

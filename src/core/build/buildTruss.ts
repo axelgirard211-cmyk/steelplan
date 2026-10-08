@@ -1,11 +1,19 @@
 import { getProfile } from '../catalog/index';
-import { memberFrame, squareCut, type Member, type MemberRole } from '../geometry/member';
+import { memberFrame, miterCut, squareCut, type CutPlane, type Member, type MemberRole } from '../geometry/member';
 import { add, cross, dot, normalize, scale, sub, v3, EX, type Vec3 } from '../math/vec3';
 import { sectionOutline } from '../geometry/section';
 import { frameStations, ridgeHeight, ridgeY, roofZ, type GridParams } from '../model/grid';
 import type { ProjectParams } from '../model/project';
 import { debordStructurel, pointDeRive } from './genou';
+import { degagerLesNoeuds } from './degagementTreillis';
+import { reserveSousArbaletrier } from './connections/contreventementFerme';
 import type { TrussParams } from '../model/truss';
+
+/** Abouts imposés à une membrure : ébout le long de l'axe, ou plan de coupe. */
+interface Abouts {
+  readonly ebout?: { debut: number; fin: number };
+  readonly coupes?: { debut?: CutPlane; fin?: CutPlane };
+}
 
 /** Jeu entre l'about d'une barre de treillis et la membrure qu'elle aborde (mm). */
 const JEU_DE_TREILLIS = 10;
@@ -78,7 +86,9 @@ export function buildTruss(p: ProjectParams): Member[] {
   if (!p.truss.enabled) return [];
   const out: Member[] = [];
   for (const [i, x] of frameStations(p.grid).entries()) {
+    const depuis = out.length;
     ferme(out, p, x, i, `ferme ${i + 1}`);
+    degagerLesNoeuds(out, depuis, JEU_DE_TREILLIS);
   }
   return out;
 }
@@ -118,12 +128,23 @@ function ferme(out: Member[], p: ProjectParams, x: number, i: number, file: stri
    * point de la section le plus avancé vers la membrure, de la face réelle de
    * celle-ci, plus un jeu d'atelier.
    */
+  /*
+   * Sous l'arbalétrier, le jeu réserve aussi la place de la tôle d'attache de
+   * la poutre au vent, boulonnée sous son aile couchée, et de ses écrous.
+   */
+  const jeuHaut = JEU_DE_TREILLIS + reserveSousArbaletrier(p);
+  const jeuA = (surLeHaut: boolean): number => (surLeHaut ? jeuHaut : JEU_DE_TREILLIS);
   const reculA = (p0: Vec3, versLInterieur: Vec3, axe: Vec3, profilBarre: string): number => {
     const surLeHaut = Math.abs(p0.z - roofZ(g, p0.y)) < Math.abs(p0.z - tieZ(g, t, p0.y));
     const chaine = surLeHaut ? T : B;
     const profilMembrure = surLeHaut ? t.topChordProfile : t.bottomChordProfile;
 
-    // Direction locale de la membrure : celle du segment le plus proche.
+    /*
+     * Direction locale de la membrure : celle des segments qui aboutissent au
+     * nœud. ⚠ Au faîtage il y en a DEUX, de pentes opposées : ne dégager que le
+     * plus proche laissait la diagonale centrale entrer dans l'autre versant.
+     */
+    const directions: Vec3[] = [];
     let meilleur = { d: Infinity, dir: v3(0, 1, 0) };
     for (let k = 0; k < chaine.length - 1; k++) {
       const q0 = chaine[k] as Vec3;
@@ -132,19 +153,25 @@ function ferme(out: Member[], p: ProjectParams, x: number, i: number, file: stri
         Math.hypot(p0.y - q0.y, p0.z - q0.z),
         Math.hypot(p0.y - q1.y, p0.z - q1.z),
       );
+      if (dist < 1) directions.push(normalize(sub(q1, q0)));
       if (dist < meilleur.d) meilleur = { d: dist, dir: normalize(sub(q1, q0)) };
     }
+    if (directions.length === 0) directions.push(meilleur.dir);
 
-    // Normale à la membrure, dans le plan de la ferme, tournée vers la barre.
-    const hautMembrure = upDansLePlan(meilleur.dir);
-    const signe = dot(versLInterieur, hautMembrure) >= 0 ? 1 : -1;
-    const n = scale(hautMembrure, signe);
-    const sin = Math.max(Math.sqrt(0.15), dot(versLInterieur, n)); // borne : pas de recul infini
     const hauteurs = (id: string): number[] => sectionOutline(getProfile(id), 1).outer.map((q) => q.z);
-    const face = Math.max(...hauteurs(profilMembrure).map((z) => z * signe));
-    const penche = dot(upDansLePlan(axe), n);
-    const avance = Math.min(...hauteurs(profilBarre).map((z) => z * penche));
-    return (face + JEU_DE_TREILLIS - avance) / sin;
+    return Math.max(
+      ...directions.map((dir) => {
+        // Normale à la membrure, dans le plan de la ferme, tournée vers la barre.
+        const hautMembrure = upDansLePlan(dir);
+        const signe = dot(versLInterieur, hautMembrure) >= 0 ? 1 : -1;
+        const n = scale(hautMembrure, signe);
+        const sin = Math.max(Math.sqrt(0.15), dot(versLInterieur, n)); // borne : pas de recul infini
+        const face = Math.max(...hauteurs(profilMembrure).map((z) => z * signe));
+        const penche = dot(upDansLePlan(axe), n);
+        const avance = Math.min(...hauteurs(profilBarre).map((z) => z * penche));
+        return (face + jeuA(surLeHaut) - avance) / sin;
+      }),
+    );
   };
 
   const emettre = (
@@ -154,9 +181,10 @@ function ferme(out: Member[], p: ProjectParams, x: number, i: number, file: stri
     a: Vec3,
     b: Vec3,
     position: string,
+    abouts: Abouts = {},
   ): void => {
     if (role !== 'montant' && role !== 'diagonale') {
-      emit(out, p, id, role, profileId, a, b, position);
+      emit(out, p, id, role, profileId, a, b, position, abouts.ebout, abouts.coupes);
       return;
     }
     const u = normalize(sub(b, a));
@@ -186,19 +214,51 @@ function ferme(out: Member[], p: ProjectParams, x: number, i: number, file: stri
   const rive = (appui: Vec3, versLeHaut: Vec3): Vec3 => pointDeRive(appui, normalize(versLeHaut), debord);
   const T0 = T[0] as Vec3;
   const TN = noeud(T, N);
+  /*
+   * ⚠ Au faîtage, les deux tronçons se rejoignent en ONGLET, dans le plan
+   * bissecteur : coupés d'équerre sur le même nœud, ils se chevauchaient sous
+   * l'axe et laissaient un vide au-dessus.
+   */
+  const onglet = (q: Vec3, versSoi: Vec3, versVoisin: Vec3): CutPlane =>
+    miterCut(q, normalize(versSoi), normalize(versVoisin));
   if (g.roofType === 'monopente') {
     emettre(`${i}-MS`, 'membrure-sup', t.topChordProfile, rive(T0, sub(TN, T0)), TN, `${file} — arbalétrier`);
   } else {
     const F = noeud(T, iFaitage);
-    emettre(`${i}-MSG`, 'membrure-sup', t.topChordProfile, rive(T0, sub(F, T0)), F, `${file} — arbalétrier gauche`);
-    emettre(`${i}-MSD`, 'membrure-sup', t.topChordProfile, F, rive(TN, sub(F, TN)), `${file} — arbalétrier droit`);
+    const G0 = rive(T0, sub(F, T0));
+    const D0 = rive(TN, sub(F, TN));
+    emettre(`${i}-MSG`, 'membrure-sup', t.topChordProfile, G0, F, `${file} — arbalétrier gauche`, {
+      coupes: { fin: onglet(F, sub(G0, F), sub(D0, F)) },
+    });
+    emettre(`${i}-MSD`, 'membrure-sup', t.topChordProfile, F, D0, `${file} — arbalétrier droit`, {
+      coupes: { debut: onglet(F, sub(D0, F), sub(G0, F)) },
+    });
   }
 
+  /*
+   * ⚠ L'entrait repose sur la tête du poteau : il est PROLONGÉ au-delà du nœud
+   * d'appui jusqu'au nu extérieur du poteau. Arrêté sur l'axe, il ne couvrait
+   * que la moitié de la tête, et rien ne s'y boulonnait.
+   */
+  const pignon = i === 0 || i === g.nBays;
+  const profilPoteau = pignon && p.frame.distinctGableFrame ? p.frame.gableColumnProfile : p.frame.columnProfile;
+  const appui = getProfile(profilPoteau).h / 2;
   if (t.straightTie || g.roofType === 'monopente') {
-    emettre(`${i}-MI`, 'membrure-inf', t.bottomChordProfile, B[0] as Vec3, noeud(B, N), `${file} — entrait`);
+    emettre(`${i}-MI`, 'membrure-inf', t.bottomChordProfile, B[0] as Vec3, noeud(B, N), `${file} — entrait`, {
+      ebout: { debut: -appui, fin: -appui },
+    });
   } else {
-    emettre(`${i}-MIG`, 'membrure-inf', t.bottomChordProfile, B[0] as Vec3, noeud(B, iFaitage), `${file} — entrait gauche`);
-    emettre(`${i}-MID`, 'membrure-inf', t.bottomChordProfile, noeud(B, iFaitage), noeud(B, N), `${file} — entrait droit`);
+    const F = noeud(B, iFaitage);
+    const B0 = B[0] as Vec3;
+    const BN = noeud(B, N);
+    emettre(`${i}-MIG`, 'membrure-inf', t.bottomChordProfile, B0, F, `${file} — entrait gauche`, {
+      ebout: { debut: -appui, fin: 0 },
+      coupes: { fin: onglet(F, sub(B0, F), sub(BN, F)) },
+    });
+    emettre(`${i}-MID`, 'membrure-inf', t.bottomChordProfile, F, BN, `${file} — entrait droit`, {
+      ebout: { debut: 0, fin: -appui },
+      coupes: { debut: onglet(F, sub(BN, F), sub(B0, F)) },
+    });
   }
 
   /* --- Treillis --- */
@@ -363,6 +423,7 @@ function emit(
   b: Vec3,
   position: string,
   ebout: { debut: number; fin: number } = { debut: 0, fin: 0 },
+  coupes: Abouts['coupes'] = {},
 ): void {
   const axe = normalize(sub(b, a));
   // Ébout : les plans de coupe reculent le long de l'axe, les abouts ne bougent
@@ -392,8 +453,8 @@ function emit(
     holes: [],
     notches: [],
     porteur: null,
-    cutStart: squareCut(pDebut, axe, -1),
-    cutEnd: squareCut(pFin, axe, 1),
+    cutStart: coupes.debut ?? squareCut(pDebut, axe, -1),
+    cutEnd: coupes.fin ?? squareCut(pFin, axe, 1),
     mark: '',
     assemblage: '',
     position,

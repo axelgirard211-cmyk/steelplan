@@ -5,6 +5,7 @@ import type { ProjectParams } from '../model/project';
 import { add, cross, dot, normalize, scale, sub, v3, EX, EY, type Vec3 } from '../math/vec3';
 import { consoleDeDebord, debordStructurel, genou, pointDeRive } from './genou';
 import { tieLevel } from './buildTruss';
+import { sousLEntrait } from './connections/platines';
 import type { Haunch } from './types';
 
 /**
@@ -153,8 +154,11 @@ function poteau(
     porteur: null,
     cutStart: squareCut(pied, axe, -1),
     // Le plan de coupe passe au-dessus du point de travail ; l'about `end`, lui,
-    // reste au point de travail — c'est lui que lit le modèle de calcul.
-    cutEnd: surTreillis || !coupeTete ? squareCut(tete, axe, 1) : coupeTete,
+    // reste au point de travail — c'est lui que lit le modèle de calcul. Sous
+    // une ferme, il s'arrête sous l'entrait et sa platine de tête.
+    cutEnd: surTreillis
+      ? squareCut(sub(tete, scale(axe, sousLEntrait(p))), axe, 1)
+      : (coupeTete ?? squareCut(tete, axe, 1)),
     mark: '',
     assemblage: '',
     position,

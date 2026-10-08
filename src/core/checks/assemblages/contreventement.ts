@@ -63,7 +63,10 @@ export function verifierAttachesDeContreventement(
       const gousset = model.plates.find(
         (pl) => pl.kind === 'gousset-cv' && pl.holes.some((h) => trous.some((q) => coaxial(point(pl, h.at), q))),
       );
-      const appui = gousset ? parId.get(gousset.porteur ?? '') : undefined;
+      // Gousset soudé : sa pièce porteuse ; boulonné sous l'aile d'un arbalétrier : la pièce percée pour lui.
+      const appui = gousset
+        ? (parId.get(gousset.porteur ?? '') ?? model.members.find((m) => m.holes.some((h) => h.from === gousset.id)))
+        : undefined;
       if (!gousset || !appui) continue;
       const nB = plat.holes.length;
       const verifs: VerifAssemblage[] = [];
@@ -94,7 +97,24 @@ export function verifierAttachesDeContreventement(
           .filter((w) => w.between[1] === id)
           .reduce((s, w) => s + longueurDeposee(w) * resistanceParMm(w.throat, nuance), 0);
       verifs.push(verif('cordons du plat dans la fente', N / 1000, cordons(plat.id, plat.grade) / 1000, 'kN'));
-      verifs.push(verif('cordons du gousset sur la pièce porteuse', N / 1000, cordons(gousset.id, gousset.grade) / 1000, 'kN'));
+      if (gousset.porteur) {
+        verifs.push(verif('cordons du gousset sur la pièce porteuse', N / 1000, cordons(gousset.id, gousset.grade) / 1000, 'kN'));
+      } else {
+        // Tôle boulonnée sur la pièce : ses boulons d'appui reprennent tout l'effort.
+        const trousA = appui.holes.filter((h) => h.from === gousset.id);
+        const nA = Math.max(1, trousA.length);
+        verifs.push(verif('cisaillement des boulons sur la pièce porteuse', N / nA / 1000, fvRd(bolt) / 1000, 'kN'));
+        const pr = getProfile(appui.profileId);
+        if (pr.shape === 'L' && trousA.length >= 2) {
+          // Aile couchée continue : pince longitudinale non limitante ; transversale jusqu'au bord de l'aile.
+          const ss = trousA.map((h) => h.s).sort((a, b) => a - b);
+          const p1 = (ss[ss.length - 1] as number) - (ss[0] as number);
+          const e2 = pr.a2 - pr.cy - (trousA[0] as (typeof trousA)[number]).at.y;
+          verifs.push(
+            verif('pression diamétrale sur l’aile de la pièce porteuse', N / nA / 1000, fbRd(bolt, pr.t, appui.grade, { e1: 3 * p1, p1, e2 }) / 1000, 'kN'),
+          );
+        }
+      }
 
       // Section nette du tube, amputée des deux lèvres de la fente (EN 1993-1-1, 6.2.3).
       if (prTube.shape === 'CHS' || prTube.shape === 'BOX' || prTube.shape === 'RECT') {
