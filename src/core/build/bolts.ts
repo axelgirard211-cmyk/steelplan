@@ -1,6 +1,7 @@
 import { getProfile } from '../catalog/index';
 import { EN_ATTENTE, type Hole } from '../geometry/holes';
 import { memberFrame, sectionPointAt, type Member } from '../geometry/member';
+import { sectionOutline, type Pt2 } from '../geometry/section';
 import { add, cross, dot, normalize, scale, sub, type Vec3 } from '../math/vec3';
 import type { Plate } from './types';
 
@@ -85,7 +86,7 @@ export function listerBoulons(
       // passage de lierne non plus : la lierne s'y bloque par ses écrous.
       if (h.from === EN_ATTENTE || liernes.has(h.from)) continue;
       occurrences.push({
-        centre: sectionPointAt(f, m.start, h.s, h.at),
+        centre: sectionPointAt(f, m.start, h.s, milieuDeParoi(profil, h)),
         axe: h.through === 'y' ? f.ay : f.az,
         epaisseur: epaisseurParoi(profil, h),
         piece: m.id,
@@ -110,6 +111,50 @@ export function listerBoulons(
 
   const groupes = regrouperCoaxiaux(occurrences);
   return groupes.map((g) => placer(g));
+}
+
+/**
+ * Diamètre NOMINAL d'un boulon posé, retrouvé depuis son perçage : le jeu
+ * normalisé (1, 2 ou 3 mm), plus la marge des trous d'ancrage.
+ */
+export function diametreNominal(b: Pick<BoltPlacement, 'd' | 'kind'>): number {
+  const d0 = b.kind === 'ancrage' ? b.d - 4 : b.d;
+  return d0 <= 15 ? d0 - 1 : d0 <= 26 ? d0 - 2 : d0 - 3;
+}
+
+/** Perçage d'une barre, situé dans l'espace : pour le montrer en 3D. */
+export interface PercageDeBarre {
+  /** Barre percée. */
+  readonly piece: string;
+  /** Milieu du trou, à mi-épaisseur de la paroi. */
+  readonly centre: Vec3;
+  readonly axe: Vec3;
+  readonly d: number;
+  readonly epaisseur: number;
+}
+
+/**
+ * Tous les trous percés dans les barres, boulonnés ou non. Une barre est
+ * extrudée pleine : sans eux, un trou en attente ou un passage de lierne ne se
+ * verrait nulle part.
+ */
+export function percagesDesBarres(members: readonly Member[]): PercageDeBarre[] {
+  const out: PercageDeBarre[] = [];
+  for (const m of members) {
+    if (m.holes.length === 0) continue;
+    const f = memberFrame(m);
+    const profil = getProfile(m.profileId);
+    for (const h of m.holes) {
+      out.push({
+        piece: m.id,
+        centre: sectionPointAt(f, m.start, h.s, milieuDeParoi(profil, h)),
+        axe: h.through === 'y' ? f.ay : f.az,
+        d: h.d,
+        epaisseur: epaisseurParoi(profil, h),
+      });
+    }
+  }
+  return out;
 }
 
 /** Nombre de boulons du modèle : la liste, comptée. */
@@ -232,6 +277,46 @@ function repereTole(pl: Plate): { u: Vec3; w: Vec3; n: Vec3 } {
   const u = normalize(pl.u);
   const w = normalize(sub(pl.v, scale(u, dot(pl.v, u))));
   return { u, w, n: normalize(cross(u, w)) };
+}
+
+/**
+ * Point du trou ramené à MI-ÉPAISSEUR de la paroi qu'il traverse.
+ *
+ * ⚠ Un trou de barre est coté tantôt sur la face de contact, tantôt au milieu
+ * de la paroi. La tête, posée à une demi-épaisseur du centre, se dessinait alors
+ * à moitié noyée dans la semelle du poteau — « le boulon n'est pas dans son
+ * trou ». La section dit où est le métal : on prend, sur la droite de perçage,
+ * le tronçon de matière le plus proche du point coté, et son milieu.
+ */
+function milieuDeParoi(profil: ReturnType<typeof getProfile>, h: Pick<Hole, 'at' | 'through'>): Pt2 {
+  const sec = sectionOutline(profil, 4);
+  // Perçage selon z : droite y = cte, on cherche des z ; selon y, l'inverse.
+  const fixe = h.through === 'z' ? h.at.y : h.at.z;
+  const vise = h.through === 'z' ? h.at.z : h.at.y;
+  const coupes: number[] = [];
+  for (const poly of [sec.outer, ...sec.holes]) {
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i] as Pt2;
+      const b = poly[(i + 1) % poly.length] as Pt2;
+      const [fa, fb, la, lb] = h.through === 'z' ? [a.y, b.y, a.z, b.z] : [a.z, b.z, a.y, b.y];
+      if (fa > fixe === fb > fixe) continue;
+      coupes.push(la + ((lb - la) * (fixe - fa)) / (fb - fa));
+    }
+  }
+  coupes.sort((x, y) => x - y);
+  let meilleur: number | null = null;
+  let ecart = Infinity;
+  for (let i = 0; i + 1 < coupes.length; i += 2) {
+    const lo = coupes[i] as number;
+    const hi = coupes[i + 1] as number;
+    const e = vise < lo ? lo - vise : vise > hi ? vise - hi : 0;
+    if (e < ecart) {
+      ecart = e;
+      meilleur = (lo + hi) / 2;
+    }
+  }
+  if (meilleur === null) return h.at;
+  return h.through === 'z' ? { y: h.at.y, z: meilleur } : { y: meilleur, z: h.at.z };
 }
 
 /**

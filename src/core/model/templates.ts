@@ -41,6 +41,7 @@ function derive(patch: {
     gable?: Partial<ProjectParams['bracing']['gable']>;
   };
   loads?: { loads?: Partial<ProjectParams['loads']['loads']> };
+  columnBase?: Partial<ProjectParams['connections']['columnBase']>;
 }): ProjectParams {
   const d = DEFAULT_PROJECT;
   return {
@@ -63,6 +64,7 @@ function derive(patch: {
       gable: { ...d.bracing.gable, ...patch.bracing?.gable },
     },
     loads: { ...d.loads, loads: { ...d.loads.loads, ...patch.loads?.loads } },
+    connections: { ...d.connections, columnBase: { ...d.connections.columnBase, ...patch.columnBase } },
     freeMembers: [],
   };
 }
@@ -131,6 +133,8 @@ export const TEMPLATES: readonly Template[] = [
         },
         // Équipements suspendus : ponts, gaines, éclairage.
         loads: { loads: { permanent: 0.4, exploitation: 0.4, neige: 0.55 } },
+        // Sous un HEA 500, la platine de 550 mm mettait les tiges sous la semelle.
+        columnBase: { length: 700, width: 400 },
       }),
   },
 

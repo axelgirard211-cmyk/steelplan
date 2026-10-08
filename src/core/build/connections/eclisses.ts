@@ -1,12 +1,13 @@
 import { getProfile } from '../../catalog/index';
 import { boltGrid, hole, pitchFor, type Hole } from '../../geometry/holes';
 import { fibreAbscissa, memberFrame, type Member } from '../../geometry/member';
-import { add, normalize, scale, sub, v3, type Vec3 } from '../../math/vec3';
-import { holeDiameter, minEdgeDistance } from '../../model/connections';
+import { add, dot, normalize, scale, sub, v3, type Vec3 } from '../../math/vec3';
+import { sectionOutline, type Pt2 } from '../../geometry/section';
+import { holeDiameter, minEdgeDistance, type BoltSpec } from '../../model/connections';
 import type { ProjectParams } from '../../model/project';
 import { frameStations } from '../../model/grid';
 import type { Plate, PlateHole } from '../types';
-import { colineaires, longueurAxe, proche, rectangle } from './geom';
+import { colineaires, contourAutourDesTrous, couperDemiPlan, longueurAxe, proche, rectangle } from './geom';
 
 /**
  * ÉCLISSES DE CONTINUITÉ ET GOUSSETS DE TREILLIS.
@@ -131,12 +132,37 @@ export function eclisses(
  * coordonnées dans le plan. Les perçages du gousset, eux, restent où ils sont —
  * ils doivent coïncider en projection, ce qu'ils font toujours.
  */
-function fibreDeBoulonnage(profil: ReturnType<typeof getProfile>): { y: number; z: number } {
+function fibreDeBoulonnage(profil: ReturnType<typeof getProfile>, bolt: BoltSpec): { y: number; z: number } {
   // La grande aile d'une cornière est dressée selon z ; son épaisseur court
-  // selon y, depuis le dos situé en y = −cy.
-  if (profil.shape === 'L') return { y: -profil.cy + profil.t / 2, z: 0 };
+  // selon y, depuis le dos situé en y = −cy. Le trou est sur la ligne de
+  // trusquinage, comptée depuis le talon (z = −cz).
+  if (profil.shape === 'L') return { y: -profil.cy + profil.t / 2, z: -profil.cz + trusquinage(profil, bolt) };
   // Sections dont l'âme contient l'axe : le boulon la traverse en son milieu.
   return { y: 0, z: 0 };
+}
+
+/**
+ * LIGNE DE TRUSQUINAGE d'une cornière : distance du talon à l'axe des trous.
+ *
+ * ⚠ Les trous étaient cotés sur la ligne du centre de gravité, à 19,7 mm du
+ * talon d'une L 70 : la tête et l'écrou d'un M16 y mordaient l'aile couchée.
+ * On perce sur la ligne usuelle (≈ 0,55 a : 40 mm pour une L 70, 55 pour une
+ * L 100), bornée par ce que la clé exige près du congé et par la pince du bord.
+ */
+export function trusquinage(profil: { a: number; t: number; r: number }, bolt: BoltSpec): number {
+  const cle = (0.75 * bolt.d) / Math.cos(Math.PI / 6);
+  const mini = profil.t + profil.r + cle;
+  const maxi = profil.a - minEdgeDistance(bolt);
+  const usuel = Math.round((0.55 * profil.a + 1) / 5) * 5;
+  return Math.max(mini, Math.min(maxi, usuel));
+}
+
+/** Une barre qui quitte un nœud : sa direction, son ébout, sa ligne de trous. */
+interface Sortie {
+  readonly u: Vec3;
+  readonly recul: number;
+  /** Décalage de la ligne de trusquinage par rapport à l'axe, dans le plan. */
+  readonly ligne: Vec3;
 }
 
 export function goussets(
@@ -185,16 +211,16 @@ export function goussets(
    */
   const noeuds = new Map<
     string,
-    { point: Vec3; sorties: { u: Vec3; recul: number }[]; barres: Set<string> }
+    { point: Vec3; sorties: Sortie[]; barres: Set<string> }
   >();
-  const noter = (q: Vec3, u: Vec3, id: string, recul: number): void => {
+  const noter = (q: Vec3, sortie: Sortie, id: string): void => {
     const cle = cleBrute(q);
     const n = noeuds.get(cle);
     if (n) {
-      n.sorties.push({ u, recul });
+      n.sorties.push(sortie);
       n.barres.add(id);
     } else {
-      noeuds.set(cle, { point: dansLePlan(q), sorties: [{ u, recul }], barres: new Set([id]) });
+      noeuds.set(cle, { point: dansLePlan(q), sorties: [sortie], barres: new Set([id]) });
     }
   };
 
@@ -213,12 +239,13 @@ export function goussets(
     const sDebut = fibreAbscissa(f, b.start, b.cutStart, axe);
     const sFin = fibreAbscissa(f, b.start, b.cutEnd, axe);
 
-    noter(b.start, versB, b.id, sDebut);
-    noter(b.end, scale(versB, -1), b.id, l - sFin);
-
     // Deux boulons par about, à la même distance de la coupe que les trous du
-    // gousset correspondant.
-    const fibre = fibreDeBoulonnage(getProfile(b.profileId));
+    // gousset correspondant — et sur la même ligne de trusquinage.
+    const fibre = fibreDeBoulonnage(getProfile(b.profileId), bolt);
+    const ligne = scale(f.az, fibre.z);
+    noter(b.start, { u: versB, recul: sDebut, ligne }, b.id);
+    noter(b.end, { u: scale(versB, -1), recul: l - sFin, ligne }, b.id);
+
     ajouter(
       b.id,
       distances.flatMap((d) => [
@@ -228,36 +255,80 @@ export function goussets(
     );
   }
 
+  const membrures = members.filter((m) => m.role === 'membrure-sup' || m.role === 'membrure-inf');
+
   for (const [cle, n] of noeuds) {
+    const id = `GOU-${cle}`.replace('GOU-GOU-', 'GOU-');
     // ⚠ Le gousset porte les trous de TOUTES les barres qui aboutissent au nœud,
     // calculés depuis les mêmes directions et les mêmes distances que les trous
     // des barres. Un gousset non percé partirait en atelier inutilisable, et une
     // grille recalculée à part pourrait ne pas coïncider.
-    const brut: PlateHole[] = n.sorties.flatMap(({ u, recul }) =>
+    const brut: PlateHole[] = n.sorties.flatMap(({ u, recul, ligne }) =>
       distances.map((d) => ({
         // Le gousset est dans le plan YZ : ses coordonnées locales sont (y, z).
         // La distance part du nœud et inclut l'ébout de la barre.
-        at: { y: u.y * (recul + d), z: u.z * (recul + d) },
+        at: { y: u.y * (recul + d) + ligne.y, z: u.z * (recul + d) + ligne.z },
         d: dTrou,
       })),
     );
+
+    /*
+     * ⚠ LA MEMBRURE SE BOULONNE SUR SON GOUSSET. Elle passait entre les deux
+     * faces du gousset sans rien qui la tienne : les barres de treillis étaient
+     * boulonnées sur une tôle libre, et la ferme ne formait pas un ensemble.
+     * Deux boulons par tronçon, sur la ligne de trusquinage de la membrure.
+     */
+    const rognures: { n: Pt2; c: number }[] = [];
+    const vers = n.sorties.map((x) => x.u);
+    for (const c of membrures) {
+      // La membrure de CETTE ferme : toutes les fermes ont la même épure.
+      if (Math.abs(c.start.x - n.point.x) > 200) continue;
+      const f = memberFrame(c);
+      const q = sub(v3(c.start.x, n.point.y, n.point.z), c.start);
+      const sNoeud = dot(q, f.ax);
+      const ecart = sub(q, scale(f.ax, sNoeud));
+      if (Math.hypot(ecart.x, ecart.y, ecart.z) > 1) continue;
+      const fibre = fibreDeBoulonnage(getProfile(c.profileId), bolt);
+      const a = fibreAbscissa(f, c.start, c.cutStart, fibre);
+      const b = fibreAbscissa(f, c.start, c.cutEnd, fibre);
+      const [sMin, sMax] = [Math.min(a, b), Math.max(a, b)];
+      if (sNoeud < sMin - 1 || sNoeud > sMax + 1) continue;
+      let abscisses = [sNoeud - entraxe / 2, sNoeud + entraxe / 2];
+      if ((abscisses[0] as number) < sMin + pince) abscisses = [sMin + pince, sMin + pince + entraxe];
+      if ((abscisses[1] as number) > sMax - pince) abscisses = [sMax - pince - entraxe, sMax - pince];
+      ajouter(c.id, abscisses.map((sb) => hole(sb, fibre, bolt, 'y', 'aile', id)));
+      for (const sb of abscisses) {
+        const r = add(scale(f.ax, sb - sNoeud), scale(f.az, fibre.z));
+        brut.push({ at: { y: r.y, z: r.z }, d: dTrou });
+      }
+      // Le gousset ne dépasse pas la membrure du côté opposé au treillis : ni
+      // au-dessus de l'arbalétrier — où sont les pannes —, ni sous l'entrait.
+      const haut = { y: f.az.y, z: f.az.z };
+      const cote = Math.sign(vers.reduce((t, u) => t + u.y * haut.y + u.z * haut.z, 0)) || -1;
+      const hauteurs = sectionOutline(getProfile(c.profileId), 1).outer.map((x) => x.z);
+      rognures.push(
+        cote < 0
+          ? { n: haut, c: Math.max(...hauteurs) - 5 }
+          : { n: { y: -haut.y, z: -haut.z }, c: -Math.min(...hauteurs) },
+      );
+    }
+
     // Les deux cornières d'une barre double percent le MÊME trou du gousset :
     // un trou, un boulon qui serre les trois pièces.
     const trous = [
       ...new Map(brut.map((t) => [`${t.at.y.toFixed(1)}|${t.at.z.toFixed(1)}`, t])).values(),
     ];
 
-    // La tôle doit contenir tous ses trous, pince comprise : on la dimensionne
-    // sur eux plutôt que sur une estimation.
-    const rayon = Math.max(...trous.map((t) => Math.hypot(t.at.y, t.at.z)), pince);
-    const cote = 2 * (rayon + pince);
+    // La tôle se découpe autour de ses trous, pince comprise.
+    let contour = contourAutourDesTrous(trous.map((t) => t.at), pince);
+    for (const r of rognures) contour = couperDemiPlan(contour, r.n, r.c);
 
     plates.push({
-      id: `GOU-${cle}`.replace('GOU-GOU-', 'GOU-'),
+      id,
       kind: 'gousset',
       grade: p.truss.grade,
       thickness: gu.thickness,
-      outline: rectangle(cote, cote),
+      outline: contour.map((q) => ({ y: Math.round(q.y * 10) / 10, z: Math.round(q.z * 10) / 10 })),
       holes: trous,
       pairedWith: null,
       // Les barres de treillis s'y boulonnent toutes : aucune ne la porte.

@@ -105,6 +105,18 @@ export function runChecks(p: ProjectParams, model: StructuralModel): ChecksRepor
   };
 
   const reperes = new Map(model.members.map((m) => [m.id, m.mark]));
+  /** Repères des pièces homologues d'une barre dans les files représentées, s'ils diffèrent du sien. */
+  const homologues = (memberId: string | undefined, represente: readonly number[]): string[] => {
+    const coupe = memberId?.indexOf('-') ?? -1;
+    if (!memberId || coupe < 0) return [];
+    const suffixe = memberId.slice(coupe + 1);
+    const sien = reperes.get(memberId);
+    return [
+      ...new Set(
+        represente.map((j) => reperes.get(`${j}-${suffixe}`)).filter((r): r is string => r !== undefined && r !== sien),
+      ),
+    ];
+  };
 
   const enveloppe = new EnveloppeReactions();
   /*
@@ -137,6 +149,13 @@ export function runChecks(p: ProjectParams, model: StructuralModel): ChecksRepor
 
       for (const ligne of lignesDuPortique(p, model, chargé, input, res, comb, reperes, sens)) {
         retenir(ligne);
+        /*
+         * ⚠ Le portique analysé vaut pour les files qu'il REPRÉSENTE, mais leurs
+         * pièces n'ont pas toujours son repère : un arbalétrier percé pour la
+         * poutre au vent en prend un autre. Chacun reçoit la ligne de sa pièce
+         * homologue, sans quoi il sortirait du rapport sans vérification.
+         */
+        for (const autre of homologues(ligne.memberId, represente)) retenir({ ...ligne, mark: autre });
       }
       releverReactions(enveloppe, chargé, res, comb, represente, files);
       // Flèche de la traverse de RIVE au droit des potelets : la course de leurs oblongs.
@@ -306,6 +325,7 @@ function lignesDuPortique(
     }
     out.push({
       mark: reperes.get(memberId) ?? memberId,
+      memberId,
       role,
       profileId: premier.profileId,
       grade: premier.grade as SteelGradeId,

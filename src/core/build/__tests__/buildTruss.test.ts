@@ -91,10 +91,11 @@ describe('ferme treillis — géométrie d’ensemble', () => {
     }
   });
 
-  it('émet l’entrait droit en une seule pièce, de toute la portée', () => {
+  it('émet l’entrait droit en une seule pièce, de toute la portée, posé sur les têtes de poteaux', () => {
     const bas = parRole(premiereFerme(m.members), 'membrure-inf');
     expect(bas).toHaveLength(1);
-    expect(cutLengths(bas[0] as Member).axis).toBeCloseTo(G.span, 6);
+    // Prolongé de chaque côté jusqu'au nu extérieur du poteau qui le porte.
+    expect(cutLengths(bas[0] as Member).axis).toBeCloseTo(G.span + getProfile(p.frame.columnProfile).h, 6);
     expect((bas[0] as Member).start.z).toBeCloseTo(4800, 6);
     expect((bas[0] as Member).end.z).toBeCloseTo(4800, 6);
   });

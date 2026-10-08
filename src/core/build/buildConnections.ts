@@ -12,7 +12,7 @@ import { attachesDePannes, percerEnSymetrie } from './connections/attaches';
 import { attachesDeLisses, percerPoteauxEnSymetrie } from './connections/lisses';
 import { passagesDeLiernes, percerPannesPourLiernes } from './connections/liernes';
 import { eclisses, goussets } from './connections/eclisses';
-import { consoles, faitages, genoux, piedsDePoteaux, piedsDePotelets } from './connections/platines';
+import { consoles, faitages, genoux, piedsDePoteaux, piedsDePotelets, tetesDePoteauxSousFerme } from './connections/platines';
 import {
   attachesDeContreventement,
   fenteDuPlat,
@@ -70,12 +70,15 @@ export function buildConnections(
     consoles(p, members, plates, ajouter);
     faitages(p, members, plates);
   }
-  if (p.truss.enabled) goussets(p, members, plates, ajouter);
+  if (p.truss.enabled) {
+    goussets(p, members, plates, ajouter);
+    tetesDePoteauxSousFerme(p, members, plates, ajouter);
+  }
   if (p.frame.enabled && p.connections.splice.enabled) eclisses(p, members, plates, ajouter);
   attachesDePannes(p, members, ajouter);
   const porteursEquerres = attachesDeLisses(p, members, ajouter);
   passagesDeLiernes(p, members, ajouter);
-  attachesDeContreventement(p, attachesCV, plates);
+  attachesDeContreventement(p, attachesCV, plates, ajouter);
   // Après les platines de faîtage et les goussets de contreventement, que la
   // tête de potelet doit trouver — et éviter.
   tetesDePotelets(p, members, plates, ajouter);
@@ -332,13 +335,23 @@ function porteursDesAttaches(members: readonly Member[]): Map<string, string> {
   return out;
 }
 
-/** La projection de `q` sur l'axe de `m` tombe-t-elle entre ses deux coupes ? */
+/**
+ * `q` tombe-t-il entre les deux coupes de `m`, sur la fibre de la section qui
+ * lui fait face ?
+ *
+ * ⚠ Pas sur l'AXE : une traverse en pente coupée d'aplomb au faîtage s'arrête
+ * plus loin en haut qu'à l'axe. L'échantignolle de la faîtière, posée sur la
+ * semelle haute à trois centimètres du faîtage, en était déclarée « hors du
+ * métal » — et partait en pièce volante.
+ */
 function dansLeMetal(m: Member, q: Vec3): boolean {
   const f = memberFrame(m);
-  const axe = { y: 0, z: 0 };
-  const s0 = fibreAbscissa(f, m.start, m.cutStart, axe);
-  const s1 = fibreAbscissa(f, m.start, m.cutEnd, axe);
-  const s = dot(sub(q, m.start), f.ax);
+  const d = sub(q, m.start);
+  const demi = getProfile(m.profileId).h / 2;
+  const fibre = { y: 0, z: Math.max(-demi, Math.min(demi, dot(d, f.az))) };
+  const s0 = fibreAbscissa(f, m.start, m.cutStart, fibre);
+  const s1 = fibreAbscissa(f, m.start, m.cutEnd, fibre);
+  const s = dot(d, f.ax);
   return s >= Math.min(s0, s1) - 1 && s <= Math.max(s0, s1) + 1;
 }
 

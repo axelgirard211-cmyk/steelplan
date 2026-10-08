@@ -39,7 +39,7 @@ export function buildProject(p: ProjectParams): StructuralModel {
   const { members: traverses, haunches: jarrets } = buildSolidRafters(p);
   const fermes = buildTruss(p);
   const secondaire = buildSecondary(p);
-  const contreventements = buildBracing(p, [...poteaux, ...traverses, ...secondaire.members]);
+  const contreventements = buildBracing(p, [...poteaux, ...traverses, ...fermes, ...secondaire.members]);
   const libres = buildFreeMembers(p);
 
   const brutes = [

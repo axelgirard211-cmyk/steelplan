@@ -311,7 +311,7 @@ function plafondPignon(p: ProjectParams, y: number, hPorteur: number): number {
   const sousTraverse = roofZ(p.grid, y) - (hPorteur / 2) / Math.max(0.1, nrm.z) - jeuSousTraverse(p);
   if (!sousLeFaitage(p, y)) return sousTraverse;
   const platine = dimensionsPlatineDeFaitage(p, p.frame.distinctGableFrame ? p.frame.gableRafterProfile : p.frame.rafterProfile);
-  return Math.min(sousTraverse, ridgeHeight(p.grid) - platine.hauteur / 2 - jeuSousTraverse(p));
+  return Math.min(sousTraverse, ridgeHeight(p.grid) - platine.dessous - jeuSousTraverse(p));
 }
 
 /**

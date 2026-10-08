@@ -167,7 +167,9 @@ describe('invariant — chaque tôle soudée l’est sur la bonne pièce', () =>
   it('soude toute platine d’about ou de pied, et laisse libres éclisses et goussets', () => {
     for (const [nom, M] of modeles) {
       for (const pl of M.plates) {
-        const libre = pl.kind === 'eclisse' || pl.kind === 'gousset';
+        // Le gousset de poutre au vent posé sous l'aile d'un arbalétrier y est boulonné.
+        const boulonne = pl.kind === 'gousset-cv' && pl.position.includes('boulonné');
+        const libre = pl.kind === 'eclisse' || pl.kind === 'gousset' || boulonne;
         expect(pl.porteur === null, `${nom} / ${pl.position}`).toBe(libre);
       }
     }

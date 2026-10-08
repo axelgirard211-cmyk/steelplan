@@ -2,9 +2,10 @@ import { getProfile } from '../catalog/index';
 import { miterCut, squareCut, type CutPlane, type Member } from '../geometry/member';
 import { frameStations, rafterLength, ridgeHeight, ridgeY } from '../model/grid';
 import type { ProjectParams } from '../model/project';
-import { cross, normalize, scale, sub, v3, EX, EY, type Vec3 } from '../math/vec3';
+import { add, cross, dot, normalize, scale, sub, v3, EX, EY, type Vec3 } from '../math/vec3';
 import { consoleDeDebord, debordStructurel, genou, pointDeRive } from './genou';
 import { tieLevel } from './buildTruss';
+import { sousLEntrait } from './connections/platines';
 import type { Haunch } from './types';
 
 /**
@@ -153,8 +154,11 @@ function poteau(
     porteur: null,
     cutStart: squareCut(pied, axe, -1),
     // Le plan de coupe passe au-dessus du point de travail ; l'about `end`, lui,
-    // reste au point de travail — c'est lui que lit le modèle de calcul.
-    cutEnd: surTreillis || !coupeTete ? squareCut(tete, axe, 1) : coupeTete,
+    // reste au point de travail — c'est lui que lit le modèle de calcul. Sous
+    // une ferme, il s'arrête sous l'entrait et sa platine de tête.
+    cutEnd: surTreillis
+      ? squareCut(sub(tete, scale(axe, sousLEntrait(p))), axe, 1)
+      : (coupeTete ?? squareCut(tete, axe, 1)),
     mark: '',
     assemblage: '',
     position,
@@ -209,8 +213,16 @@ function bipente(
   // ÉCLISSAGE : au-delà d'une certaine portée, une traverse ne se transporte
   // pas d'un seul tenant. On la débite en deux tronçons raccordés par éclisses,
   // coupés d'équerre face à face — c'est le boulonnage qui reprend la continuité.
-  pousserTraverse(members, p, `${i}-TG`, profilTraverse, genouG, faitage, upRampant(rampantG), kneeG.coupeTraverse, miterCut(faitage, faitageVersG, faitageVersD), `${file} — versant gauche`);
-  pousserTraverse(members, p, `${i}-TD`, profilTraverse, faitage, genouD, upRampant(normalize(sub(genouD, faitage))), miterCut(faitage, faitageVersD, faitageVersG), kneeD.coupeTraverse, `${file} — versant droit`);
+  /*
+   * ⚠ Au faîtage, chaque traverse s'arrête à UNE ÉPAISSEUR DE PLATINE du point
+   * de travail, comme au genou : les deux platines se plaquent l'une sur l'autre
+   * dans le plan du faîtage. Coupées au point de travail, chacune portait sa
+   * platine dans le métal de la traverse d'en face.
+   */
+  const coupeFaitageG = recul(miterCut(faitage, faitageVersG, faitageVersD), p.connections.ridge.thickness);
+  const coupeFaitageD = recul(miterCut(faitage, faitageVersD, faitageVersG), p.connections.ridge.thickness);
+  pousserTraverse(members, p, `${i}-TG`, profilTraverse, genouG, faitage, upRampant(rampantG), kneeG.coupeTraverse, coupeFaitageG, `${file} — versant gauche`);
+  pousserTraverse(members, p, `${i}-TD`, profilTraverse, faitage, genouD, upRampant(normalize(sub(genouD, faitage))), coupeFaitageD, kneeD.coupeTraverse, `${file} — versant droit`);
 
   /*
    * DÉBORD DE TOITURE À L'ÉGOUT : une CONSOLE, pièce distincte boulonnée sur la
@@ -230,8 +242,8 @@ function bipente(
   }
   if (f.ridgeHaunch.enabled) {
     haunches.push(
-      jarret(`${i}-JFG`, f.ridgeHaunch.length, f.ridgeHaunch.depth, hTraverse, profilTraverse, p, faitage, faitageVersG, `${file} — renfort faîtage gauche`),
-      jarret(`${i}-JFD`, f.ridgeHaunch.length, f.ridgeHaunch.depth, hTraverse, profilTraverse, p, faitage, faitageVersD, `${file} — renfort faîtage droit`),
+      jarret(`${i}-JFG`, f.ridgeHaunch.length, f.ridgeHaunch.depth, hTraverse, profilTraverse, p, surLaCoupe(faitage, faitageVersG, coupeFaitageG), faitageVersG, `${file} — renfort faîtage gauche`),
+      jarret(`${i}-JFD`, f.ridgeHaunch.length, f.ridgeHaunch.depth, hTraverse, profilTraverse, p, surLaCoupe(faitage, faitageVersD, coupeFaitageD), faitageVersD, `${file} — renfort faîtage droit`),
     );
   }
 }
@@ -394,6 +406,18 @@ function pousserTraverse(
  */
 export function upRampant(rampant: Vec3): Vec3 {
   return normalize(cross(EX, normalize(rampant)));
+}
+
+/** Plan de coupe ramené de `t` vers l'intérieur de la barre (sa normale sort de la barre). */
+function recul(c: CutPlane, t: number): CutPlane {
+  return { point: sub(c.point, scale(c.normal, t)), normal: c.normal };
+}
+
+/** Point où l'axe parti de `origine` selon `direction` rencontre le plan de coupe. */
+function surLaCoupe(origine: Vec3, direction: Vec3, c: CutPlane): Vec3 {
+  const d = normalize(direction);
+  const k = dot(d, c.normal);
+  return Math.abs(k) < 1e-9 ? origine : add(origine, scale(d, dot(sub(c.point, origine), c.normal) / k));
 }
 
 function jarret(

@@ -260,11 +260,18 @@ describe('potelets de pignon', () => {
       expect(po.end.z, po.position).toBeCloseTo(attendu, 6);
       expect(po.start.z).toBe(0);
     }
-    // Au faîtage : 7000 − (360 + 2 × 40) / 2 − 55 = 6725, plus haut que les rives.
+    /*
+     * Au faîtage, sous les platines : elles affleurent le dessus des traverses,
+     * coupées à 20 mm du faîtage, et débordent de 40 mm sous leur semelle basse.
+     *   7000 − (20 × tan α + 360 / 2 / cos α + 40) − 55 = 6722,1
+     * plus haut que les rives.
+     */
+    const sousPlatines = 7000 - (20 * Math.tan(a) + 360 / 2 / Math.cos(a) + 40) - 55;
+    expect(sousPlatines).toBeCloseTo(6722.1, 1);
     const auFaitage = potelets.filter((x) => Math.abs(x.start.y - 10000) < 1);
     expect(auFaitage.length).toBeGreaterThan(0);
-    for (const po of auFaitage) expect(po.end.z).toBeCloseTo(6725, 6);
-    expect(Math.max(...potelets.map((po) => po.end.z))).toBeCloseTo(6725, 6);
+    for (const po of auFaitage) expect(po.end.z).toBeCloseTo(sousPlatines, 6);
+    expect(Math.max(...potelets.map((po) => po.end.z))).toBeCloseTo(sousPlatines, 6);
   });
 
   it('donne le même repère aux potelets symétriques', () => {

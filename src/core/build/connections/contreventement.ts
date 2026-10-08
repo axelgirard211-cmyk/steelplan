@@ -5,7 +5,9 @@ import { add, cross, dot, normalize, scale, sub, type Vec3 } from '../../math/ve
 import { holeDiameter, minEdgeDistance, type BoltSpec } from '../../model/connections';
 import type { ProjectParams } from '../../model/project';
 import type { Plate } from '../types';
-import { rectangle } from './geom';
+import { enveloppe, rectangle } from './geom';
+import { dispositionSurCorniere } from './contreventementFerme';
+import { hole, type Hole } from '../../geometry/holes';
 
 /**
  * ATTACHES DES DIAGONALES DE CONTREVENTEMENT — plat soudé dans le tube fendu,
@@ -30,7 +32,12 @@ import { rectangle } from './geom';
  * ailleurs que son gousset.
  */
 
-export type TypeDAppui = 'ame' | 'semelle';
+/**
+ * Où se fixe le gousset : soudé sur l'âme ou la semelle d'un profil en I ; sur
+ * une cornière d'arbalétrier, soudé contre la grande aile (`aile`) ou boulonné
+ * sous l'aile couchée (`sous-aile`) — voir `contreventementFerme`.
+ */
+export type TypeDAppui = 'ame' | 'semelle' | 'aile' | 'sous-aile';
 
 /**
  * Disposition d'une attache, dans le repère de la maille : les distances λ se
@@ -63,7 +70,17 @@ export interface Disposition {
   /** Abscisse λ du bout libre du plat (mm). */
   readonly bout: number;
   readonly largeurPlat: number;
+  /** Épaisseur du plat (mm). */
   readonly epaisseur: number;
+  /** Épaisseur du gousset, si elle diffère de celle du plat (mm). */
+  readonly epaisseurGousset?: number;
+  /**
+   * Boulons qui fixent le gousset sur la pièce porteuse quand il n'y est pas
+   * soudé, dans le repère du gousset ; et leur ligne dans la section de la pièce,
+   * avec l'abscisse du point de travail.
+   */
+  readonly boulonsDAppui?: readonly Pt2[];
+  readonly ligneDAppui?: { readonly y: number; readonly z: number; readonly s: number };
   readonly bolt: BoltSpec;
   /** Plage permise au gousset le long de la pièce porteuse, depuis le point de travail. */
   readonly limites: readonly [number, number];
@@ -107,6 +124,7 @@ export function dispositionDAttache(
   plafond?: (type: TypeDAppui) => number | undefined,
 ): Disposition | null {
   const pr = getProfile(appui.profileId);
+  if (pr.shape === 'L') return dispositionSurCorniere(p, appui, travail, a, n, decalage, diametreTube);
   if (pr.shape !== 'I') return null;
   const f = memberFrame(appui);
   const e1 = f.ax;
@@ -234,6 +252,7 @@ export function attachesDeContreventement(
   p: ProjectParams,
   attaches: readonly AttacheCV[],
   plates: Plate[],
+  ajouter: (memberId: string, h: Hole[]) => void = () => {},
 ): void {
   const grade = p.bracing.grade;
   const noeuds = new Map<string, Disposition[]>();
@@ -247,7 +266,19 @@ export function attachesDeContreventement(
     noeuds.set(cle, [...(noeuds.get(cle) ?? []), d]);
   }
   let k = 0;
-  for (const ds of noeuds.values()) plates.push(goussetDuNoeud(ds, `GC${k++}`, grade));
+  for (const ds of noeuds.values()) {
+    const g = goussetDuNoeud(ds, `GC${k++}`, grade);
+    plates.push(g);
+    // Gousset boulonné : la pièce porteuse est percée au droit de ses boulons.
+    const d = ds[0] as Disposition;
+    if (d.boulonsDAppui && d.ligneDAppui) {
+      const l = d.ligneDAppui;
+      ajouter(
+        d.appui,
+        d.boulonsDAppui.map((b) => hole(l.s + b.y, { y: l.y, z: l.z }, d.bolt, 'z', 'semelle-inf', g.id)),
+      );
+    }
+  }
 }
 
 function platDeTube(at: AttacheCV, grade: Plate['grade']): Plate {
@@ -289,7 +320,17 @@ function goussetDuNoeud(ds: readonly Disposition[], suffixe: string, grade: Plat
     })),
   );
   const ys = trous.map((h) => h.y);
-  points.push({ y: Math.min(...ys) - pince, z: 0 }, { y: Math.max(...ys) + pince, z: 0 });
+  const appuis = d.boulonsDAppui ?? [];
+  // Soudé : il s'appuie sur la pièce par son bord ; boulonné : il entoure ses boulons d'appui.
+  if (appuis.length === 0) points.push({ y: Math.min(...ys) - pince, z: 0 }, { y: Math.max(...ys) + pince, z: 0 });
+  points.push(
+    ...appuis.flatMap((h) =>
+      Array.from({ length: 8 }, (_, i) => ({
+        y: h.y + r * Math.cos(((i + 0.5) * Math.PI) / 4),
+        z: h.z + r * Math.sin(((i + 0.5) * Math.PI) / 4),
+      })),
+    ),
+  );
   const [bas, haut] = d.limites;
   const contour = decouper(enveloppe(points), bas, haut).map((q) => ({
     y: Math.round(q.y * 10) / 10,
@@ -299,18 +340,25 @@ function goussetDuNoeud(ds: readonly Disposition[], suffixe: string, grade: Plat
     id: `${d.appui}-${suffixe}`,
     kind: 'gousset-cv',
     grade,
-    thickness: d.epaisseur,
+    thickness: d.epaisseurGousset ?? d.epaisseur,
     outline: contour,
-    holes: trous.map((h) => ({ at: h, d: holeDiameter(d.bolt) })),
+    holes: [...trous, ...appuis].map((h) => ({ at: h, d: holeDiameter(d.bolt) })),
     pairedWith: null,
-    porteur: d.appui,
+    porteur: d.type === 'sous-aile' ? null : d.appui,
     origin: add(add(d.travail, scale(d.n, d.gousset)), scale(d.e2, d.face)),
     u: d.e1,
     v: d.e2,
     mark: '',
-    position: `gousset de contreventement soudé sur ${d.type === 'ame' ? 'l’âme' : 'la semelle'}`,
+    position: `gousset de contreventement ${POSE[d.type]}`,
   };
 }
+
+const POSE: Readonly<Record<TypeDAppui, string>> = {
+  ame: 'soudé sur l’âme',
+  semelle: 'soudé sur la semelle',
+  aile: 'soudé contre la grande aile de l’arbalétrier',
+  'sous-aile': 'boulonné sous l’aile couchée de l’arbalétrier',
+};
 
 /** Longueur du cordon d'un gousset : son bord posé sur la pièce porteuse (z = 0). */
 export function longueurSoudeeDuGousset(pl: Plate): number {
@@ -341,23 +389,6 @@ export function fenteDuPlat(
 }
 
 /* ------------------------------------------------------------------ */
-
-/** Enveloppe convexe (monotone chain), sens trigonométrique. */
-function enveloppe(points: readonly Pt2[]): Pt2[] {
-  const pts = [...points].sort((a, b) => a.y - b.y || a.z - b.z);
-  const croix = (o: Pt2, a: Pt2, b: Pt2): number => (a.y - o.y) * (b.z - o.z) - (a.z - o.z) * (b.y - o.y);
-  const bas: Pt2[] = [];
-  for (const q of pts) {
-    while (bas.length >= 2 && croix(bas[bas.length - 2] as Pt2, bas[bas.length - 1] as Pt2, q) <= 0) bas.pop();
-    bas.push(q);
-  }
-  const haut: Pt2[] = [];
-  for (const q of [...pts].reverse()) {
-    while (haut.length >= 2 && croix(haut[haut.length - 2] as Pt2, haut[haut.length - 1] as Pt2, q) <= 0) haut.pop();
-    haut.push(q);
-  }
-  return [...bas.slice(0, -1), ...haut.slice(0, -1)];
-}
 
 /** Découpe d'un polygone convexe entre deux droites y = bas et y = haut. */
 function decouper(poly: readonly Pt2[], bas: number, haut: number): Pt2[] {

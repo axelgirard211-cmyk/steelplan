@@ -7,6 +7,7 @@ import type { ProjectParams } from '../model/project';
 import { basDePlatineDeGenou } from './buildFrame';
 import { tieLevel } from './buildTruss';
 import { aboutDuTube, dispositionDAttache, type AttacheCV, type Disposition, type TypeDAppui } from './connections/contreventement';
+import { niveauxSurFerme } from './connections/contreventementFerme';
 import { reserveDeTete } from './connections/potelets';
 import { gablePostStations } from './secondaire/facades';
 
@@ -64,6 +65,7 @@ export function buildBracing(
       : zTete;
 
   /* --- Poutre au vent, dans le plan des versants --- */
+  const niveaux = p.frame.enabled ? null : niveauxSurFerme(p);
   for (const t of bracedBays(b.roof, g.nBays)) {
     const x0 = stations[t] as number;
     const x1 = stations[t + 1] as number;
@@ -98,6 +100,8 @@ export function buildBracing(
           normale: v3(0, nrm.y, nrm.z),
           recul: hPorteur(p) / 2,
           decalage: p.frame.enabled ? 0 : -degagement(hPorteur(p), b.roof.profile),
+          // Sur ferme : deux niveaux de part et d'autre de l'aile couchée de l'arbalétrier.
+          niveaux: niveaux ? { d1: niveaux.dessus, d2: niveaux.dessous ?? niveaux.dessus } : undefined,
         },
       );
     }
@@ -192,6 +196,8 @@ interface PoseCroix {
   readonly recul: number;
   /** Décalage du plan entier, pour dégager ce qui s'y trouve déjà (mm). */
   readonly decalage?: number;
+  /** Décalages imposés aux deux brins, quand la pièce porteuse fixe leurs niveaux (mm). */
+  readonly niveaux?: { readonly d1: number; readonly d2: number } | undefined;
 }
 
 /**
@@ -233,8 +239,9 @@ function croix(
      * deux barres articulées sur un nœud libre ne contreventent rien.
      */
     const milieu = v3((a1.x + b0.x) / 2, (a1.y + b0.y) / 2, (a1.z + b0.z) / 2);
-    poser(ctx, set, `${id}-k1`, a0, milieu, `${position} (K, brin bas)`, pose.recul, n, d);
-    poser(ctx, set, `${id}-k2`, b1, milieu, `${position} (K, brin haut)`, pose.recul, n, d);
+    const dk = pose.niveaux?.d1 ?? d;
+    poser(ctx, set, `${id}-k1`, a0, milieu, `${position} (K, brin bas)`, pose.recul, n, dk);
+    poser(ctx, set, `${id}-k2`, b1, milieu, `${position} (K, brin haut)`, pose.recul, n, dk);
     return;
   }
 
@@ -245,9 +252,11 @@ function croix(
    * milieu — ce qui est impossible à monter, et se voit immédiatement en 3D.
    */
   const ecart = set.shape === 'croix' ? getProfile(set.profile).h / 2 + 5 : 0;
-  poser(ctx, set, `${id}-d1`, a0, a1, `${position} (diagonale montante)`, pose.recul, n, d + ecart);
+  const d1 = pose.niveaux?.d1 ?? d + ecart;
+  const d2 = pose.niveaux?.d2 ?? d - ecart;
+  poser(ctx, set, `${id}-d1`, a0, a1, `${position} (diagonale montante)`, pose.recul, n, d1);
   if (set.shape === 'croix') {
-    poser(ctx, set, `${id}-d2`, b0, b1, `${position} (diagonale descendante)`, pose.recul, n, d - ecart);
+    poser(ctx, set, `${id}-d2`, b0, b1, `${position} (diagonale descendante)`, pose.recul, n, d2);
   }
 }
 
@@ -286,7 +295,7 @@ function poser(
 }
 
 /** Pièces qui reçoivent un gousset de contreventement. */
-const APPUIS: readonly Member['role'][] = ['poteau', 'traverse', 'potelet'];
+const APPUIS: readonly Member['role'][] = ['poteau', 'traverse', 'potelet', 'membrure-sup'];
 
 /**
  * L'attache d'un about sur la pièce dont l'axe passe par son point de travail —
@@ -306,8 +315,21 @@ function attacher(
     const f = memberFrame(m);
     const r = sub(w, m.start);
     const horsAxe = sub(r, scale(f.ax, dot(r, f.ax)));
-    if (Math.hypot(horsAxe.x, horsAxe.y, horsAxe.z) > 1) continue;
-    const d = dispositionDAttache(ctx.p, m, w, dir, n, decalage, diametre, plafondDe(ctx.p, m));
+    const ecart = Math.hypot(horsAxe.x, horsAxe.y, horsAxe.z);
+    let travail = w;
+    if (m.role === 'membrure-sup') {
+      /*
+       * Cornière d'une paire : son axe est hors du plan de la ferme, décalé du
+       * gousset de nœud. On retient celle du côté du tube, et l'attache se cote
+       * depuis son axe.
+       */
+      const pr = getProfile(m.profileId);
+      if (pr.shape !== 'L') continue;
+      const decale = pr.cy + ctx.p.connections.gusset.thickness / 2;
+      if (Math.abs(ecart - decale) > 1 || dot(horsAxe, dir) > 0) continue;
+      travail = sub(w, horsAxe);
+    } else if (ecart > 1) continue;
+    const d = dispositionDAttache(ctx.p, m, travail, dir, n, decalage, diametre, plafondDe(ctx.p, m));
     if (d) return d;
   }
   return null;

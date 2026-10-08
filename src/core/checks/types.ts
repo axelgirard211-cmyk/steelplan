@@ -55,6 +55,8 @@ export const RATIO_LABELS: Record<keyof Ratios, string> = {
 export interface CheckLine {
   /** Repère de la pièce : c'est lui qui relie le rapport aux plans et à la 3D. */
   readonly mark: string;
+  /** Barre analysée dont la ligne est tirée, quand elle vient du portique. */
+  readonly memberId?: string;
   readonly role: MemberRole;
   readonly profileId: string;
   readonly grade: SteelGradeId;

@@ -85,3 +85,56 @@ export function plateFrame(pl: Plate): { u: Vec3; v: Vec3; n: Vec3 } {
   const v = normalize(sub(pl.v, scale(u, pl.v.x * u.x + pl.v.y * u.y + pl.v.z * u.z)));
   return { u, v, n: cross(u, v) };
 }
+
+/** Enveloppe convexe (monotone chain), sens trigonométrique. */
+export function enveloppe(points: readonly Pt2[]): Pt2[] {
+  const pts = [...points].sort((a, b) => a.y - b.y || a.z - b.z);
+  const croix = (o: Pt2, a: Pt2, b: Pt2): number => (a.y - o.y) * (b.z - o.z) - (a.z - o.z) * (b.y - o.y);
+  const bas: Pt2[] = [];
+  for (const q of pts) {
+    while (bas.length >= 2 && croix(bas[bas.length - 2] as Pt2, bas[bas.length - 1] as Pt2, q) <= 0) bas.pop();
+    bas.push(q);
+  }
+  const haut: Pt2[] = [];
+  for (const q of [...pts].reverse()) {
+    while (haut.length >= 2 && croix(haut[haut.length - 2] as Pt2, haut[haut.length - 1] as Pt2, q) <= 0) haut.pop();
+    haut.push(q);
+  }
+  return [...bas.slice(0, -1), ...haut.slice(0, -1)];
+}
+
+/**
+ * Contour d'une tôle découpée autour de ses trous : l'enveloppe convexe des
+ * octogones de pince qui les entourent — la forme que le traceur dessine
+ * autour d'une ligne de boulons.
+ */
+export function contourAutourDesTrous(trous: readonly Pt2[], pince: number, autres: readonly Pt2[] = []): Pt2[] {
+  const r = pince / Math.cos(Math.PI / 8);
+  return enveloppe([
+    ...trous.flatMap((h) =>
+      Array.from({ length: 8 }, (_, i) => ({
+        y: h.y + r * Math.cos(((i + 0.5) * Math.PI) / 4),
+        z: h.z + r * Math.sin(((i + 0.5) * Math.PI) / 4),
+      })),
+    ),
+    ...autres,
+  ]);
+}
+
+/** Polygone convexe rogné au demi-plan n·q ≤ c. */
+export function couperDemiPlan(poly: readonly Pt2[], n: Pt2, c: number): Pt2[] {
+  const dedans = (q: Pt2): boolean => q.y * n.y + q.z * n.z <= c + 1e-9;
+  const out: Pt2[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i] as Pt2;
+    const b = poly[(i + 1) % poly.length] as Pt2;
+    if (dedans(a)) out.push(a);
+    if (dedans(a) !== dedans(b)) {
+      const da = a.y * n.y + a.z * n.z - c;
+      const db = b.y * n.y + b.z * n.z - c;
+      const t = da / (da - db);
+      out.push({ y: a.y + t * (b.y - a.y), z: a.z + t * (b.z - a.z) });
+    }
+  }
+  return out;
+}

@@ -1,13 +1,15 @@
 import { getProfile } from '../../catalog/index';
 import { boltGrid, hole, pitchFor, type Hole } from '../../geometry/holes';
 import { memberFrame, type Member } from '../../geometry/member';
-import { add, cross, normalize, scale, sub, v3 } from '../../math/vec3';
-import { holeDiameter, minEdgeDistance, type BoltSpec } from '../../model/connections';
+import { sectionOutline } from '../../geometry/section';
+import { add, cross, dot, normalize, scale, sub, v3 } from '../../math/vec3';
+import { holeDiameter, minEdgeDistance, positionsDesAncrages, tigeDAncrage } from '../../model/connections';
 import type { ProjectParams } from '../../model/project';
 import type { Plate, PlateHole } from '../types';
 import { consoleDeDebord, genou } from '../genou';
-import { ridgeHeight } from '../../model/grid';
+import { leftSlopeRad, ridgeHeight, rightSlopeRad } from '../../model/grid';
 import { rectangle, surLAxe } from './geom';
+import { trusquinage } from './eclisses';
 
 /**
  * Platines : pieds de poteaux, genoux traverse-poteau, faîtages.
@@ -32,8 +34,8 @@ export function piedsDePoteaux(
   plates: Plate[],
 ): void {
   const cb = p.connections.columnBase;
-  const bolt: BoltSpec = { d: Math.min(30, Math.max(12, cb.anchorDiameter)) as BoltSpec['d'], cls: '8.8' };
-  const dTrou = holeDiameter(bolt) + 4; // les trous d'ancrage sont volontairement généreux
+  const { dTrou } = tigeDAncrage(cb);
+  const trous: PlateHole[] = positionsDesAncrages(cb).map((at) => ({ at, d: dTrou }));
 
   for (const po of members.filter((m) => m.role === 'poteau')) {
     const f = memberFrame(po);
@@ -41,21 +43,6 @@ export function piedsDePoteaux(
     // u suit la largeur de platine (X), v sa longueur (Y).
     const u = f.ay;
     const vAxe = f.az;
-    const demiL = cb.length / 2;
-    const demiB = cb.width / 2;
-
-    // Tiges réparties symétriquement ; 2 tiges ⇒ une file, 4 ou plus ⇒ deux files.
-    const files = cb.anchorCount <= 2 ? 1 : 2;
-    const rangees = Math.max(1, Math.round(cb.anchorCount / files));
-    const pinceL = Math.max(1.5 * dTrou, minEdgeDistance(bolt));
-    const trous: PlateHole[] = [];
-    for (let i = 0; i < rangees; i++) {
-      const vy = rangees === 1 ? 0 : (i / (rangees - 1) - 0.5) * 2 * (demiL - pinceL);
-      for (let j = 0; j < files; j++) {
-        const uy = files === 1 ? 0 : (j - 0.5) * 2 * (demiB - pinceL);
-        trous.push({ at: { y: uy, z: vy }, d: dTrou });
-      }
-    }
 
     plates.push({
       id: `${po.id}-PLP`,
@@ -72,6 +59,83 @@ export function piedsDePoteaux(
       v: vAxe,
       mark: '',
       position: `pied de poteau — ${po.position}`,
+    });
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Têtes de poteaux sous ferme                                          */
+/* ------------------------------------------------------------------ */
+
+/** Épaisseur de la platine de tête d'un poteau qui reçoit une ferme (mm). */
+export const EPAISSEUR_PLATINE_DE_TETE = 15;
+
+/**
+ * Distance de l'axe de l'entrait au dessus du poteau qui le porte : le dessous
+ * de l'entrait, puis la platine de tête.
+ *
+ * ⚠ Le poteau montait jusqu'à l'axe de l'entrait, à travers son aile couchée.
+ */
+export function sousLEntrait(p: ProjectParams): number {
+  const dessous = -Math.min(...sectionOutline(getProfile(p.truss.bottomChordProfile), 1).outer.map((q) => q.z));
+  return dessous + EPAISSEUR_PLATINE_DE_TETE;
+}
+
+/**
+ * Platine de tête soudée sur le poteau, boulonnée sous les ailes couchées des
+ * cornières d'entrait — quatre boulons, deux par cornière, entre les semelles
+ * du poteau où se serrent les écrous.
+ */
+export function tetesDePoteauxSousFerme(
+  p: ProjectParams,
+  members: readonly Member[],
+  plates: Plate[],
+  ajouter: (memberId: string, h: Hole[]) => void,
+): void {
+  const bolt = p.connections.gusset.bolt;
+  const d0 = holeDiameter(bolt);
+  const cle = (0.75 * bolt.d) / Math.cos(Math.PI / 6);
+  const entraits = members.filter((m) => m.role === 'membrure-inf');
+  for (const po of members.filter((m) => m.role === 'poteau')) {
+    const pr = getProfile(po.profileId);
+    if (pr.shape !== 'I') continue;
+    const f = memberFrame(po);
+    const tete = add(po.end, scale(f.ax, -(sousLEntrait(p) - EPAISSEUR_PLATINE_DE_TETE / 2)));
+    // Entre les semelles, l'écrou dégagé de la semelle et de son congé.
+    const yb = Math.floor((pr.h / 2 - pr.tf - cle - 5) / 5) * 5;
+    const trous: PlateHole[] = [];
+    for (const c of entraits) {
+      const fc = memberFrame(c);
+      const prc = getProfile(c.profileId);
+      if (prc.shape !== 'L' || Math.abs(c.start.x - po.end.x) > pr.b / 2) continue;
+      const q = sub(v3(c.start.x, po.end.y, po.end.z), c.start);
+      const sNoeud = dot(q, fc.ax);
+      const ecart = sub(q, scale(fc.ax, sNoeud));
+      if (Math.hypot(ecart.x, ecart.y, ecart.z) > 1) continue;
+      // Ligne de trusquinage de l'aile couchée, comptée depuis le dos de la grande aile.
+      const fibre = { y: -prc.cy + trusquinage({ a: prc.a2, t: prc.t, r: prc.r }, bolt), z: -prc.cz + prc.t / 2 };
+      const abscisses = [sNoeud - yb / Math.abs(fc.ax.y || 1), sNoeud + yb / Math.abs(fc.ax.y || 1)];
+      ajouter(c.id, abscisses.map((s) => hole(s, fibre, bolt, 'z', 'semelle-inf', `${po.id}-PLT`)));
+      for (const s of abscisses) {
+        const r = sub(add(c.start, add(scale(fc.ax, s), scale(fc.ay, fibre.y))), tete);
+        trous.push({ at: { y: dot(r, f.ay), z: dot(r, f.az) }, d: d0 });
+      }
+    }
+    if (trous.length === 0) continue;
+    plates.push({
+      id: `${po.id}-PLT`,
+      kind: 'platine-about',
+      grade: po.grade,
+      thickness: EPAISSEUR_PLATINE_DE_TETE,
+      outline: rectangle(pr.b, pr.h),
+      holes: trous,
+      pairedWith: null,
+      porteur: po.id,
+      origin: tete,
+      u: f.ay,
+      v: f.az,
+      mark: '',
+      position: `platine de tête — appui de ferme — ${po.position}`,
     });
   }
 }
@@ -99,8 +163,7 @@ export function piedsDePotelets(
   plates: Plate[],
 ): void {
   const cb = p.connections.columnBase;
-  const bolt: BoltSpec = { d: Math.min(30, Math.max(12, cb.anchorDiameter)) as BoltSpec['d'], cls: '8.8' };
-  const dTrou = holeDiameter(bolt) + 4;
+  const { bolt, dTrou } = tigeDAncrage(cb);
   const pince = Math.max(1.5 * dTrou, minEdgeDistance(bolt));
   const ep = EPAISSEUR_PIED_POTELET;
   const arrondi = (v: number): number => Math.ceil(v / 10) * 10;
@@ -297,7 +360,8 @@ export function consoles(
  */
 /**
  * Dimensions de la platine de faîtage — largeur selon la semelle, hauteur selon
- * l'âme —, centrée sur le point de travail du faîtage.
+ * l'âme —, affleurant le dessus de traverse ; `dessous` est sa profondeur sous
+ * le point de travail du faîtage.
  *
  * ⚠ Exportée parce que le potelet placé sous le faîtage doit s'arrêter sous
  * elle : la platine déborde la traverse de `overhang` vers le bas, et le potelet,
@@ -306,14 +370,21 @@ export function consoles(
 export function dimensionsPlatineDeFaitage(
   p: ProjectParams,
   profilTraverse: string,
-): { largeur: number; hauteur: number; hauteurUtile: number } {
+): { largeur: number; hauteur: number; hauteurUtile: number; dessous: number } {
   const ep = p.connections.ridge;
+  const h = getProfile(profilTraverse).h;
   const hauteurUtile = p.frame.ridgeHaunch.enabled ? p.frame.ridgeHaunch.depth : getProfile(p.frame.rafterProfile).h;
-  return {
-    largeur: getProfile(profilTraverse).b + 2 * ep.overhang,
-    hauteur: hauteurUtile + 2 * ep.overhang,
-    hauteurUtile,
-  };
+  const sousJarret = p.frame.ridgeHaunch.enabled ? Math.max(0, p.frame.ridgeHaunch.depth - h) : 0;
+  // Le versant le plus raide donne la platine la plus basse.
+  const dessous = Math.max(
+    ...[leftSlopeRad(p.grid), rightSlopeRad(p.grid)].map(
+      (a) => ep.thickness * Math.tan(a) + h / 2 / Math.cos(a) + sousJarret + ep.overhang,
+    ),
+  );
+  const dessus = Math.min(
+    ...[leftSlopeRad(p.grid), rightSlopeRad(p.grid)].map((a) => h / 2 / Math.cos(a) - ep.thickness * Math.tan(a)),
+  );
+  return { largeur: getProfile(profilTraverse).b + 2 * ep.overhang, hauteur: dessus + dessous, hauteurUtile, dessous };
 }
 
 export function faitages(p: ProjectParams, members: readonly Member[], plates: Plate[]): void {
@@ -362,17 +433,43 @@ export function faitages(p: ProjectParams, members: readonly Member[], plates: P
     const n = normalize(plan.normal);
     const u = f.ay;
     const v = normalize(cross(u, n));
+    const vHaut = v.z >= 0 ? v : scale(v, -1);
+    const sens = v.z >= 0 ? 1 : -1;
+
+    /*
+     * ⚠ La platine AFFLEURE le dessus de la traverse et ne déborde que vers le
+     * bas, comme au genou. Centrée sur l'axe, celle d'un faîtage à jarret
+     * dépassait de cent millimètres au-dessus de la semelle : dans les pannes
+     * faîtières, et sous la couverture.
+     */
+    const pr = getProfile(tr.profileId);
+    const haut = f.az.z >= 0 ? f.az : scale(f.az, -1);
+    // Plan moyen de la platine : entre la face de coupe et le plan du faîtage.
+    const o = add(sommet, scale(n, -ep.thickness / 2));
+    const surLePlan = (k: number): number => {
+      const a = add(tr.start, scale(haut, (k * pr.h) / 2));
+      const t = dot(sub(o, a), n) / dot(f.ax, n);
+      return dot(sub(add(a, scale(f.ax, t)), o), vHaut);
+    };
+    const zHaut = surLePlan(1);
+    const sousJarret = p.frame.ridgeHaunch.enabled ? Math.max(0, p.frame.ridgeHaunch.depth - pr.h) : 0;
+    const zUtile = surLePlan(-1) - sousJarret / Math.max(0.2, vHaut.z);
+    const zBas = zUtile - ep.overhang;
+    const centre = (zHaut + zBas) / 2;
+    // Grille centrée sur la hauteur utile, exprimée dans le repère (u, v) de la tôle.
+    const decalage = sens * ((zHaut + zUtile) / 2 - centre);
+    const largeur = dimensionsPlatineDeFaitage(p, tr.profileId).largeur;
 
     plates.push({
       id: `${tr.id}-PLF`,
       kind: 'platine-about',
       grade: tr.grade,
       thickness: ep.thickness,
-      outline: rectangle(dimensionsPlatineDeFaitage(p, tr.profileId).largeur, dimensionsPlatineDeFaitage(p, tr.profileId).hauteur),
-      holes: trous,
+      outline: rectangle(largeur, zHaut - zBas),
+      holes: trous.map((h) => ({ ...h, at: { y: h.at.y, z: h.at.z + decalage } })),
       pairedWith: partenaire.get(`${tr.id}-PLF`) ?? null,
       porteur: tr.id,
-      origin: add(sommet, scale(n, ep.thickness / 2)),
+      origin: add(o, scale(vHaut, centre)),
       u,
       v,
       mark: '',

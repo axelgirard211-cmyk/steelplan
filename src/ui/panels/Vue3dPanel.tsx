@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useChecksReport, useStructuralModel } from '../../state/derived';
 import type { ColorMode } from '../../render3d/colorMaps';
@@ -41,6 +42,9 @@ export function Vue3dPanel(): JSX.Element {
       onHover: () => undefined,
     });
     scene.current = s;
+    // Accès de mise au point, en développement seulement : piloter la caméra
+    // depuis la console pour inspecter un nœud. Absent de l'application construite.
+    if (import.meta.env.DEV) (window as unknown as { __scene3d?: SteelScene }).__scene3d = s;
     return () => {
       s.dispose();
       scene.current = null;
