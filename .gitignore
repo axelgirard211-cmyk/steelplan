@@ -1,0 +1,14 @@
+# Dépendances et sorties de build : elles se reconstruisent.
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# État local des outils et des agents.
+.claude-flow/
+.claude/settings.local.json
+.DS_Store
+
+# Secrets : jamais dans le dépôt.
+.env
+.env.*

@@ -1,0 +1,1022 @@
+/* Thème SteelPlan — clair / sombre, densité « atelier » (beaucoup de chiffres). */
+
+:root {
+  --fond: #f6f7f9;
+  --fond-panneau: #ffffff;
+  --fond-alt: #f0f2f5;
+  --bord: #d8dce3;
+  --bord-fort: #b6bdc9;
+  --texte: #1a1d23;
+  --texte-doux: #626b7a;
+  --accent: #1f5fa9;
+  --accent-doux: #e5eefa;
+  --erreur: #b3261e;
+  --erreur-fond: #fdecea;
+  --alerte: #8a5a00;
+  --alerte-fond: #fdf4e3;
+  --ok: #1e6b3a;
+  /*
+   * Grille du sol de la vue 3D. Elle doit RESTER EN RETRAIT de la charpente :
+   * calée sur le fond sombre, elle formait sur le fond clair un maillage noir
+   * plus visible que les pannes elles-mêmes.
+   */
+  --grille-majeure: #aeb6c2;
+  --grille-mineure: #d9dee5;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='clair']) {
+    color-scheme: dark;
+    --fond: #14171c;
+    --fond-panneau: #1b1f26;
+    --fond-alt: #21262e;
+    --bord: #2f3641;
+    --bord-fort: #434c59;
+    --texte: #e6e9ef;
+    --texte-doux: #9aa4b2;
+    --accent: #6aa9f0;
+    --accent-doux: #1d2c3f;
+    --erreur: #f2837c;
+    --erreur-fond: #3a1f1d;
+    --alerte: #e0b45f;
+    --alerte-fond: #3a2f1a;
+    --ok: #6dd39a;
+    --grille-majeure: #6b737d;
+    --grille-mineure: #3c424a;
+  }
+}
+
+:root[data-theme='sombre'] {
+  color-scheme: dark;
+  --fond: #14171c;
+  --fond-panneau: #1b1f26;
+  --fond-alt: #21262e;
+  --bord: #2f3641;
+  --bord-fort: #434c59;
+  --texte: #e6e9ef;
+  --texte-doux: #9aa4b2;
+  --accent: #6aa9f0;
+  --accent-doux: #1d2c3f;
+  --erreur: #f2837c;
+  --erreur-fond: #3a1f1d;
+  --alerte: #e0b45f;
+  --alerte-fond: #3a2f1a;
+  --ok: #6dd39a;
+  --grille-majeure: #6b737d;
+  --grille-mineure: #3c424a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--fond);
+  color: var(--texte);
+  font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ---- Structure ---- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.entete {
+  /* `relative` sert d'ancrage à la bannière de restauration, qui se place juste
+     sous l'en-tête sans décaler la mise en page. */
+  position: relative;
+  display: flex;
+  /*
+   * ⚠ L'en-tête PASSE À LA LIGNE plutôt que de déborder. Sur une fenêtre de
+   * 900 px, il ne tenait pas sur une seule rangée : la page entière gagnait une
+   * barre de défilement horizontale, le bouton d'aide sortait de l'écran, et les
+   * libellés d'état se cassaient sur trois lignes chacun. Centrer verticalement,
+   * et non sur la ligne de base, aligne boutons et liste déroulante qui n'ont pas
+   * la même hauteur de texte.
+   */
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 16px;
+  background: var(--fond-panneau);
+  border-bottom: 1px solid var(--bord);
+}
+
+/* Un libellé d'état se lit d'un tenant : jamais coupé mot par mot. */
+.entete .phase,
+.entete .notice {
+  white-space: nowrap;
+}
+
+.entete h1 {
+  font-size: 16px;
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+
+.entete .phase {
+  font-size: 12px;
+  color: var(--texte-doux);
+}
+
+.entete .espace {
+  flex: 1;
+}
+
+.entete-droite {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.onglets {
+  display: flex;
+  gap: 2px;
+  padding: 0 12px;
+  background: var(--fond-panneau);
+  border-bottom: 1px solid var(--bord);
+  /*
+   * ⚠ La barre DÉFILE plutôt que de tronquer. En fenêtre étroite, les six
+   * onglets ne tenaient pas : « Vérifications » sortait coupé et le Catalogue
+   * disparaissait purement et simplement, sans rien qui indique qu'il existait.
+   */
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.onglets button {
+  border: none;
+  background: none;
+  color: var(--texte-doux);
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  /* « Vue 3D » se cassait sur deux lignes : un onglet se lit d'un tenant. */
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.onglets button:hover {
+  color: var(--texte);
+}
+
+.onglets button[aria-selected='true'] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.corps {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.laterale {
+  width: 230px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  background: var(--fond-panneau);
+  border-right: 1px solid var(--bord);
+  padding: 8px;
+}
+
+.principal {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+/*
+ * ⚠ FENÊTRE ÉTROITE (tablette en portrait, téléphone) : la navigation latérale
+ * passe AU-DESSUS du contenu au lieu de le serrer. À 230 px fixes, elle occupait
+ * plus de la moitié d'un écran de 400 px, et le tableau ou la planche qu'on
+ * était venu consulter n'avait plus que quelques colonnes de large.
+ */
+@media (max-width: 760px) {
+  .corps {
+    flex-direction: column;
+  }
+
+  .laterale {
+    width: auto;
+    max-height: 32vh;
+    border-right: none;
+    border-bottom: 1px solid var(--bord);
+  }
+
+  .principal {
+    padding: 12px;
+  }
+
+  .fiche-selection {
+    width: auto;
+  }
+
+  .scene-et-fiche {
+    flex-direction: column;
+  }
+}
+
+/*
+ * Sur téléphone, la mention d'état DISCRÈTE de la sauvegarde s'efface : elle
+ * prenait à elle seule une ligne d'en-tête, soit un quart de la hauteur utile.
+ * Les messages d'erreur, eux, restent affichés — ce sont les seuls qu'on ne peut
+ * pas se permettre de manquer.
+ */
+@media (max-width: 520px) {
+  .entete .notice.discret {
+    display: none;
+  }
+}
+
+/* ---- Contrôles ---- */
+
+button.plat {
+  background: var(--fond-panneau);
+  color: var(--texte);
+  border: 1px solid var(--bord-fort);
+  border-radius: 5px;
+  padding: 5px 11px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+button.plat:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+button.plat:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+input[type='search'],
+input[type='text'],
+input[type='number'],
+select {
+  background: var(--fond-panneau);
+  color: var(--texte);
+  border: 1px solid var(--bord-fort);
+  border-radius: 5px;
+  padding: 5px 9px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.familles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.familles button {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  color: var(--texte);
+  padding: 6px 9px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.familles button:hover {
+  background: var(--fond-alt);
+}
+
+.familles button[aria-current='true'] {
+  background: var(--accent-doux);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.familles .compte {
+  font-size: 11px;
+  color: var(--texte-doux);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Tableaux de caractéristiques ---- */
+
+.barre-outils {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.barre-outils .compte {
+  color: var(--texte-doux);
+  font-size: 12px;
+}
+
+.tableau-enveloppe {
+  overflow-x: auto;
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+  background: var(--fond-panneau);
+}
+
+table.profils {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+table.profils th,
+table.profils td {
+  padding: 5px 9px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--bord);
+}
+
+table.profils thead th {
+  position: sticky;
+  top: 0;
+  background: var(--fond-alt);
+  color: var(--texte-doux);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--bord-fort);
+}
+
+table.profils thead th.groupe {
+  text-align: center;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11.5px;
+  border-left: 1px solid var(--bord-fort);
+}
+
+table.profils td.designation,
+table.profils th.designation {
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 12px;
+  position: sticky;
+  left: 0;
+  background: var(--fond-panneau);
+}
+
+table.profils thead th.designation {
+  background: var(--fond-alt);
+  z-index: 1;
+}
+
+table.profils tbody tr:hover td {
+  background: var(--accent-doux);
+}
+
+table.profils td.sep,
+table.profils th.sep {
+  border-left: 1px solid var(--bord);
+}
+
+.puce {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--bord-fort);
+  color: var(--texte-doux);
+  vertical-align: 1px;
+}
+
+/* ---- Panneau projet ---- */
+
+.grille-fiches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.fiche {
+  background: var(--fond-panneau);
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.fiche h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--texte-doux);
+}
+
+dl.paires {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  font-size: 13px;
+}
+
+dl.paires dt {
+  color: var(--texte-doux);
+}
+
+dl.paires dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.derive {
+  color: var(--accent);
+}
+
+ul.anomalies {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+ul.anomalies li {
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  border: 1px solid transparent;
+}
+
+li.erreur {
+  background: var(--erreur-fond);
+  color: var(--erreur);
+  border-color: currentColor;
+}
+
+li.avertissement {
+  background: var(--alerte-fond);
+  color: var(--alerte);
+  border-color: currentColor;
+}
+
+li .chemin {
+  font-family: var(--mono);
+  font-size: 11px;
+  opacity: 0.8;
+  display: block;
+}
+
+.aucune-anomalie {
+  color: var(--ok);
+  font-size: 13px;
+}
+
+pre.json {
+  margin: 0;
+  padding: 12px;
+  background: var(--fond-alt);
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.note {
+  color: var(--texte-doux);
+  font-size: 12px;
+  margin: 10px 0 0;
+}
+
+/* ---- Vue 3D ---- */
+
+.principal.vue3d {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  overflow: hidden;
+}
+
+.principal.vue3d .barre-outils {
+  margin-bottom: 8px;
+}
+
+.etiquette {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--texte-doux);
+}
+
+.etiquette input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+
+.separateur {
+  width: 1px;
+  align-self: stretch;
+  background: var(--bord);
+}
+
+.mesure {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.scene-et-fiche {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+}
+
+.canevas3d {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--fond-panneau), var(--fond-alt));
+}
+
+/*
+ * ⚠ La taille CSS du canvas doit être IMPOSÉE. Le moteur règle sa taille en
+ * pixels physiques (largeur × densité d'écran) sans toucher au style ; sans ces
+ * deux lignes, un écran Retina affichait le canvas au DOUBLE de sa case, et le
+ * conteneur, qui coupe ce qui dépasse, n'en montrait que le quart haut-gauche.
+ * La caméra était bien centrée sur le bâtiment — mais ce centre tombait dans le
+ * coin bas-droit de ce qu'on voyait, et l'ouvrage paraissait mal cadré à chaque
+ * ouverture.
+ */
+.canevas3d canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.fiche-selection {
+  width: 300px;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+table.legende {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+table.legende td {
+  padding: 2px 0;
+}
+
+table.legende td.nom {
+  color: var(--texte-doux);
+  padding-left: 6px;
+  width: 100%;
+}
+
+table.legende td.nombre {
+  text-align: right;
+  padding-left: 10px;
+  white-space: nowrap;
+}
+
+table.legende tr.total td {
+  border-top: 1px solid var(--bord);
+  padding-top: 5px;
+  font-weight: 600;
+}
+
+table.legende tr.total td.nom {
+  color: var(--texte);
+}
+
+.pastille {
+  display: block;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+
+/* ---- Planches 2D ---- */
+
+.principal.plans {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  overflow: hidden;
+}
+
+.titre-groupe {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--texte-doux);
+  padding: 4px 9px;
+}
+
+.visionneuse {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.visionneuse-outils {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.visionneuse-outils .zoom {
+  min-width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.visionneuse-outils .aide-gestes {
+  font-size: 11px;
+  color: var(--texte-doux);
+  margin-left: 6px;
+}
+
+/*
+ * ⚠ La fenêtre est POSITIONNÉE : c'est elle que la visionneuse prend pour
+ * repère quand elle mesure la feuille, afin de garder le point visé sous le
+ * pointeur pendant le zoom.
+ *
+ * ⚠⚠ Pas de `justify-content: center` ici. Centrer un enfant plus large que son
+ * conteneur flex le fait déborder des DEUX côtés, et la partie gauche devient
+ * inatteignable au défilement : une fois zoomé, on ne pouvait plus revenir au
+ * bord gauche de la planche. Le centrage passe par les marges automatiques de la
+ * feuille, qui se réduisent d'elles-mêmes à zéro dès qu'elle dépasse.
+ */
+.feuille-enveloppe {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+  background: var(--fond-alt);
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+  cursor: default;
+  touch-action: none;
+}
+
+.feuille-enveloppe.zoomee {
+  cursor: grab;
+}
+
+.feuille-enveloppe.zoomee:active {
+  cursor: grabbing;
+}
+
+.feuille {
+  margin: 0 auto;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
+  user-select: none;
+}
+
+.feuille svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+table.profils tr.total td {
+  border-top: 1px solid var(--bord-fort);
+  background: var(--fond-alt);
+}
+
+/* ------------------------------------------------------------------ */
+/* Vérifications Eurocode 3                                            */
+/* ------------------------------------------------------------------ */
+
+/* L'avertissement de pré-dimensionnement ne se replie pas et ne se ferme pas :
+   il est lu chaque fois qu'un taux de travail est affiché. */
+p.avertissement {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--alerte-fond);
+  color: var(--alerte);
+  border: 1px solid currentColor;
+  font-size: 13px;
+}
+
+p.avertissement.fort {
+  font-weight: 600;
+}
+
+.liste-hypotheses {
+  margin: 4px 0 16px;
+  padding-left: 18px;
+  max-width: 110ch;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--texte-doux);
+}
+
+.liste-hypotheses li {
+  margin-bottom: 4px;
+}
+
+.liste-hypotheses strong {
+  color: var(--texte);
+  font-family: var(--mono);
+}
+
+/* Un élément flex a `min-width: auto` par défaut : il refuse de descendre sous
+   la largeur minimale de son contenu, et le panneau s'élargit donc jusqu'à la
+   taille du tableau — c'est la page entière qui se met à défiler latéralement.
+   Autoriser le retrait est la condition pour que le défilement local fonctionne. */
+.panneau.large {
+  min-width: 0;
+}
+
+.tableau-defilant {
+  /* Le tableau de vérification est large : il défile DANS son cadre. Sans la
+     largeur maximale et le min-width nul, le conteneur s'élargit jusqu'à la
+     taille du tableau et c'est la page entière qui défile latéralement. */
+  overflow-x: auto;
+  max-width: 100%;
+  min-width: 0;
+  margin-bottom: 16px;
+}
+
+.nomenclature tr.depasse {
+  background: var(--erreur-fond);
+}
+
+.nomenclature td.sansobjet {
+  color: var(--texte-doux);
+  opacity: 0.6;
+}
+
+.nomenclature tr.detail > td {
+  background: var(--fond-alt);
+}
+
+.detail-verif {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 4px;
+  font-size: 12px;
+  color: var(--texte-doux);
+}
+
+.detail-verif .alerte {
+  color: var(--alerte);
+}
+
+dd.alerte {
+  color: var(--erreur);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ */
+/* Dialogues, barre de fichier, barres libres                          */
+/* ------------------------------------------------------------------ */
+
+.voile {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 45%);
+}
+
+.dialogue {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 18px 20px 20px;
+  border: 1px solid var(--bord-fort);
+  border-radius: 10px;
+  background: var(--fond-panneau);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 35%);
+}
+
+.dialogue.etroit {
+  width: min(520px, 100%);
+}
+
+.dialogue header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.dialogue header h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 17px;
+}
+
+.dialogue h3 {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--texte-doux);
+}
+
+/* Un gabarit se choisit d'un coup d'œil : nom, dimensions, puis le détail. */
+.gabarits {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gabarits button {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid var(--bord);
+  border-radius: 7px;
+  background: var(--fond-alt);
+  cursor: pointer;
+}
+
+.gabarits button:hover {
+  border-color: var(--accent);
+  background: var(--accent-doux);
+}
+
+.gabarits strong {
+  font-size: 14px;
+}
+
+.gabarits em {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-style: normal;
+  color: var(--texte-doux);
+  text-align: right;
+}
+
+.gabarits span {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--texte-doux);
+}
+
+/* Une ligne par raccourci : la touche, puis ce qu'elle fait. */
+dl.liste-raccourcis {
+  display: grid;
+  gap: 4px 0;
+  margin: 0;
+  font-size: 13px;
+}
+
+dl.liste-raccourcis > div {
+  display: grid;
+  grid-template-columns: 108px 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+dl.liste-raccourcis dd {
+  margin: 0;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 58px;
+  padding: 2px 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  text-align: center;
+  border: 1px solid var(--bord-fort);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--fond-alt);
+}
+
+.notice {
+  font-size: 12px;
+  color: var(--ok);
+}
+
+.notice.erreur {
+  color: var(--erreur);
+}
+
+.notice.discret {
+  color: var(--texte-doux);
+}
+
+/* La bannière de restauration barre l'en-tête : on ne la manque pas, et elle
+   ne se ferme que par un choix explicite. */
+.banniere {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid currentColor;
+  background: var(--alerte-fond);
+  color: var(--alerte);
+}
+
+.banniere span {
+  flex: 1;
+}
+
+.ligne-actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.note {
+  margin: 8px 0 0;
+  max-width: 100ch;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--texte-doux);
+}
+
+/*
+ * Bandeau de saisie invalide : sous les onglets, en pleine largeur. Il reste
+ * affiché tant que la saisie n'est pas corrigée — on ne le ferme pas, on règle
+ * ce qu'il signale.
+ */
+.bandeau-modele {
+  padding: 10px 16px;
+  font-size: 13px;
+  background: var(--erreur-fond);
+  color: var(--erreur);
+  border-bottom: 1px solid currentColor;
+}
+
+.bandeau-modele ul {
+  margin: 4px 0 8px;
+  padding-left: 20px;
+}
+
+/* La fenêtre reçoit le focus à l'ouverture pour que le clavier y entre ; un
+   cadre de focus autour de toute la boîte n'apprendrait rien à personne. */
+.dialogue:focus {
+  outline: none;
+}
+
+/* Repère d'une ligne de vérification qui porte des avertissements. */
+.marque-avertissement {
+  color: var(--alerte);
+  font-weight: 600;
+}
