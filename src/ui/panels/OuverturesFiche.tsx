@@ -10,6 +10,7 @@ import {
 } from '../../core/model/ouvertures';
 import { useProjectStore } from '../../state/store';
 import { Bascule, ChampNuance, ChampProfil } from '../champs';
+import { num } from '../format';
 
 /**
  * OUVERTURES DE FAÇADE — portails, portes et châssis.
@@ -152,7 +153,7 @@ export function OuverturesFiche(): JSX.Element {
         {o.items.length > 0 && (
           <span className="compte">
             {' '}
-            façade la plus longue : {(longueurFacade(project.grid, 'long-pan-gauche') / 1000).toFixed(2)} m
+            façade la plus longue : {num(longueurFacade(project.grid, 'long-pan-gauche') / 1000, 2)} m
           </span>
         )}
       </p>

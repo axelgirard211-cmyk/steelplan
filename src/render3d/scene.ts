@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { getProfile } from '../core/catalog/index';
 import type { StructuralModel } from '../core/build/types';
-import { distanceDeCadrage } from './cadrage';
+import { changeDEchelle, distanceDeCadrage } from './cadrage';
 import { Jauge } from './jauge';
 import { cadrerOmbres, creerGrille, installerEclairage, type Eclairage } from './eclairage';
 import { creerBoulons, creerCordons, creerPiece } from './pieces';
@@ -183,12 +183,17 @@ export class SteelScene {
     this.modele = model;
     this.cordonsFiltres = false;
 
+    const avant = this.boite.clone();
     this.boite = new THREE.Box3().setFromObject(this.racine);
     cadrerOmbres(this.eclairage, this.boite);
     this.appliquerVisibilite();
     if (!this.cadre && !this.boite.isEmpty()) {
       this.recadrer();
       this.cadre = true;
+    } else if (changeDEchelle(avant, this.boite)) {
+      // Recadré sur le nouvel ouvrage, sous le même angle de vue.
+      const dir = this.camera.position.clone().sub(this.controls.target).normalize();
+      this.cadrerSurPoint(this.boite.getCenter(new THREE.Vector3()), distanceDeCadrage(this.boite, dir, this.camera.up, this.camera.fov, this.camera.aspect));
     }
   }
 

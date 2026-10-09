@@ -75,7 +75,7 @@ function Ligne({
         <td>{a.sollicitations}</td>
         <td>{a.combinaison}</td>
         <td className="nombre" style={{ color: teinte(a.ratio), fontWeight: 600 }}>
-          {a.ratio.toFixed(2)}
+          {num(a.ratio, 2)}
         </td>
         <td>{a.gouverne}</td>
       </tr>
@@ -91,7 +91,7 @@ function Ligne({
                       {num(v.ed, 1)} / {num(v.rd, 1)} {v.unite}
                     </td>
                     <td className="nombre" style={{ color: teinte(v.ratio), width: 70 }}>
-                      {v.ratio.toFixed(2)}
+                      {num(v.ratio, 2)}
                     </td>
                   </tr>
                 ))}

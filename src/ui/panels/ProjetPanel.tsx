@@ -9,6 +9,7 @@ import {
   roofArea,
 } from '../../core/model/grid';
 import { deserializeProject, serializeProject } from '../../core/io/serialize';
+import { rubriqueDe } from '../../core/model/validate';
 import { AssemblagesFiche } from './AssemblagesFiche';
 import { BarresLibresFiche } from './BarresLibresFiche';
 import { CartoucheFiche } from './CartoucheFiche';
@@ -69,7 +70,7 @@ export function ProjetPanel(): JSX.Element {
             <ul className="anomalies">
               {[...erreurs, ...avertissements].map((i, k) => (
                 <li key={`${i.path}-${k}`} className={i.level}>
-                  <span className="chemin">{i.path}</span>
+                  <span className="rubrique">{rubriqueDe(i.path)}</span>
                   {i.message}
                 </li>
               ))}
@@ -148,27 +149,39 @@ function TrameFiche(): JSX.Element {
 
 function TrameDeduite(): JSX.Element {
   const g = useProjectStore((s) => s.project.grid);
+  /*
+   * ⚠ Pendant une saisie invalide, ces grandeurs se calculaient sur la valeur
+   * fautive : une portée négative donnait une emprise de −600 m², affichée
+   * comme un résultat. Tant que la trame est fausse, rien n'en est déduit.
+   */
+  const trameFausse = useProjectStore((s) => s.issues.some((i) => i.level === 'erreur' && i.path.startsWith('grid.')));
+  const v = (texte: () => string): string => (trameFausse ? '—' : texte());
   return (
     <div className="fiche">
       <h3>Trame — grandeurs déduites</h3>
       <dl className="paires">
         <dt>Hauteur au faîtage</dt>
-        <dd className="derive">{metres(ridgeHeight(g))} m</dd>
+        <dd className="derive">{v(() => `${metres(ridgeHeight(g))} m`)}</dd>
         <dt>Position du faîtage</dt>
-        <dd className="derive">{metres(ridgeY(g))} m</dd>
+        <dd className="derive">{v(() => `${metres(ridgeY(g))} m`)}</dd>
         <dt>Pente</dt>
-        <dd className="derive">{num(rad2deg(leftSlopeRad(g)), 2)} °</dd>
+        <dd className="derive">{v(() => `${num(rad2deg(leftSlopeRad(g)), 2)} °`)}</dd>
         <dt>Rampant gauche</dt>
-        <dd className="derive">{mm(rafterLength(g, 'gauche'))} mm</dd>
+        <dd className="derive">{v(() => `${mm(rafterLength(g, 'gauche'))} mm`)}</dd>
         <dt>Rampant droit</dt>
-        <dd className="derive">{mm(rafterLength(g, 'droite'))} mm</dd>
+        <dd className="derive">{v(() => `${mm(rafterLength(g, 'droite'))} mm`)}</dd>
         <dt>Longueur du bâtiment</dt>
-        <dd className="derive">{metres(buildingLength(g))} m</dd>
+        <dd className="derive">{v(() => `${metres(buildingLength(g))} m`)}</dd>
         <dt>Emprise au sol</dt>
-        <dd className="derive">{num(footprintArea(g), 1)} m²</dd>
+        <dd className="derive">{v(() => `${num(footprintArea(g), 1)} m²`)}</dd>
         <dt>Toiture développée</dt>
-        <dd className="derive">{num(roofArea(g), 1)} m²</dd>
+        <dd className="derive">{v(() => `${num(roofArea(g), 1)} m²`)}</dd>
       </dl>
+      {trameFausse && (
+        <p className="note" style={{ margin: '8px 0 0' }}>
+          Trame invalide : corrigez les paramètres signalés pour retrouver ces grandeurs.
+        </p>
+      )}
     </div>
   );
 }

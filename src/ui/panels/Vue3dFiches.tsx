@@ -9,7 +9,9 @@ import {
   memberPaintM2,
   type Member,
 } from '../../core/geometry/member';
-import { ROLE_LABELS } from '../../render3d/colorMaps';
+import { RATIO_LABELS } from '../../core/checks/types';
+import { ratioColor, ROLE_LABELS } from '../../render3d/colorMaps';
+import { useChecksReport } from '../../state/derived';
 import { cm4, kg, mm, num } from '../format';
 
 /**
@@ -64,6 +66,7 @@ export function FicheBarre({ m }: { m: Member }): JSX.Element {
         <dt>Inertie Iy</dt>
         <dd>{cm4(p.Iy)} cm⁴</dd>
       </dl>
+      <TauxDeLaPiece mark={m.mark} />
       {m.holes.length > 0 && (
         <>
           <h3 style={{ marginTop: 14 }}>Perçages ({m.holes.length})</h3>
@@ -125,6 +128,46 @@ export function FicheBarre({ m }: { m: Member }): JSX.Element {
   );
 }
 
+/**
+ * Taux de travail de la pièce, tel que le colore la vue 3D.
+ *
+ * ⚠ La couleur seule ne suffit pas : entre 0,94 et 0,96 elle change de bande,
+ * et c'est le chiffre, avec le critère qui gouverne, qui décide si l'on garde
+ * le profil. Une pièce sans ligne est dite non vérifiée — jamais laissée muette.
+ */
+function TauxDeLaPiece({ mark }: { mark: string }): JSX.Element {
+  const rapport = useChecksReport();
+  const ligne = rapport.lines.find((l) => l.mark === mark);
+  const exclue = rapport.nonVerifiables.find((n) => n.mark === mark);
+  return (
+    <>
+      <h3 style={{ marginTop: 14 }}>Vérification</h3>
+      <dl className="paires">
+        <dt>Taux de travail</dt>
+        <dd>
+          <span
+            className="pastille"
+            style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: 6, background: `#${ratioColor(ligne?.ratio).toString(16).padStart(6, '0')}` }}
+          />
+          {ligne ? <strong>{num(ligne.ratio, 2)}</strong> : 'non vérifié'}
+        </dd>
+        {ligne && (
+          <>
+            <dt>Critère qui gouverne</dt>
+            <dd>{RATIO_LABELS[ligne.gouverne]}</dd>
+            <dt>Combinaison</dt>
+            <dd>{ligne.combinaison}</dd>
+          </>
+        )}
+      </dl>
+      {!ligne && (
+        <p className="note" style={{ margin: '4px 0 0' }}>
+          {exclue?.raison ?? 'SteelPlan ne vérifie pas cette pièce.'}
+        </p>
+      )}
+    </>
+  );
+}
 
 export function FicheTole({ pl }: { pl: Plate }): JSX.Element {
   const ys = pl.outline.map((q) => q.y);

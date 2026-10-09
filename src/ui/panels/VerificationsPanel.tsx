@@ -166,7 +166,7 @@ export function VerificationsPanel(): JSX.Element {
           <h3>Synthèse</h3>
           <dl className="paires">
             <dt>Taux de travail maximal</dt>
-            <dd className={conforme ? '' : 'alerte'}>{rapport.maxRatio.toFixed(2)}</dd>
+            <dd className={conforme ? '' : 'alerte'}>{num(rapport.maxRatio, 2)}</dd>
             <dt>Repères dépassant 1,00</dt>
             <dd className={conforme ? '' : 'alerte'}>{rapport.nonVerifies}</dd>
             <dt>Repères vérifiés</dt>
@@ -314,7 +314,7 @@ function Ligne({
         <Taux v={l.ratios.elancement} />
         <td className="nombre">
           <span className="pastille" style={{ background: pastille }} />{' '}
-          <strong>{l.ratio.toFixed(2)}</strong>
+          <strong>{num(l.ratio, 2)}</strong>
         </td>
         <td>{RATIO_LABELS[l.gouverne]}</td>
       </tr>
@@ -350,7 +350,7 @@ function Taux({ v }: { v: number }): JSX.Element {
   if (v <= 0) return <td className="nombre sansobjet">—</td>;
   return (
     <td className="nombre" style={v > 1 ? { color: '#b3241f', fontWeight: 600 } : undefined}>
-      {v.toFixed(2)}
+      {num(v, 2)}
     </td>
   );
 }

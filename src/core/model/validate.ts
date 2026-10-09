@@ -16,6 +16,34 @@ export interface Issue {
 }
 
 /**
+ * Rubrique de saisie où se corrige un paramètre.
+ *
+ * ⚠ Les messages citaient le chemin interne (« grid.span ») : il ne dit rien à
+ * qui saisit, et ne lui dit pas OÙ corriger. La rubrique, si : c'est le titre de
+ * la fiche qui porte le champ.
+ */
+export function rubriqueDe(path: string): string {
+  const racine = path.split(/[.[]/)[0] as keyof ProjectParams;
+  if (path === 'frame.enabled' || racine === 'truss') return 'Toiture';
+  return RUBRIQUES[racine] ?? 'Projet';
+}
+
+const RUBRIQUES: Partial<Record<keyof ProjectParams, string>> = {
+  meta: 'Cartouche et indices',
+  grid: 'Trame — paramètres',
+  frame: 'Portique',
+  secondary: 'Ossature secondaire',
+  ouvertures: 'Ouvertures',
+  bracing: 'Contreventements',
+  connections: 'Assemblages',
+  site: 'Site et charges climatiques',
+  loads: 'Charges et critères',
+  finition: 'Traitement de surface',
+  atelier: 'Atelier',
+  freeMembers: 'Barres libres',
+};
+
+/**
  * Validation du modèle à la frontière du système : un projet chargé depuis un
  * fichier ou saisi dans l'interface passe obligatoirement par ici avant d'être
  * utilisé par le générateur. Une `erreur` empêche la génération, un
@@ -36,8 +64,10 @@ export function validateProject(p: ProjectParams): Issue[] {
    * « doit être strictement positif » donnait « La portée doit être strictement
    * positif » — une faute dans le message même qui reproche une erreur de saisie.
    */
+  // ⚠ Sans rappeler la valeur : elle est en mm ici, et la portée se saisit en
+  // mètres — « saisi : −30000 » pour −30 tapé laissait croire à une autre faute.
   const positif = (path: string, v: number, label: string) => {
-    if (!(v > 0)) err(path, `${label} : une valeur strictement positive est attendue (saisi : ${v}).`);
+    if (!(v > 0)) err(path, `${label} : une valeur strictement positive est attendue.`);
   };
 
   /* --- Atelier ----------------------------------------------------- */
@@ -80,6 +110,13 @@ export function validateProject(p: ProjectParams): Issue[] {
   if (g.baySpacing > 12000) {
     warn('grid.baySpacing', `Entraxe de ${(g.baySpacing / 1000).toFixed(1)} m : pannes très sollicitées.`);
   }
+  /*
+   * ⚠ Une trame fausse fausse tout ce qu'on en déduit. Une portée négative
+   * faisait signaler, en plus, un jarret « plus long que le rampant de −15 m » :
+   * deux fautes affichées pour une seule saisie. Les contrôles qui dépendent de
+   * la trame attendent qu'elle soit juste.
+   */
+  const trameValide = !out.some((i) => i.level === 'erreur' && i.path.startsWith('grid.'));
 
   /* --- Structure principale ---------------------------------------- */
   // Les poteaux existent dans les deux cas : ces deux options ne commandent que
@@ -102,7 +139,7 @@ export function validateProject(p: ProjectParams): Issue[] {
     const rafter = findProfile(f.rafterProfile);
     if (f.haunch.enabled) {
       const lmax = rafterLength(g, 'gauche');
-      if (f.haunch.length >= lmax) {
+      if (trameValide && f.haunch.length >= lmax) {
         err('frame.haunch.length', `Le jarret (${f.haunch.length} mm) dépasse la longueur du rampant (${lmax.toFixed(0)} mm).`);
       }
       if (rafter && f.haunch.depth <= rafter.h) {
@@ -128,7 +165,9 @@ export function validateProject(p: ProjectParams): Issue[] {
 
     // L'entrait repose sur la tête du poteau : la ferme se loge SOUS la hauteur
     // à l'égout, elle ne peut donc pas être plus haute que le bâtiment.
-    if (t.heightAtSupport >= g.eaveHeight) {
+    if (!trameValide) {
+      // La hauteur à l'égout est déjà signalée : rien à comparer.
+    } else if (t.heightAtSupport >= g.eaveHeight) {
       err(
         'truss.heightAtSupport',
         `Hauteur de ferme à l'appui (${t.heightAtSupport} mm) supérieure ou égale à la hauteur à l'égout (${g.eaveHeight} mm) : il ne resterait pas de poteau.`,
@@ -137,7 +176,7 @@ export function validateProject(p: ProjectParams): Issue[] {
       warn('truss.heightAtSupport', 'La ferme occupe plus de la moitié de la hauteur du bâtiment.');
     }
 
-    if (t.straightTie) {
+    if (t.straightTie && trameValide) {
       // Avec un entrait droit, la hauteur au faîtage découle de la pente.
       const deduite = t.heightAtSupport + ridgeY(g) * Math.tan(leftSlopeRad(g));
       if (Math.abs(deduite - t.heightAtRidge) > 5) {
@@ -167,7 +206,7 @@ export function validateProject(p: ProjectParams): Issue[] {
   }
   if (s.rails.enabled) {
     profil('secondary.rails.profile', s.rails.profile);
-    if (s.rails.sillHeight >= g.eaveHeight) {
+    if (trameValide && s.rails.sillHeight >= g.eaveHeight) {
       err('secondary.rails.sillHeight', 'Le soubassement atteint ou dépasse la hauteur à l’égout.');
     }
   }
@@ -185,7 +224,7 @@ export function validateProject(p: ProjectParams): Issue[] {
     if (!set.enabled) continue;
     profil(`${path}.profile`, set.profile);
     for (const b of set.bays) {
-      if (b < 0 || b >= g.nBays) err(`${path}.bays`, `Travée ${b} inexistante (le bâtiment en compte ${g.nBays}).`);
+      if (trameValide && (b < 0 || b >= g.nBays)) err(`${path}.bays`, `Travée ${b} inexistante (le bâtiment en compte ${g.nBays}).`);
     }
   }
   if (!p.bracing.roof.enabled && !p.bracing.wall.enabled) {
@@ -214,7 +253,7 @@ export function validateProject(p: ProjectParams): Issue[] {
    * de M20 sur un IPE 240 se touchaient, et rien ne le disait.
    */
   const rafter = findProfile(p.frame.rafterProfile);
-  if (p.frame.enabled && rafter && rafter.shape === 'I') {
+  if (trameValide && p.frame.enabled && rafter && rafter.shape === 'I') {
     const cosA = Math.cos(leftSlopeRad(p.grid));
     for (const [path, e, haunch] of [
       ['connections.rafterToColumn', p.connections.rafterToColumn, p.frame.haunch],

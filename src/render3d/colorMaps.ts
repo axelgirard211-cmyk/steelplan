@@ -81,7 +81,7 @@ export const BANDES_TAUX = [
   { max: 0.75, couleur: 0x6a9c3a, label: '0,50 – 0,75' },
   { max: 0.95, couleur: 0xc9a227, label: '0,75 – 0,95' },
   { max: 1.0, couleur: 0xd9741f, label: '0,95 – 1,00 — limite' },
-  { max: Infinity, couleur: 0xb3241f, label: '> 1,00 — non vérifié' },
+  { max: Infinity, couleur: 0xb3241f, label: '> 1,00 — insuffisant' },
 ] as const;
 
 export const COULEUR_NON_VERIFIE = 0x6b7280;

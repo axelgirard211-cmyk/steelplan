@@ -4,7 +4,7 @@ import type { ChecksReport } from '../core/checks/types';
 import type { StructuralModel } from '../core/build/types';
 import { DEFAULT_PROJECT } from '../core/model/defaults';
 import type { ProjectParams } from '../core/model/project';
-import { validateProject, type Issue } from '../core/model/validate';
+import { rubriqueDe, validateProject, type Issue } from '../core/model/validate';
 import { useProjectStore } from './store';
 
 /**
@@ -66,7 +66,7 @@ function effectif(p: ProjectParams): Effectif {
       saisi: p,
       projet: r.projet,
       modele: r.modele,
-      etat: { aJour: false, raisons: erreurs.map((i) => `${i.message} (${i.path})`) },
+      etat: { aJour: false, raisons: erreurs.map((i) => `${rubriqueDe(i.path)} — ${i.message}`) },
     };
   } else {
     try {

@@ -7,7 +7,11 @@ import {
 } from '../../core/model/finition';
 import { useStructuralModel } from '../../state/derived';
 import { useProjectStore } from '../../state/store';
+import { libeller, libellerAvec } from '../champs';
 import { num } from '../format';
+
+const EPAISSEUR = libellerAvec('épaisseur sèche');
+const TEINTE = libellerAvec('teinte RAL');
 
 /**
  * TRAITEMENT DE SURFACE.
@@ -43,6 +47,7 @@ export function FinitionFiche(): JSX.Element {
         <dt>Nature</dt>
         <dd>
           <select
+            ref={libeller}
             value={f.type}
             onChange={(e) =>
               edit('Traitement de surface', (d) => {
@@ -63,6 +68,7 @@ export function FinitionFiche(): JSX.Element {
             <dt>Préparation</dt>
             <dd>
               <select
+                ref={libeller}
                 value={f.preparation}
                 onChange={(e) =>
                   edit('Préparation de surface', (d) => {
@@ -80,6 +86,7 @@ export function FinitionFiche(): JSX.Element {
             <dt>Corrosivité</dt>
             <dd>
               <select
+                ref={libeller}
                 value={f.categorie}
                 onChange={(e) =>
                   edit('Catégorie de corrosivité', (d) => {
@@ -107,6 +114,7 @@ export function FinitionFiche(): JSX.Element {
             <dt>Zinc annoncé</dt>
             <dd>
               <input
+                ref={libeller}
                 type="number"
                 value={f.zincMicrons}
                 step={5}
@@ -141,6 +149,7 @@ export function FinitionFiche(): JSX.Element {
         <dt>Consigne</dt>
         <dd>
           <input
+            ref={libeller}
             type="text"
             value={f.note}
             style={{ width: '100%' }}
@@ -165,6 +174,7 @@ function Couche({ index }: { index: number }): JSX.Element {
       <dt>{couche.nom}</dt>
       <dd>
         <input
+          ref={EPAISSEUR}
           type="number"
           value={couche.epaisseur}
           step={10}
@@ -183,6 +193,7 @@ function Couche({ index }: { index: number }): JSX.Element {
         />{' '}
         µm{' '}
         <input
+          ref={TEINTE}
           type="text"
           value={couche.ral}
           placeholder="RAL"

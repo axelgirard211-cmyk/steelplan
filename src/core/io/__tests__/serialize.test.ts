@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PROJECT } from '../../model/defaults';
-import { isValid, validateProject } from '../../model/validate';
+import { isValid, rubriqueDe, validateProject } from '../../model/validate';
 import {
   buildingLength,
   footprintArea,
@@ -129,6 +129,24 @@ describe('validation du projet', () => {
       frame: { ...DEFAULT_PROJECT.frame, haunch: { enabled: true, length: 99000, depth: 700 } },
     };
     expect(validateProject(p).some((i) => i.path === 'frame.haunch.length')).toBe(true);
+  });
+
+  it('ne signale qu’UNE faute pour une portée négative, sans erreur en cascade', () => {
+    // ⚠ Le jarret « plus long que le rampant de −15 m » n'est pas une seconde
+    // faute : c'est la même, vue à travers une grandeur déduite.
+    const p: ProjectParams = { ...DEFAULT_PROJECT, grid: { ...DEFAULT_PROJECT.grid, span: -30000 } };
+    const erreurs = validateProject(p).filter((i) => i.level === 'erreur');
+    expect(erreurs.map((i) => i.path)).toEqual(['grid.span']);
+    // Et sans la valeur interne en mm, qui ne correspond pas à ce qu'on a tapé en m.
+    expect(erreurs[0]?.message).not.toMatch(/30000/);
+  });
+
+  it('nomme la rubrique où corriger, pas le chemin interne', () => {
+    expect(rubriqueDe('grid.span')).toBe('Trame — paramètres');
+    expect(rubriqueDe('connections.rafterToColumn.rows')).toBe('Assemblages');
+    expect(rubriqueDe('truss.nPanels')).toBe('Toiture');
+    expect(rubriqueDe('frame.enabled')).toBe('Toiture');
+    expect(rubriqueDe('freeMembers[2].profile')).toBe('Barres libres');
   });
 
   it('refuse deux structures principales simultanées', () => {

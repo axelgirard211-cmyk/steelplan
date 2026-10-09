@@ -18,6 +18,36 @@ import type { SteelGradeId } from '../core/catalog/types';
  * style, pas de libellé — pour que chaque fiche décide de sa présentation.
  */
 
+/**
+ * Étiquette accessible, tirée du libellé que la fiche affiche à côté du champ.
+ *
+ * ⚠ Nus, les champs n'avaient pas de nom : un lecteur d'écran annonçait « 5 »
+ * là où l'écran lit « Travées ». Chaque champ prend le texte du <dt> qui le
+ * précède et, pour une sous-ligne (« — profil »), celui de sa rubrique :
+ * « Poutre au vent — profil ». Un champ déjà dans un <label> garde le sien.
+ */
+export function libeller(el: HTMLElement | null): void {
+  if (!el || el.closest('label')) return;
+  const dt = el.closest('dd')?.previousElementSibling;
+  if (!dt || dt.tagName !== 'DT') return;
+  const texte = (dt.textContent ?? '').trim();
+  let libelle = texte.replace(/^—\s*/, '');
+  if (texte.startsWith('—')) {
+    let r = dt.previousElementSibling;
+    while (r && !(r.tagName === 'DT' && !(r.textContent ?? '').trim().startsWith('—'))) r = r.previousElementSibling;
+    if (r) libelle = `${(r.textContent ?? '').trim()} — ${libelle}`;
+  }
+  if (libelle) el.setAttribute('aria-label', libelle);
+}
+
+/** Même étiquette, précisée : deux champs dans une même ligne (« M 20 × 10.9 »). */
+export const libellerAvec =
+  (precision: string) =>
+  (el: HTMLElement | null): void => {
+    libeller(el);
+    if (el) el.setAttribute('aria-label', `${el.getAttribute('aria-label') ?? ''} — ${precision}`.replace(/^ — /, ''));
+  };
+
 export function ChampNombre({
   valeur,
   onChange,
@@ -38,6 +68,7 @@ export function ChampNombre({
   return (
     <>
       <input
+        ref={libeller}
         type="number"
         value={valeur}
         step={pas}
@@ -85,6 +116,7 @@ export function ChampTexte({
   };
   return (
     <input
+      ref={libeller}
       type="text"
       value={brouillon}
       {...(placeholder ? { placeholder } : {})}
@@ -124,7 +156,7 @@ export function ChampProfil({
   const horsListe = !PROFILES.some((p) => p.id === valeur && ordre.includes(p.family));
 
   return (
-    <select value={valeur} onChange={(e) => onChange(e.target.value)}>
+    <select ref={libeller} value={valeur} onChange={(e) => onChange(e.target.value)}>
       {horsListe && <option value={valeur}>{valeur}</option>}
       {ordre.map((f) => {
         const liste = PROFILES.filter((p) => p.family === f);
@@ -151,7 +183,7 @@ export function ChampNuance({
   onChange: (v: SteelGradeId) => void;
 }): JSX.Element {
   return (
-    <select value={valeur} onChange={(e) => onChange(e.target.value as SteelGradeId)}>
+    <select ref={libeller} value={valeur} onChange={(e) => onChange(e.target.value as SteelGradeId)}>
       {GRADE_IDS.map((g) => (
         <option key={g} value={g}>
           {g}
@@ -171,8 +203,10 @@ export function ChampChoix<T extends string>({
   onChange: (v: T) => void;
   options: readonly (readonly [T, string])[];
 }): JSX.Element {
+  // Le libellé complet en infobulle : dans une fiche étroite, le choix est tronqué.
+  const choisi = options.find(([v]) => v === valeur)?.[1];
   return (
-    <select value={valeur} onChange={(e) => onChange(e.target.value as T)}>
+    <select ref={libeller} value={valeur} title={choisi} onChange={(e) => onChange(e.target.value as T)}>
       {options.map(([v, libelle]) => (
         <option key={v} value={v}>
           {libelle}
@@ -189,7 +223,7 @@ export function Bascule({
   valeur: boolean;
   onChange: (v: boolean) => void;
 }): JSX.Element {
-  return <input type="checkbox" checked={valeur} onChange={(e) => onChange(e.target.checked)} />;
+  return <input ref={libeller} type="checkbox" checked={valeur} onChange={(e) => onChange(e.target.checked)} />;
 }
 
 /** Familles usuelles par emploi : ce qui se pose réellement en atelier. */
