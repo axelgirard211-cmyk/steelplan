@@ -199,6 +199,38 @@ function conflitsDeToles(M: StructuralModel): string[] {
   return out;
 }
 
+/**
+ * Barres dans barres : la surface de chaque barre, échantillonnée le long de son
+ * axe, contre le métal des autres.
+ *
+ * ⚠ Le pas suit la longueur : 60 mm laissaient passer une échantignolle de
+ * 120 mm noyée de 26 mm dans l'aile d'un arbalétrier — l'aile fait 12 mm.
+ */
+function conflitsDeBarres(M: StructuralModel): string[] {
+  const out: string[] = [];
+  const env = M.members.map((m) => ({ m, b: enveloppeDeBarre(m) }));
+  for (const a of env) {
+    const f = memberFrame(a.m);
+    const sec = sectionOutline(getProfile(a.m.profileId), 2);
+    const pts: Vec3[] = [];
+    for (const q of [...sec.outer, ...sec.holes.flat()]) {
+      const s0 = fibreAbscissa(f, a.m.start, a.m.cutStart, q);
+      const s1 = fibreAbscissa(f, a.m.start, a.m.cutEnd, q);
+      const l = Math.abs(s1 - s0);
+      const n = Math.max(4, Math.ceil(l / Math.min(40, Math.max(8, l / 40))));
+      for (let k = 0; k <= n; k++) {
+        const s = s0 + (s1 - s0) * (0.002 + (0.996 * k) / n);
+        pts.push(add(add(a.m.start, scale(f.ax, s)), add(scale(f.ay, q.y), scale(f.az, q.z))));
+      }
+    }
+    for (const b of env) {
+      if (a === b || !chevauche(a.b, b.b)) continue;
+      if (pts.some((P) => dansBarre(b.m, P) > 0)) out.push(`${a.m.id} (${a.m.role}) dans ${b.m.id} (${b.m.role})`);
+    }
+  }
+  return out;
+}
+
 describe('géométrie 3D de tous les gabarits', () => {
   for (const [nom, p] of PROJETS) {
     const M = buildProject(p);
@@ -208,6 +240,10 @@ describe('géométrie 3D de tous les gabarits', () => {
     });
     it(`${nom} : aucune tôle n'entre dans une barre ou dans une autre tôle`, () => {
       const c = conflitsDeToles(M);
+      expect(c.slice(0, 10), `${c.length} conflit(s)`).toEqual([]);
+    });
+    it(`${nom} : aucune barre n'entre dans une autre`, () => {
+      const c = conflitsDeBarres(M);
       expect(c.slice(0, 10), `${c.length} conflit(s)`).toEqual([]);
     });
   }

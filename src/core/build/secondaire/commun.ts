@@ -1,4 +1,5 @@
 import { getProfile } from '../../catalog/index';
+import { sectionOutline } from '../../geometry/section';
 import { squareCut, type Member, type MemberRole } from '../../geometry/member';
 import { normalize, sub, EZ, type Vec3 } from '../../math/vec3';
 import type { ProjectParams } from '../../model/project';
@@ -48,10 +49,23 @@ export function barre(
   };
 }
 
-/** Hauteur de la pièce qui porte l'ossature secondaire : traverse ou membrure. */
 /** Hauteur de la pièce porteuse sous les pannes : traverse ou arbalétrier. */
 export function hauteurPorteur(p: ProjectParams): number {
   return p.frame.enabled
     ? getProfile(p.frame.rafterProfile).h
     : getProfile(p.truss.topChordProfile).h;
+}
+
+/**
+ * Distance de l'axe de la pièce porteuse à sa face supérieure, où reposent les
+ * échantignolles.
+ *
+ * ⚠ Ce n'est la demi-hauteur que pour une section symétrique. Une cornière
+ * d'arbalétrier a son centre de gravité près du talon : son aile dressée monte à
+ * 86 mm au-dessus de l'axe d'une L 120, pas à 60 — les échantignolles calées
+ * sur la demi-hauteur y entraient de 26 mm, sur toutes les fermes.
+ */
+export function dessusDuPorteur(p: ProjectParams): number {
+  const id = p.frame.enabled ? p.frame.rafterProfile : p.truss.topChordProfile;
+  return Math.max(...sectionOutline(getProfile(id), 1).outer.map((q) => q.z));
 }

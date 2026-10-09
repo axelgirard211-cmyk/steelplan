@@ -7,6 +7,7 @@ import { holeDiameter, minEdgeDistance, positionsDesAncrages, tigeDAncrage } fro
 import type { ProjectParams } from '../../model/project';
 import type { Plate, PlateHole } from '../types';
 import { consoleDeDebord, genou } from '../genou';
+import { releveDuPortique } from '../buildFrame';
 import { leftSlopeRad, ridgeHeight, rightSlopeRad } from '../../model/grid';
 import { rectangle, surLAxe } from './geom';
 import { trusquinage } from './eclisses';
@@ -450,7 +451,7 @@ export function faitages(p: ProjectParams, members: readonly Member[], plates: P
      * de faîtage boulonnée sur rien — que la boulonnerie comptait, faute de
      * mieux, en tiges d'ancrage.
      */
-    if (Math.abs(sommet.z - zFaitage) > 1) continue;
+    if (Math.abs(sommet.z - zFaitage - releveDuPortique(p, Number(tr.id.split('-')[0]))) > 1) continue;
 
     // ⚠ La platine est soudée sur la FACE DE COUPE, pas perpendiculairement à
     // l'axe : au faîtage la coupe est verticale, la platine l'est donc aussi.

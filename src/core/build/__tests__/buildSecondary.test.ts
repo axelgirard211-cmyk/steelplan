@@ -302,8 +302,11 @@ describe('ossature secondaire — cohérence d’ensemble', () => {
     };
     const m = buildProject(treillis);
     const panne = parRole('panne', m.members).find((b) => Math.abs(b.start.y) < 100) as Member;
+    // Sur le dessus RÉEL de l'arbalétrier : l'aile dressée d'une cornière monte
+    // au-dessus de son axe de a − cz, pas de a / 2.
+    const chord = getProfile(treillis.truss.topChordProfile) as { a: number; cz: number };
     const recul =
-      getProfile(treillis.truss.topChordProfile).h / 2 +
+      chord.a - chord.cz +
       getProfile(P.connections.purlinCleat.profile).h +
       getProfile(P.secondary.purlins.profile).h / 2;
     const a = leftSlopeRad(G);

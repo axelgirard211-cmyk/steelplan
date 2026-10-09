@@ -7,6 +7,7 @@ import type { FaceOuverture } from '../../model/ouvertures';
 import { distribute } from '../../model/secondary';
 import { tieLevel, tieZ } from '../buildTruss';
 import { dimensionsPlatineDeFaitage } from '../connections/platines';
+import { releveDuPortique } from '../buildFrame';
 import { barre, hauteurPorteur } from './commun';
 import { intervallesInterrompus, soustraire } from './ouvertures';
 
@@ -211,7 +212,9 @@ export function gablePostStations(p: ProjectParams): number[] {
 
 export function buildGablePosts(p: ProjectParams, out: Member[]): void {
   const g = p.grid;
-  const hPorteur = hauteurPorteur(p);
+  // Sous la traverse du PIGNON, qui peut être d'un autre profil que les courantes.
+  const hPorteur =
+    p.frame.enabled && p.frame.distinctGableFrame ? getProfile(p.frame.gableRafterProfile).h : hauteurPorteur(p);
   const L = buildingLength(g);
 
   for (const [c, x] of [
@@ -220,7 +223,8 @@ export function buildGablePosts(p: ProjectParams, out: Member[]): void {
   ] as const) {
     for (const [k, y] of gablePostStations(p).entries()) {
       // Le potelet monte jusque sous la pièce qui porte la toiture.
-      const zHaut = plafondPignon(p, y, hPorteur);
+      // Le portique de pignon peut être relevé pour aligner le dessus de sa traverse.
+      const zHaut = plafondPignon(p, y, hPorteur) + releveDuPortique(p, c === 0 ? 0 : g.nBays);
       if (zHaut <= 0) continue;
       out.push(
         potelet(p, `PT-${c}${k}`, v3(x, y, 0), v3(x, y, zHaut), y, `potelet ${k + 1} — pignon ${c === 0 ? 'ouest' : 'est'}`),

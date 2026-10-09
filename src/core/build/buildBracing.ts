@@ -59,8 +59,10 @@ export function buildBracing(
     ? getProfile(p.truss.bottomChordProfile).h
     : getProfile(p.frame.rafterProfile).h;
   const zTete = (p.truss.enabled ? tieLevel(g, p.truss) : g.eaveHeight) - hTete / 2;
-  const zTeteDroite =
-    g.roofType === 'monopente'
+  // Sous une ferme, l'entrait au droit du poteau haut ; sous une traverse, l'égout haut.
+  const zTeteDroite = p.truss.enabled
+    ? tieZ(g, p.truss, g.span) - hTete / 2
+    : g.roofType === 'monopente'
       ? zTete + (ridgeHeight(g) - g.eaveHeight)
       : zTete;
 
@@ -339,6 +341,7 @@ function attacher(
     const horsAxe = sub(r, scale(f.ax, s));
     const ecart = Math.hypot(horsAxe.x, horsAxe.y, horsAxe.z);
     let travail = w;
+    let decalageEffectif = decalage;
     if (m.role === 'membrure-sup') {
       /*
        * Cornière d'une paire : son axe est hors du plan de la ferme, décalé du
@@ -350,8 +353,19 @@ function attacher(
       const decale = pr.cy + ctx.p.connections.gusset.thickness / 2;
       if (Math.abs(ecart - decale) > 1 || dot(horsAxe, dir) > 0) continue;
       travail = sub(w, horsAxe);
-    } else if (ecart > 1) continue;
-    const d = dispositionDAttache(ctx.p, m, travail, dir, n, decalage, diametre, plafondDe(ctx.p, m));
+    } else if (ecart > 1) {
+      /*
+       * Traverse d'un portique de pignon RELEVÉ pour aligner son dessus : le nœud
+       * de la maille est sous son axe, selon la normale de la maille. Le tube
+       * garde son plan ; l'attache se cote depuis l'axe, décalée d'autant.
+       */
+      const selonN = dot(horsAxe, n);
+      const reste = sub(horsAxe, scale(n, selonN));
+      if (m.role !== 'traverse' || Math.hypot(reste.x, reste.y, reste.z) > 1 || Math.abs(selonN) > 100) continue;
+      travail = sub(w, horsAxe);
+      decalageEffectif = decalage + selonN;
+    }
+    const d = dispositionDAttache(ctx.p, m, travail, dir, n, decalageEffectif, diametre, plafondDe(ctx.p, m));
     if (d) return d;
   }
   return null;

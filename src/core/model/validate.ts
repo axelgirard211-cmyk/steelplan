@@ -233,6 +233,24 @@ export function validateProject(p: ProjectParams): Issue[] {
     }
   }
 
+  /*
+   * ⚠ Portique de pignon distinct : ses POTEAUX doivent avoir la hauteur de
+   * section des poteaux courants. Les lisses de long pan se plaquent sur la face
+   * extérieure des poteaux, sur un seul plan : un poteau de pignon plus haut y
+   * entre, un plus bas laisse les lisses d'angle en l'air. Sa traverse, elle,
+   * peut différer — le portique est relevé pour en aligner le dessus.
+   */
+  if (p.frame.enabled && p.frame.distinctGableFrame) {
+    const courant = findProfile(p.frame.columnProfile);
+    const pignon = findProfile(p.frame.gableColumnProfile);
+    if (courant && pignon && Math.abs(courant.h - pignon.h) > 0.5) {
+      err(
+        'frame.gableColumnProfile',
+        `Poteau de pignon ${pignon.id} (h = ${pignon.h} mm) de hauteur différente du poteau courant ${courant.id} (h = ${courant.h} mm) : les lisses de long pan ne seraient plus dans un même plan. Choisir un profil de même hauteur.`,
+      );
+    }
+  }
+
   const cb = p.connections.columnBase;
   positif('connections.columnBase.thickness', cb.thickness, "L'épaisseur de platine de pied");
   if (p.frame.enabled) {

@@ -52,9 +52,14 @@ export function niveauxSurFerme(p: ProjectParams): NiveauxSurFerme | null {
   const bas = -pr.cz + pr.t + pr.r;
   const haut = -pr.cz + trusquinage(pr, bolt) - cle - 2;
   if (haut - bas < t) return null;
-  const dessus = bas + 1.5 * t;
-  // Le tube reste sous le dessus de la membrure, où reposent les pannes.
-  if (dessus + D / 2 > pr.a - pr.cz - 5) return null;
+  /*
+   * Le gousset le plus HAUT possible dans la bande, le plat posé dessus : plus le
+   * brin du dessus monte, moins la tôle du dessous doit être épaisse pour que
+   * l'autre brin passe sous lui. Le tube reste sous le dessus de la membrure,
+   * où reposent les pannes.
+   */
+  const dessus = Math.floor(Math.min(haut + 0.5 * t, pr.a - pr.cz - 5 - D / 2));
+  if (dessus < bas + 1.5 * t) return null;
   if (p.bracing.roof.shape !== 'croix') return { dessus, dessous: null, epaisseurDessous: t };
 
   const voulu = dessus - D - JEU;

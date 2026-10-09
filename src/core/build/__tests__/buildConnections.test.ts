@@ -233,7 +233,8 @@ describe('goussets de treillis', () => {
     const noeudsDeTreillis = new Set(
       T.members
         .filter((m) => m.role === 'diagonale' || m.role === 'montant')
-        .filter((m) => Math.abs(m.start.x) < 1)
+        // Près du plan de la ferme : les cornières sont plaquées de part et d'autre du gousset.
+        .filter((m) => Math.abs(m.start.x) < 200)
         .flatMap((m) => [cle(m.start), cle(m.end)]),
     );
 
