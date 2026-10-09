@@ -124,6 +124,7 @@ export function assignPlateMarks(plates: readonly Plate[]): Plate[] {
     'gousset-cv': 'GC',
     'plat-tube': 'PC',
     'gousset-tete': 'GT',
+    'attache-lisse': 'AL',
   };
   const parSignature = new Map<string, string>();
   const compteurs = new Map<string, number>();

@@ -35,7 +35,7 @@ export function OuverturesFiche(): JSX.Element {
 
   const ajouter = (): void => {
     edit('Ajouter une ouverture', (d) => {
-      d.ouvertures.items.push(nouvelle(d.ouvertures.items));
+      d.ouvertures.items.push(nouvelle(d.ouvertures.items, d.grid.baySpacing));
       d.ouvertures.enabled = true;
     });
   };
@@ -182,14 +182,15 @@ export function OuverturesFiche(): JSX.Element {
 /* ------------------------------------------------------------------ */
 
 /** Ouverture neuve : une porte au quart de la façade, repère non employé. */
-function nouvelle(existantes: readonly Ouverture[]): Ouverture {
+function nouvelle(existantes: readonly Ouverture[], entraxe: number): Ouverture {
   let n = existantes.length + 1;
   while (existantes.some((x) => x.id === `OU${n}`)) n += 1;
   return {
     id: `OU${n}`,
     face: 'long-pan-gauche',
     type: 'porte',
-    position: 5000,
+    // Au milieu de la première travée : entre deux poteaux, jamais devant.
+    position: Math.round((entraxe / 2 - 600) / 100) * 100,
     largeur: 1200,
     hauteur: 2100,
     allege: 0,

@@ -12,6 +12,7 @@ import { attachesDePannes, percerEnSymetrie } from './connections/attaches';
 import { attachesDeLisses, percerPoteauxEnSymetrie } from './connections/lisses';
 import { passagesDeLiernes, percerPannesPourLiernes } from './connections/liernes';
 import { eclisses, goussets } from './connections/eclisses';
+import { attachesDeChevetres, cordonsDAttache } from './connections/chevetres';
 import { consoles, faitages, genoux, piedsDePoteaux, piedsDePotelets, tetesDePoteauxSousFerme } from './connections/platines';
 import {
   attachesDeContreventement,
@@ -77,6 +78,7 @@ export function buildConnections(
   if (p.frame.enabled && p.connections.splice.enabled) eclisses(p, members, plates, ajouter);
   attachesDePannes(p, members, ajouter);
   const porteursEquerres = attachesDeLisses(p, members, ajouter);
+  attachesDeChevetres(p, members, plates, ajouter);
   passagesDeLiernes(p, members, ajouter);
   attachesDeContreventement(p, attachesCV, plates, ajouter);
   // Après les platines de faîtage et les goussets de contreventement, que la
@@ -130,6 +132,21 @@ function souduresDesToles(plates: readonly Plate[], parId: ReadonlyMap<string, M
     }
     if (pl.kind === 'gousset-tete') {
       out.push(soudureDeTete(pl, piece, plates));
+      continue;
+    }
+    if (pl.kind === 'attache-lisse') {
+      // Plat à recouvrement sur la semelle du montant : deux cordons d'angle.
+      out.push(
+        weld(
+          `${pl.id}-SO`,
+          'angle-double',
+          gorgeUsuelle(paroiMini(profil), pl.thickness),
+          cordonsDAttache(pl, piece).longueur,
+          [piece.id, pl.id],
+          pl.origin,
+          `plat d’attache soudé sur ${profil.id}`,
+        ),
+      );
       continue;
     }
     out.push(

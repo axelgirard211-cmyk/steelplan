@@ -42,7 +42,8 @@ export type PlateKind =
   | 'eclisse'
   | 'gousset-cv'
   | 'plat-tube'
-  | 'gousset-tete';
+  | 'gousset-tete'
+  | 'attache-lisse';
 
 /**
  * Désignation de chaque nature de tôle, telle qu'elle s'imprime partout.
@@ -58,6 +59,7 @@ export const LIBELLE_TOLE: Readonly<Record<PlateKind, string>> = {
   'gousset-cv': 'Gousset de contreventement',
   'plat-tube': 'Plat d’about de tube',
   'gousset-tete': 'Gousset de tête de potelet',
+  'attache-lisse': 'Plat d’attache de chevêtre',
 };
 
 /** Perçage d'une tôle : position dans son plan, traversant l'épaisseur. */

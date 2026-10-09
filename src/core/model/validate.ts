@@ -280,6 +280,22 @@ export function validateProject(p: ProjectParams): Issue[] {
     err('connections.columnBase.anchorCount', 'Un pied encastré demande au moins 4 tiges d’ancrage.');
   }
 
+  /*
+   * ⚠ Chevêtres d'ouverture : même hauteur de profil que les lisses. Ils sont
+   * dans le même plan : le bardage se fixe sur leurs semelles extérieures, et les
+   * plats d'attache se plaquent sur leurs semelles intérieures — à fleur des deux.
+   */
+  if (p.ouvertures.enabled && p.ouvertures.items.length > 0 && p.secondary.rails.enabled) {
+    const chevetre = findProfile(p.ouvertures.profile);
+    const lisse = findProfile(p.secondary.rails.profile);
+    if (chevetre && lisse && Math.abs(chevetre.h - lisse.h) > 0.5) {
+      err(
+        'ouvertures.profile',
+        `Chevêtres en ${chevetre.id} (h = ${chevetre.h} mm) et lisses en ${lisse.id} (h = ${lisse.h} mm) : ils doivent avoir la même hauteur pour que le bardage reste plan et que les attaches se plaquent.`,
+      );
+    }
+  }
+
   /* --- Charges ------------------------------------------------------ */
   const l = p.loads;
   for (const [k, v] of Object.entries(l.loads)) {
