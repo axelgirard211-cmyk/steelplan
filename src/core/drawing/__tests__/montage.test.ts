@@ -3,9 +3,11 @@ import { buildProject } from '../../build/buildProject';
 import { frameStations } from '../../model/grid';
 import { DEFAULT_PROJECT } from '../../model/defaults';
 import { TEMPLATES } from '../../model/templates';
+import { FORMATS } from '../layout';
 import type { DrawEntity } from '../scene';
 import type { Sheet } from '../sheet';
 import { sheetsMontage } from '../sheets/montage';
+import { H_REPERE } from '../sheets/reperageVues';
 
 /**
  * PLANS DE REPÉRAGE ET DE MONTAGE.
@@ -22,6 +24,12 @@ const P = DEFAULT_PROJECT;
 const MODEL = buildProject(P);
 const META = P.meta;
 const PLANCHES = sheetsMontage(MODEL, P, { page: 1, total: 60, meta: META });
+const planche = (id: string): Sheet => {
+  const s = PLANCHES.find((x) => x.id === id);
+  if (!s) throw new Error(`planche ${id} absente`);
+  return s;
+};
+const VUES = ['montage-plan', 'montage-avant', 'montage-arriere', 'montage-pignons'];
 
 const textes = (s: Sheet): string[] =>
   s.scene.entities.flatMap((e: DrawEntity) => (e.kind === 'texte' ? [e.texte] : []));
@@ -39,8 +47,12 @@ const marquesDessinees = (s: Sheet): string[] =>
   );
 
 describe('repérage pièce par pièce', () => {
-  it('édite une vue en plan ET une élévation', () => {
-    expect(PLANCHES).toHaveLength(2);
+  it('édite la toiture, chaque long pan, les pignons et l’ordre de montage', () => {
+    /*
+     * ⚠ Une seule élévation superposait les deux long-pans : le monteur ne
+     * savait pas de quel côté était la palée qu'il lisait. Une vue par façade.
+     */
+    expect(PLANCHES.map((s) => s.id)).toEqual([...VUES, 'montage-ordre']);
     for (const s of PLANCHES) expect(s.kind).toBe('montage');
   });
 
@@ -51,24 +63,54 @@ describe('repérage pièce par pièce', () => {
      * pièce à sa position. Un seul « PO1 » sur la planche et le monteur ne sait
      * pas si les six files portent le même poteau.
      */
-    const elevation = PLANCHES[1] as Sheet;
-    // Un poteau par file, courant (PO1A) ou d'angle (PO1B…) : tous repérés.
-    const marques = marquesDessinees(elevation).filter((t) => /^PO1[A-Z]?$/.test(t));
-    expect(marques.length, `${marques.length} repère(s) PO1`).toBe(frameStations(P.grid).length);
+    for (const id of ['montage-avant', 'montage-arriere']) {
+      // Un poteau par file, courant (PO1A) ou d'angle (PO1B…) : tous repérés.
+      const marques = marquesDessinees(planche(id)).filter((t) => /^PO1[A-Z]?$/.test(t));
+      expect(marques.length, `${id} : ${marques.length} repère(s) PO1`).toBe(frameStations(P.grid).length);
+    }
   });
 
-  it('numérote les files, seule façon de situer une pièce sur le chantier', () => {
-    for (const s of PLANCHES) {
-      const t = textes(s);
-      for (let i = 1; i <= frameStations(P.grid).length; i++) {
-        expect(t, `${s.titre} : file ${i}`).toContain(`${i}`);
+  it('numérote les files sur le plan et les long-pans, les long-pans sur les pignons', () => {
+    // Seule façon de situer une pièce sur le chantier.
+    for (const id of ['montage-plan', 'montage-avant', 'montage-arriere']) {
+      const t = marquesDessinees(planche(id));
+      for (let i = 1; i <= frameStations(P.grid).length; i++) expect(t, `${id} : file ${i}`).toContain(`${i}`);
+    }
+    const pignons = marquesDessinees(planche('montage-pignons'));
+    expect(pignons).toContain('A');
+    expect(pignons).toContain('B');
+  });
+
+  it('ne pose aucun repère sur un autre', () => {
+    /*
+     * ⚠ Les repères s'écrivaient sur les barres et les uns sur les autres :
+     * « TR1B » se lisait barré par l'âme de la traverse. Chacun a désormais sa
+     * place, sur un masque qui coupe les traits sous lui.
+     */
+    for (const id of VUES) {
+      const boites = planche(id).scene.entities.flatMap((e: DrawEntity) => {
+        if (e.kind !== 'texte' || e.layer !== 'reperage' || e.hauteur !== H_REPERE) return [];
+        const l = (e.texte.length * 0.62 * H_REPERE) / 2;
+        return [{ texte: e.texte, x0: e.at.x - l, x1: e.at.x + l, y0: e.at.y - H_REPERE / 2, y1: e.at.y + H_REPERE / 2 }];
+      });
+      expect(boites.length, id).toBeGreaterThan(0);
+      for (let i = 0; i < boites.length; i++) {
+        for (let j = i + 1; j < boites.length; j++) {
+          const a = boites[i]!;
+          const b = boites[j]!;
+          const recouvre = a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+          expect(recouvre, `${id} : ${a.texte} sur ${b.texte}`).toBe(false);
+        }
       }
+      // Et chacun sur son masque blanc.
+      const masques = planche(id).scene.entities.filter((e) => e.kind === 'remplissage' && e.gris === 1);
+      expect(masques.length, id).toBe(boites.length);
     }
   });
 });
 
 describe('ordre de montage', () => {
-  const table = textes(PLANCHES[1] as Sheet).join('\n');
+  const table = textes(planche('montage-ordre')).join('\n');
 
   it('lève les poteaux avant les traverses, et les contreventements avant les pannes', () => {
     /*
@@ -98,7 +140,7 @@ describe('ordre de montage', () => {
     // Les repères d'ASSEMBLAGE des pièces qui se lèvent : une échantignolle
     // soudée arrive avec sa traverse, elle ne se monte pas seule.
     const attendus = new Set(MODEL.members.filter((m) => m.porteur === null).map((m) => m.assemblage));
-    const listes = new Set(textes(PLANCHES[1] as Sheet));
+    const listes = new Set(textes(planche('montage-ordre')));
     const manquants = [...attendus].filter((m) => !listes.has(m));
     expect(manquants, `absents du tableau de montage : ${manquants.join(', ')}`).toEqual([]);
   });
@@ -116,9 +158,12 @@ describe('robustesse', () => {
       const p = t.build();
       const m = buildProject(p);
       for (const s of sheetsMontage(m, p, { page: 1, total: 60, meta: p.meta })) {
+        const f = FORMATS[s.format];
         expect(JSON.stringify(s.scene.entities), `${t.id} / ${s.titre}`).not.toMatch(
           /null|NaN|Infinity/,
         );
+        // Aucun repère laissé sans place sur les gabarits livrés.
+        expect(textes(s).filter((x) => x.startsWith('Repères sans place')), `${t.id} / ${s.titre}`).toEqual([]);
         for (const e of s.scene.entities) {
           const pts =
             e.kind === 'ligne'
@@ -131,10 +176,10 @@ describe('robustesse', () => {
                     ? [e.at]
                     : [];
           for (const q of pts) {
-            expect(q.x, `${t.id} / ${s.titre} : x = ${q.x.toFixed(1)}`).toBeGreaterThan(-40);
-            expect(q.x).toBeLessThan(460);
-            expect(q.y, `${t.id} / ${s.titre} : y = ${q.y.toFixed(1)}`).toBeGreaterThan(-40);
-            expect(q.y).toBeLessThan(340);
+            expect(q.x, `${t.id} / ${s.titre} : x = ${q.x.toFixed(1)}`).toBeGreaterThan(0);
+            expect(q.x, `${t.id} / ${s.titre} : x = ${q.x.toFixed(1)}`).toBeLessThan(f.largeur);
+            expect(q.y, `${t.id} / ${s.titre} : y = ${q.y.toFixed(1)}`).toBeGreaterThan(-10);
+            expect(q.y, `${t.id} / ${s.titre} : y = ${q.y.toFixed(1)}`).toBeLessThan(f.hauteur);
           }
         }
       }
@@ -144,5 +189,7 @@ describe('robustesse', () => {
   it('n’émet que des échelles normalisées', () => {
     const normalisees = [1, 2, 5, 10, 20, 50, 100, 200, 500];
     for (const s of PLANCHES) expect(normalisees).toContain(s.echelle);
+    // Le plan de toiture d'une halle courante se lit au 1:100, quitte à passer en A2.
+    expect(planche('montage-plan').echelle).toBeLessThanOrEqual(100);
   });
 });
