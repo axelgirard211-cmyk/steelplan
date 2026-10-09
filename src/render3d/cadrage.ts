@@ -67,3 +67,20 @@ export function distanceDeCadrage(
   }
   return d * marge;
 }
+
+/**
+ * Le modèle a-t-il changé d'ÉCHELLE au point de sortir du cadre ?
+ *
+ * ⚠ La vue ne se recadrait qu'au premier affichage : une portée passée de 20 à
+ * 40 m laissait la moitié du bâtiment hors champ. Mais recadrer à CHAQUE
+ * modification ferait perdre le nœud qu'on examine dès qu'on change une
+ * épaisseur de platine. Seul un changement d'emprise notable — taille ou centre
+ * déplacés d'un cinquième — déclenche le recadrage.
+ */
+export function changeDEchelle(avant: THREE.Box3, apres: THREE.Box3, seuil = 0.2): boolean {
+  if (avant.isEmpty() || apres.isEmpty()) return false;
+  const ta = avant.getSize(new THREE.Vector3()).length();
+  const tb = apres.getSize(new THREE.Vector3()).length();
+  const deplacement = avant.getCenter(new THREE.Vector3()).distanceTo(apres.getCenter(new THREE.Vector3()));
+  return Math.abs(tb - ta) > seuil * ta || deplacement > seuil * ta;
+}

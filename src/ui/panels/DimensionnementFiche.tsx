@@ -125,7 +125,7 @@ function Resultat({
                 <strong>{c.apres}</strong>
               </td>
               <td className="nombre">
-                {c.tauxAvant.toFixed(2)} → {c.tauxApres.toFixed(2)}
+                {num(c.tauxAvant, 2)} → {num(c.tauxApres, 2)}
               </td>
               <td className="nombre" style={c.deltaKgParM > 0 ? { color: 'var(--alerte)' } : undefined}>
                 {c.deltaKgParM > 0 ? '+' : ''}
@@ -144,7 +144,7 @@ function Resultat({
           {pct.toFixed(1)} %)
         </dd>
         <dt>Taux de travail maximal obtenu</dt>
-        <dd className={prop.tauxMax > 1 ? 'alerte' : ''}>{prop.tauxMax.toFixed(2)}</dd>
+        <dd className={prop.tauxMax > 1 ? 'alerte' : ''}>{num(prop.tauxMax, 2)}</dd>
         <dt>Modèles construits et vérifiés</dt>
         <dd className="derive">
           {prop.evaluations} en {num(prop.ms, 0)} ms

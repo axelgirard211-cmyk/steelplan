@@ -9,7 +9,10 @@ import {
   type BoltSpec,
 } from '../../core/model/connections';
 import { useProjectStore } from '../../state/store';
-import { Bascule, ChampNombre, ChampProfil } from '../champs';
+import { Bascule, ChampNombre, ChampProfil, libellerAvec } from '../champs';
+
+const DIAMETRE = libellerAvec('diamètre');
+const CLASSE = libellerAvec('classe');
 import { dim } from '../format';
 
 /**
@@ -359,6 +362,7 @@ function ChoixBoulon({
       <dd>
         M
         <select
+          ref={DIAMETRE}
           value={valeur.d}
           onChange={(e) => onChange({ ...valeur, d: Number(e.target.value) as BoltDiameter })}
         >
@@ -369,6 +373,7 @@ function ChoixBoulon({
           ))}
         </select>{' '}
         <select
+          ref={CLASSE}
           value={valeur.cls}
           onChange={(e) => onChange({ ...valeur, cls: e.target.value as BoltClass })}
         >

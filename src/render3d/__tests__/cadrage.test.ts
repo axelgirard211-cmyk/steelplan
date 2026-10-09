@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { distanceDeCadrage } from '../cadrage';
+import { changeDEchelle, distanceDeCadrage } from '../cadrage';
 
 /** Hangar par défaut : 30 m de long, 20 m de portée, 7 m au faîtage. */
 const HANGAR = new THREE.Box3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(30_000, 20_000, 7_000));
@@ -81,5 +81,29 @@ describe('distance de cadrage', () => {
       );
       expect(occupe, nom).toBeGreaterThan(0.85);
     }
+  });
+});
+
+describe('recadrage après modification', () => {
+  const boite = (l: number, b: number, h: number, x0 = 0): THREE.Box3 =>
+    new THREE.Box3(new THREE.Vector3(x0, 0, 0), new THREE.Vector3(x0 + l, b, h));
+
+  it('recadre quand la portée double : le bâtiment sortirait du champ', () => {
+    expect(changeDEchelle(HANGAR, boite(30_000, 40_000, 9_000))).toBe(true);
+    expect(changeDEchelle(HANGAR, boite(10_000, 8_000, 5_000))).toBe(true);
+  });
+
+  it('recadre quand l’ouvrage se déplace d’un cinquième de sa taille', () => {
+    expect(changeDEchelle(HANGAR, boite(30_000, 20_000, 7_000, 12_000))).toBe(true);
+  });
+
+  it('ne recadre PAS pour une retouche : on garderait le nœud qu’on examine', () => {
+    // Une platine plus épaisse, un débord de 300 mm : l'emprise bouge à peine.
+    expect(changeDEchelle(HANGAR, HANGAR.clone())).toBe(false);
+    expect(changeDEchelle(HANGAR, boite(30_600, 20_000, 7_100, -300))).toBe(false);
+  });
+
+  it('ne décide rien sur un modèle vide', () => {
+    expect(changeDEchelle(new THREE.Box3(), HANGAR)).toBe(false);
   });
 });

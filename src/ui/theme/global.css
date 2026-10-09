@@ -438,7 +438,10 @@ table.profils th.sep {
 dl.paires {
   margin: 0;
   display: grid;
-  grid-template-columns: 1fr auto;
+  /* Libellés jamais écrasés à un mot par ligne : un choix long (catégorie de
+     terrain, traitement de surface) se tronque dans sa colonne au lieu de faire
+     déborder la fiche. */
+  grid-template-columns: minmax(7.5em, 1fr) auto;
   gap: 4px 12px;
   font-size: 13px;
 }
@@ -449,8 +452,13 @@ dl.paires dt {
 
 dl.paires dd {
   margin: 0;
+  min-width: 0;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+dl.paires dd select {
+  max-width: 100%;
 }
 
 .derive {
@@ -487,6 +495,13 @@ li.avertissement {
 li .chemin {
   font-family: var(--mono);
   font-size: 11px;
+  opacity: 0.8;
+  display: block;
+}
+
+li .rubrique {
+  font-size: 11px;
+  font-weight: 600;
   opacity: 0.8;
   display: block;
 }

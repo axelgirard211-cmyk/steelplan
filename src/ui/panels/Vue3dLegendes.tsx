@@ -61,7 +61,7 @@ export function LegendeTaux(): JSX.Element {
           <tr className="total">
             <td />
             <td className="nom">Taux maximal</td>
-            <td className="nombre">{rapport.maxRatio.toFixed(2)}</td>
+            <td className="nombre">{num(rapport.maxRatio, 2)}</td>
           </tr>
         </tbody>
       </table>
