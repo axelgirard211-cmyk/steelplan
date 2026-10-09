@@ -5,7 +5,7 @@ import { bracedBays, type BracingSet } from '../model/bracing';
 import { frameStations, ridgeHeight, ridgeY, roofNormal, roofZ } from '../model/grid';
 import type { ProjectParams } from '../model/project';
 import { basDePlatineDeGenou } from './buildFrame';
-import { tieLevel } from './buildTruss';
+import { tieLevel, tieZ } from './buildTruss';
 import { aboutDuTube, dispositionDAttache, type AttacheCV, type Disposition, type TypeDAppui } from './connections/contreventement';
 import { niveauxSurFerme } from './connections/contreventementFerme';
 import { reserveDeTete } from './connections/potelets';
@@ -151,9 +151,18 @@ export function buildBracing(
             [potelets[potelets.length - 1] as number, g.span],
           ]
         : [[0, g.span]];
-    // Tête de maille : sous la traverse, au droit de chaque montant de la maille.
+    /*
+     * Tête de maille : sous la traverse, au droit de chaque montant de la maille.
+     * ⚠ Sous une FERME, c'est l'entrait qui coiffe le pignon et sur lequel les
+     * potelets s'arrêtent, pas la toiture : la tête de maille visée sous le
+     * rampant montait dans le treillis de la ferme de pignon.
+     */
     const sousToiture = (y: number): number =>
-      y <= 0 ? zTete : y >= g.span ? zTeteDroite : roofZ(g, y) - hTete / 2;
+      y <= 0
+        ? zTete
+        : y >= g.span
+          ? zTeteDroite
+          : (p.truss.enabled ? tieZ(g, p.truss, y) : roofZ(g, y)) - hTete / 2;
     for (const [k, x] of [
       [0, 0],
       [1, L],
@@ -294,6 +303,9 @@ function poser(
   ctx.out.push(diagonale(ctx.p, set, id, debut, fin, position, n));
 }
 
+/** Dépassement permis d'un nœud au-delà du bout de la pièce qui le reçoit (mm). */
+const MARGE_DE_NOEUD = 300;
+
 /** Pièces qui reçoivent un gousset de contreventement. */
 const APPUIS: readonly Member['role'][] = ['poteau', 'traverse', 'potelet', 'membrure-sup'];
 
@@ -314,7 +326,17 @@ function attacher(
     if (!APPUIS.includes(m.role)) continue;
     const f = memberFrame(m);
     const r = sub(w, m.start);
-    const horsAxe = sub(r, scale(f.ax, dot(r, f.ax)));
+    /*
+     * ⚠ Le nœud doit être SUR la pièce, pas sur le prolongement de son axe : le
+     * tronçon bas d'une traverse éclissée « passait » par le faîtage, et le tube
+     * s'arrêtait à mi-travée sur un gousset soudé dans le vide. Une marge reste
+     * permise au bout : la tête de maille d'un pignon est sous la traverse, un
+     * peu au-dessus du potelet qui s'arrête avant elle.
+     */
+    const s = dot(r, f.ax);
+    const longueur = Math.hypot(m.end.x - m.start.x, m.end.y - m.start.y, m.end.z - m.start.z);
+    if (s < -MARGE_DE_NOEUD || s > longueur + MARGE_DE_NOEUD) continue;
+    const horsAxe = sub(r, scale(f.ax, s));
     const ecart = Math.hypot(horsAxe.x, horsAxe.y, horsAxe.z);
     let travail = w;
     if (m.role === 'membrure-sup') {

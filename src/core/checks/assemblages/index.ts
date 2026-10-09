@@ -2,6 +2,9 @@ import type { Frame2dResult } from '../../analysis/frame2d';
 import type { FrameAnalysisModel } from '../../analysis/frameModel';
 import type { Combination } from '../../analysis/loadCases';
 import { getProfile } from '../../catalog/index';
+import { semellesDuFaitage } from '../../build/connections/platines';
+import { semellesDerrierePlatine } from '../../geometry/holes';
+import { leftSlopeRad } from '../../model/grid';
 import type { ProjectParams } from '../../model/project';
 import type { EnveloppeAppui } from '../reactions';
 import { verifierPiedPoteau } from './piedPoteau';
@@ -140,6 +143,12 @@ export function verifierAssemblages(
     ? p.frame.ridgeHaunch.depth
     : getProfile(p.frame.rafterProfile).h;
 
+  const traverse = getProfile(p.frame.rafterProfile);
+  const semellesGenou =
+    traverse.shape === 'I'
+      ? semellesDerrierePlatine(traverse.h, traverse.tf, Math.cos(leftSlopeRad(p.grid)), hauteurGenou)
+      : [];
+
   for (const e of efforts) {
     if (e.genou && p.frame.enabled) {
       retenir(
@@ -152,6 +161,7 @@ export function verifierAssemblages(
             profilPorteur: p.frame.columnProfile,
             profilBarre: p.frame.rafterProfile,
             nuance: p.frame.grade,
+            semelles: semellesGenou,
           },
           e.genou,
         ),
@@ -168,6 +178,7 @@ export function verifierAssemblages(
             profilPorteur: p.frame.rafterProfile,
             profilBarre: p.frame.rafterProfile,
             nuance: p.frame.grade,
+            semelles: semellesDuFaitage(p, hauteurFaitage),
           },
           e.faitage,
         ),

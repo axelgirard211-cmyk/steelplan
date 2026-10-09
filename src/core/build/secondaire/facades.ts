@@ -38,9 +38,7 @@ export function railLevels(p: ProjectParams): number[] {
 export function buildRails(p: ProjectParams, out: Member[]): number {
   const g = p.grid;
   const r = p.secondary.rails;
-  const hLisse = getProfile(r.profile).h;
-  const hPoteau = getProfile(p.frame.columnProfile).h;
-  const debord = hPoteau / 2 + hLisse / 2; // lisse plaquée sur la face extérieure
+  const debord = debordDesLisses(p, false); // lisse plaquée sur la face extérieure
   const stations = frameStations(g);
   const niveaux = railLevels(p);
 
@@ -100,13 +98,8 @@ export function buildRails(p: ProjectParams, out: Member[]): number {
      * poteau, comme en long pan, et flottait à 110 mm des poteaux d'angle et
      * à 140 mm des potelets, sans rien pour la tenir.
      */
-    const appuiPignon = Math.max(
-      p.secondary.gablePosts.enabled && gablePostStations(p).length > 0
-        ? getProfile(p.secondary.gablePosts.profile).h / 2
-        : 0,
-      getProfile(p.frame.columnProfile).b / 2,
-    );
-    const debordPignon = appuiPignon + hLisse / 2;
+    const appuiPignon = appuiDesLissesDePignon(p);
+    const debordPignon = debordDesLisses(p, true);
     for (const [c, xMur, face] of [
       [0, -debordPignon, 'pignon-ouest'],
       [1, L + debordPignon, 'pignon-est'],
@@ -296,6 +289,26 @@ export function courseDeTete(p: ProjectParams): number {
  */
 export function jeuSousTraverse(p: ProjectParams): number {
   return courseDeTete(p) + 5;
+}
+
+/** Face d'appui des lisses de pignon : la semelle des potelets, ou la rive des poteaux d'angle. */
+function appuiDesLissesDePignon(p: ProjectParams): number {
+  return Math.max(
+    p.secondary.gablePosts.enabled && gablePostStations(p).length > 0
+      ? getProfile(p.secondary.gablePosts.profile).h / 2
+      : 0,
+    getProfile(p.frame.columnProfile).b / 2,
+  );
+}
+
+/**
+ * Distance du plan des lisses à l'axe des poteaux (long pan) ou des potelets
+ * (pignon). ⚠ Une seule écriture : les chevêtres d'ouverture se posent dans ce
+ * plan, et le dessin des façades l'y retrouve.
+ */
+export function debordDesLisses(p: ProjectParams, pignon: boolean): number {
+  const hLisse = getProfile(p.secondary.rails.profile).h;
+  return (pignon ? appuiDesLissesDePignon(p) : getProfile(p.frame.columnProfile).h / 2) + hLisse / 2;
 }
 
 /**

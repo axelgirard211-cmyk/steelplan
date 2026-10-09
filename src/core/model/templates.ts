@@ -42,6 +42,7 @@ function derive(patch: {
   };
   loads?: { loads?: Partial<ProjectParams['loads']['loads']> };
   columnBase?: Partial<ProjectParams['connections']['columnBase']>;
+  rafterToColumn?: Partial<ProjectParams['connections']['rafterToColumn']>;
 }): ProjectParams {
   const d = DEFAULT_PROJECT;
   return {
@@ -64,7 +65,11 @@ function derive(patch: {
       gable: { ...d.bracing.gable, ...patch.bracing?.gable },
     },
     loads: { ...d.loads, loads: { ...d.loads.loads, ...patch.loads?.loads } },
-    connections: { ...d.connections, columnBase: { ...d.connections.columnBase, ...patch.columnBase } },
+    connections: {
+      ...d.connections,
+      columnBase: { ...d.connections.columnBase, ...patch.columnBase },
+      rafterToColumn: { ...d.connections.rafterToColumn, ...patch.rafterToColumn },
+    },
     freeMembers: [],
   };
 }
@@ -211,6 +216,9 @@ export const TEMPLATES: readonly Template[] = [
         },
         // Toiture légère très sensible au soulèvement.
         loads: { loads: { permanent: 0.12, neige: 0.45, ventPression: 0.7, ventDepression: 1.1 } },
+        // Sans jarret, la platine n'a que la hauteur d'un IPE 240 : six rangées de
+        // M20 s'y seraient touchées (30 mm d'entraxe pour 48 au minimum).
+        rafterToColumn: { rows: 4 },
       }),
   },
 ];

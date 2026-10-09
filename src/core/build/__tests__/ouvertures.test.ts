@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { getProfile } from '../../catalog/index';
+import { sectionOutline } from '../../geometry/section';
 import { railLevels } from '../secondaire/facades';
 import {
   ouverturesRefusees,
@@ -151,7 +153,10 @@ describe('ouvertures dans le modèle', () => {
     const tete = PORTAIL.allege + PORTAIL.hauteur;
     expect(montant!.end.z).toBeGreaterThan(tete);
     const niveaux = railLevels(DEFAULT_PROJECT).filter((z) => z > tete);
-    expect(montant!.end.z).toBeCloseTo(Math.min(...niveaux), 6);
+    // Sous cette lisse d'appui, qu'il ne traverse pas : sa demi-largeur, plus 10 mm de jeu.
+    const lisse = sectionOutline(getProfile(DEFAULT_PROJECT.secondary.rails.profile), 1).outer;
+    const demi = Math.max(...lisse.map((q) => Math.abs(q.y)));
+    expect(montant!.end.z).toBeCloseTo(Math.min(...niveaux) - demi - 10, 6);
   });
 
   it('pose le chevêtre dans le PLAN DES LISSES, pas sur l’axe du poteau', () => {

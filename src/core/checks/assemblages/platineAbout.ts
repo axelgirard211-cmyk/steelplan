@@ -1,6 +1,6 @@
 import { getProfile } from '../../catalog/index';
 import type { SteelGradeId } from '../../catalog/types';
-import { boltGrid, pitchFor } from '../../geometry/holes';
+import { grilleDePlatine } from '../../geometry/holes';
 import { gorgeUsuelle } from '../../geometry/weld';
 import { minEdgeDistance, type EndPlateParams } from '../../model/connections';
 import { designationBoulon, fbRd, ftRd, fvRd, interactionVT } from '../boulons';
@@ -12,7 +12,7 @@ import { assembler, verif, type AssemblageCheck, type VerifAssemblage } from './
  * PLATINE D'ABOUT BOULONNÉE — genou traverse-poteau, faîtage.
  *
  * ⚠ La géométrie n'est pas redécrite ici : elle est RELUE du même générateur qui
- * dessine la platine et perce le poteau (`pitchFor`, `boltGrid`). Recalculer les
+ * dessine la platine et perce le poteau (`grilleDePlatine`). Recalculer les
  * positions de boulons à côté aurait laissé le calcul et le plan diverger au
  * premier changement de pince — et c'est le plan qui part en atelier.
  *
@@ -40,6 +40,8 @@ export interface ContextePlatine {
   /** Profil de la barre qui porte la platine soudée. */
   readonly profilBarre: string;
   readonly nuance: SteelGradeId;
+  /** Semelles derrière la platine, que les rangées évitent (voir `grilleDePlatine`). */
+  readonly semelles?: readonly (readonly [number, number])[];
 }
 
 export function verifierPlatineAbout(
@@ -51,8 +53,10 @@ export function verifierPlatineAbout(
   const barre = getProfile(c.profilBarre);
   const tw = barre.shape === 'I' || barre.shape === 'U' ? barre.tw : barre.h / 10;
 
-  const pas = pitchFor(c.hauteurAssemblage, ep.rows, ep.edgeDistance);
-  const grille = boltGrid(ep.rows, ep.cols, pas, ep.gauge);
+  const grille = grilleDePlatine({ ...ep, hauteurUtile: c.hauteurAssemblage, semelles: c.semelles ?? [] });
+  const zs = [...new Set(grille.map((g) => g.z))].sort((a, b) => b - a);
+  // Entraxe le plus serré : c'est lui qui borne les longueurs efficaces et la pression diamétrale.
+  const pas = zs.length > 1 ? Math.min(...zs.slice(1).map((z, i) => (zs[i] as number) - z)) : 0;
   const nBoulons = grille.length;
   const verifs: VerifAssemblage[] = [];
 

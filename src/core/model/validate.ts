@@ -1,6 +1,7 @@
 import { findProfile } from '../catalog/index';
 import { rad2deg } from '../math/tolerance';
-import { minEdgeDistance, minGauge, positionsDesAncrages, tigeDAncrage, type EndPlateParams } from './connections';
+import { minEdgeDistance, minGauge, minPitch, positionsDesAncrages, tigeDAncrage, type EndPlateParams } from './connections';
+import { grilleDePlatine, semellesDerrierePlatine } from '../geometry/holes';
 import { leftSlopeRad, rafterLength, ridgeY, rightSlopeRad } from './grid';
 import type { ProjectParams } from './project';
 import { CLASSES_EXECUTION } from './atelier';
@@ -206,6 +207,31 @@ export function validateProject(p: ProjectParams): Issue[] {
   };
   platine('connections.rafterToColumn', p.connections.rafterToColumn);
   platine('connections.ridge', p.connections.ridge);
+
+  /*
+   * ⚠ Les rangées doivent TENIR sur la platine : entre les deux pinces, à 2,2 d0
+   * l'une de l'autre au moins, et hors des semelles de la traverse. Six rangées
+   * de M20 sur un IPE 240 se touchaient, et rien ne le disait.
+   */
+  const rafter = findProfile(p.frame.rafterProfile);
+  if (p.frame.enabled && rafter && rafter.shape === 'I') {
+    const cosA = Math.cos(leftSlopeRad(p.grid));
+    for (const [path, e, haunch] of [
+      ['connections.rafterToColumn', p.connections.rafterToColumn, p.frame.haunch],
+      ['connections.ridge', p.connections.ridge, p.frame.ridgeHaunch],
+    ] as const) {
+      if (path === 'connections.ridge' && p.grid.roofType === 'monopente') continue;
+      const hauteur = haunch.enabled ? Math.max(haunch.depth, rafter.h / cosA) : rafter.h / cosA;
+      const grille = grilleDePlatine({ ...e, hauteurUtile: hauteur, semelles: semellesDerrierePlatine(rafter.h, rafter.tf, cosA, hauteur) });
+      const bas = Math.min(...grille.map((q) => q.z));
+      if (hauteur / 2 + bas < e.edgeDistance - 0.5) {
+        err(
+          `${path}.rows`,
+          `${e.rows} rangées de M${e.bolt.d} ne tiennent pas sur la platine (${Math.round(hauteur)} mm utiles, entraxe mini ${Math.ceil(minPitch(e.bolt))} mm, semelles évitées) : réduire le nombre de rangées${haunch.enabled ? '' : ' ou ajouter un jarret'}.`,
+        );
+      }
+    }
+  }
 
   const cb = p.connections.columnBase;
   positif('connections.columnBase.thickness', cb.thickness, "L'épaisseur de platine de pied");
