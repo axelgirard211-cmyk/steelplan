@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { getProfile } from '../core/catalog/index';
+import { cordonsDAttache } from '../core/build/connections/chevetres';
 import { fenteDuPlat } from '../core/build/connections/contreventement';
 import type { Plate, StructuralModel } from '../core/build/types';
 import { fibreAbscissa, memberFrame, sectionPointAt, type Member } from '../core/geometry/member';
@@ -73,6 +74,16 @@ export function weldBeadGeometry(model: StructuralModel, seg = 6): THREE.BufferG
       const p0 = add3(gousset.origin, scale3(u, Math.min(...ys)));
       const p1 = add3(gousset.origin, scale3(u, Math.max(...ys)));
       deuxCordons(positions, normals, p0, p1, n, gousset.thickness / 2, v, cote);
+      rendus.push(w.id);
+      continue;
+    }
+    // Plat d'attache de chevêtre : à recouvrement sur la semelle du montant.
+    if (barre && tole?.kind === 'attache-lisse') {
+      for (const ar of cordonsDAttache(tole, barre).aretes) {
+        const n = normaliser(produit(tole.u, tole.v));
+        const versMontant = Math.sign(n.x * (barre.start.x - tole.origin.x) + n.y * (barre.start.y - tole.origin.y)) || 1;
+        deuxCordons(positions, normals, ar.a, ar.b, ar.dehors, 0, scale3(n, -versMontant), cote);
+      }
       rendus.push(w.id);
       continue;
     }

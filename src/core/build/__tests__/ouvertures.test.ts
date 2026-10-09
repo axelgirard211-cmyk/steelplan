@@ -16,7 +16,8 @@ const PORTAIL: Ouverture = {
   id: 'P1',
   face: 'long-pan-gauche',
   type: 'portail',
-  position: 8000,
+  // Entre les poteaux des files 2 et 3 (6 et 12 m), avec la place des attaches.
+  position: 7000,
   largeur: 4000,
   hauteur: 4500,
   allege: 0,
@@ -201,14 +202,32 @@ describe('ouvertures refusées', () => {
   });
 
   it('refuse la seconde de deux ouvertures qui se chevauchent', () => {
-    const p = avec([PORTAIL, { ...PORTAIL, id: 'P2', position: 10_000 }]);
+    const p = avec([PORTAIL, { ...PORTAIL, id: 'P2', position: 8000, largeur: 2000 }]);
     expect(ouverturesValides(p).map((o) => o.id)).toEqual(['P1']);
     expect(ouverturesRefusees(p)[0]?.raison).toMatch(/chevauche l’ouverture P1/);
   });
 
-  it('accepte deux ouvertures voisines qui se touchent sans se recouvrir', () => {
-    const p = avec([PORTAIL, { ...PORTAIL, id: 'P2', position: 12_000 }]);
+  it('refuse deux ouvertures accolées : leurs montants seraient au même endroit', () => {
+    const p = avec([
+      { ...PORTAIL, largeur: 2000 },
+      { ...PORTAIL, id: 'P2', position: 9000, largeur: 2000 },
+    ]);
+    expect(ouverturesValides(p).map((o) => o.id)).toEqual(['P1']);
+    expect(ouverturesRefusees(p)[0]?.raison).toMatch(/trop proche de l’ouverture P1/);
+  });
+
+  it('accepte deux ouvertures d’une travée séparées par la place de leurs attaches', () => {
+    const p = avec([
+      { ...PORTAIL, largeur: 1500 },
+      { ...PORTAIL, id: 'P2', position: 9300, largeur: 1500 },
+    ]);
     expect(ouverturesValides(p)).toHaveLength(2);
+  });
+
+  it('refuse une ouverture devant un poteau', () => {
+    const p = avec([{ ...PORTAIL, position: 10_000 }]);
+    expect(ouverturesValides(p)).toHaveLength(0);
+    expect(ouverturesRefusees(p)[0]?.raison).toMatch(/rencontre le poteau de la file 3/);
   });
 
   it('accepte deux ouvertures superposées sur des faces différentes', () => {

@@ -1,7 +1,7 @@
 import { getProfile } from '../../catalog/index';
 import type { Member } from '../../geometry/member';
 import { EX, EY, v3, type Vec3 } from '../../math/vec3';
-import { buildingLength } from '../../model/grid';
+import { buildingLength, frameStations } from '../../model/grid';
 import {
   longueurFacade,
   refusOuverture,
@@ -11,7 +11,7 @@ import {
 } from '../../model/ouvertures';
 import type { ProjectParams } from '../../model/project';
 import { barre } from './commun';
-import { debordDesLisses, railLevels } from './facades';
+import { debordDesLisses, gablePostStations, railLevels } from './facades';
 import { sectionOutline } from '../../geometry/section';
 
 /**
@@ -30,14 +30,57 @@ import { sectionOutline } from '../../geometry/section';
  * bouts par les poteaux, et c'est elle qui tient la tête du montant.
  */
 
+/**
+ * L'ouverture rencontre-t-elle un poteau ou un potelet ?
+ *
+ * ⚠ Une ouverture se perce ENTRE les appuis du bardage. Posée devant un poteau,
+ * le poteau restait dans le passage, et ses lisses comme le montant du chevêtre
+ * se disputaient sa semelle. On garde aussi la place des attaches : le tronçon de
+ * lisse entre le poteau et le montant doit pouvoir se boulonner à ses deux bouts.
+ */
+export function obstacleDOuverture(p: ProjectParams, o: Ouverture): string | null {
+  const g = p.grid;
+  const m = demiLargeur(p.ouvertures.profile) + JEU + MARGE_D_ATTACHE;
+  const poteau = getProfile(p.frame.columnProfile);
+  const obstacles: { s: number; demi: number; nom: string }[] = o.face.startsWith('pignon')
+    ? [
+        { s: 0, demi: poteau.h / 2, nom: 'poteau d’angle' },
+        { s: g.span, demi: poteau.h / 2, nom: 'poteau d’angle' },
+        ...(p.secondary.gablePosts.enabled
+          ? gablePostStations(p).map((y) => ({ s: y, demi: getProfile(p.secondary.gablePosts.profile).b / 2, nom: 'potelet' }))
+          : []),
+      ]
+    : frameStations(g).map((x, i) => ({ s: x, demi: poteau.b / 2, nom: `poteau de la file ${i + 1}` }));
+  for (const ob of obstacles) {
+    if (o.position - m < ob.s + ob.demi && o.position + o.largeur + m > ob.s - ob.demi) {
+      return `rencontre le ${ob.nom} à ${(ob.s / 1000).toFixed(2).replace('.', ',')} m : décaler ou réduire l’ouverture`;
+    }
+  }
+  return null;
+}
+
+/** Place laissée entre un poteau et le montant voisin, pour les attaches de la lisse (mm). */
+const MARGE_D_ATTACHE = 150;
+
+/**
+ * Deux ouvertures de la même façade trop proches pour que chacune ait ses
+ * montants et, entre eux, un tronçon de lisse boulonnable — accolées, elles
+ * posaient deux montants au même endroit.
+ */
+function tropProches(p: ProjectParams, a: Ouverture, b: Ouverture): boolean {
+  if (a.face !== b.face) return false;
+  const ecart = 2 * (demiLargeur(p.ouvertures.profile) + JEU) + MARGE_D_ATTACHE;
+  return a.position < b.position + b.largeur + ecart && b.position < a.position + a.largeur + ecart;
+}
+
 /** Ouvertures effectivement posables, dans l'ordre donné. */
 export function ouverturesValides(p: ProjectParams): Ouverture[] {
   const o = p.ouvertures;
   if (!o.enabled) return [];
   const gardees: Ouverture[] = [];
   for (const item of o.items) {
-    if (refusOuverture(item, p.grid) !== null) continue;
-    if (gardees.some((g) => seChevauchent(g, item))) continue;
+    if (refusOuverture(item, p.grid) !== null || obstacleDOuverture(p, item) !== null) continue;
+    if (gardees.some((g) => seChevauchent(g, item) || tropProches(p, g, item))) continue;
     gardees.push(item);
   }
   return gardees;
@@ -57,7 +100,7 @@ export function ouverturesRefusees(
   const out: { ouverture: Ouverture; raison: string }[] = [];
   const gardees: Ouverture[] = [];
   for (const item of p.ouvertures.items) {
-    const refus = refusOuverture(item, p.grid);
+    const refus = refusOuverture(item, p.grid) ?? obstacleDOuverture(p, item);
     if (refus !== null) {
       out.push({ ouverture: item, raison: refus });
       continue;
@@ -65,6 +108,14 @@ export function ouverturesRefusees(
     const conflit = gardees.find((g) => seChevauchent(g, item));
     if (conflit) {
       out.push({ ouverture: item, raison: `chevauche l’ouverture ${conflit.id}` });
+      continue;
+    }
+    const voisine = gardees.find((g) => tropProches(p, g, item));
+    if (voisine) {
+      out.push({
+        ouverture: item,
+        raison: `trop proche de l’ouverture ${voisine.id} : leurs montants et les attaches de lisse entre eux n’y tiennent pas`,
+      });
       continue;
     }
     gardees.push(item);

@@ -4,6 +4,7 @@ import { fibreAbscissa, memberFrame, type Member } from '../../geometry/member';
 import { sectionOutline, type Pt2, type SectionOutline } from '../../geometry/section';
 import { add, dot, scale, sub, type Vec3 } from '../../math/vec3';
 import { DEFAULT_PROJECT } from '../../model/defaults';
+import type { ProjectParams } from '../../model/project';
 import { TEMPLATES } from '../../model/templates';
 import { diametreNominal, listerBoulons } from '../bolts';
 import { buildProject } from '../buildProject';
@@ -24,7 +25,24 @@ import type { Plate, StructuralModel } from '../types';
  * nominal, tête et écrou d'entreplat 1,5 d —, sur tous les gabarits.
  */
 
-const PROJETS = [['défaut', DEFAULT_PROJECT] as const, ...TEMPLATES.map((t) => [t.id, t.build()] as const)];
+/** Aucun gabarit n'a d'ouverture : un projet en porte trois, de chaque nature. */
+const AVEC_OUVERTURES: ProjectParams = {
+  ...DEFAULT_PROJECT,
+  ouvertures: {
+    ...DEFAULT_PROJECT.ouvertures,
+    enabled: true,
+    items: [
+      { id: 'P1', face: 'long-pan-gauche', type: 'portail', position: 7000, largeur: 4000, hauteur: 4000, allege: 0 },
+      { id: 'C1', face: 'long-pan-droit', type: 'chassis', position: 13000, largeur: 2000, hauteur: 1200, allege: 1200 },
+      { id: 'D1', face: 'pignon-ouest', type: 'porte', position: 2000, largeur: 1000, hauteur: 2100, allege: 0 },
+    ],
+  },
+};
+const PROJETS = [
+  ['défaut', DEFAULT_PROJECT] as const,
+  ...TEMPLATES.map((t) => [t.id, t.build()] as const),
+  ['ouvertures', AVEC_OUVERTURES] as const,
+];
 /** Pénétration tolérée (mm) : en deçà, c'est un contact. */
 const TOL = 1;
 
@@ -232,6 +250,15 @@ function conflitsDeBarres(M: StructuralModel): string[] {
 }
 
 describe('géométrie 3D de tous les gabarits', () => {
+  it('pose les trois ouvertures du projet d’essai, chevêtres attachés', () => {
+    const M = buildProject(AVEC_OUVERTURES);
+    expect(M.members.filter((m) => m.role === 'chevetre').length).toBeGreaterThanOrEqual(9);
+    // Chaque montant a son pied, et au moins un plat d'attache.
+    for (const mo of M.members.filter((m) => m.role === 'chevetre' && Math.abs(m.start.z - m.end.z) > 1)) {
+      expect(M.plates.some((pl) => pl.kind === 'platine-pied' && pl.porteur === mo.id), mo.id).toBe(true);
+      expect(M.plates.some((pl) => pl.kind === 'attache-lisse' && pl.porteur === mo.id), mo.id).toBe(true);
+    }
+  });
   for (const [nom, p] of PROJETS) {
     const M = buildProject(p);
     it(`${nom} : chaque boulon traverse ses trous, sans toucher d'autre pièce`, () => {

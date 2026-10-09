@@ -142,7 +142,44 @@ function dessinerImplantation(
   }
 
   // Les potelets se cotent depuis l'axe de file, le long de chaque pignon.
-  const potelets = model.plates.filter((x) => x.kind === 'platine-pied' && !appuis.some((a) => Math.hypot(a.x - x.origin.x, a.y - x.origin.y) < 1));
+  const roleDuPorteur = (pl: (typeof model.plates)[number]): string | undefined =>
+    pl.porteur ? parId.get(pl.porteur)?.role : undefined;
+  const potelets = model.plates.filter(
+    (x) =>
+      x.kind === 'platine-pied' &&
+      roleDuPorteur(x) === 'potelet' &&
+      !appuis.some((a) => Math.hypot(a.x - x.origin.x, a.y - x.origin.y) < 1),
+  );
+  /*
+   * Pieds de montants de chevêtres : cotés le long de LEUR façade, depuis l'axe
+   * de file le plus proche — ils tombent entre deux poteaux, et le maçon les
+   * implante depuis eux.
+   */
+  const montants = model.plates.filter((x) => x.kind === 'platine-pied' && roleDuPorteur(x) === 'chevetre');
+  const longPan = (y: number): boolean => y < (ys[0] ?? 0) || y > (ys[ys.length - 1] ?? 0);
+  for (const cote of [...new Set(montants.map((x) => (longPan(x.origin.y) ? `y${Math.round(x.origin.y)}` : `x${Math.round(x.origin.x)}`)))]) {
+    const surY = cote.startsWith('y');
+    const pieds = montants.filter((x) => (surY ? `y${Math.round(x.origin.y)}` : `x${Math.round(x.origin.x)}`) === cote);
+    const reperes = surY ? xs : ys;
+    const positions = pieds.map((x) => (surY ? x.origin.x : x.origin.y));
+    const proche = (v: number): number => reperes.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a), reperes[0] ?? 0);
+    const chaine = [...new Set([...positions.map(proche), ...positions])].sort((a, b) => a - b);
+    const fixe = surY ? (pieds[0] as (typeof pieds)[number]).origin.y : (pieds[0] as (typeof pieds)[number]).origin.x;
+    // Au-delà des chaînes des files et des potelets, pour ne pas s'y superposer.
+    const decal = (fixe < (surY ? (ys[0] ?? 0) : (xs[0] ?? 0)) ? -1 : 1) * marge * 0.85;
+    for (let i = 1; i < chaine.length; i++) {
+      const a = chaine[i - 1] as number;
+      const b = chaine[i] as number;
+      coteLineaire(
+        s,
+        surY ? P(a, fixe + decal) : P(fixe + decal, a),
+        surY ? P(b, fixe + decal) : P(fixe + decal, b),
+        0,
+        b - a,
+        { hauteurTexte: 1.7, attaches: false },
+      );
+    }
+  }
   for (const xPignon of [...new Set(potelets.map((x) => Math.round(x.origin.x)))]) {
     const chaine = [...(ys.length > 0 ? [ys[0] as number, ys[ys.length - 1] as number] : []), ...potelets.filter((x) => Math.round(x.origin.x) === xPignon).map((x) => x.origin.y)]
       .sort((a, b) => a - b);

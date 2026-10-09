@@ -53,6 +53,7 @@ const USAGES: Readonly<Record<string, string>> = {
   'gousset-cv': 'contreventements',
   'plat-tube': 'contreventements',
   'gousset-tete': 'têtes de potelets',
+  'attache-lisse': 'chevêtres d’ouverture',
 };
 
 /**
