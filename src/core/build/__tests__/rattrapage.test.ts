@@ -312,12 +312,17 @@ describe('planches de détail d’assemblage', () => {
     }
   });
 
-  it('porte la nomenclature du nœud : pièces, tôles et soudures', () => {
+  it('porte la nomenclature du nœud en tableau : pièces, tôles, boulons et soudures', () => {
     const t = textes('detail-genou');
-    expect(t.some((x) => x.includes('NOMENCLATURE'))).toBe(true);
-    expect(t.some((x) => x.startsWith('PO1 —'))).toBe(true);
-    expect(t.some((x) => x.includes('tôle') && x.includes('Ø22'))).toBe(true);
-    expect(t.some((x) => x.startsWith('Soudure a'))).toBe(true);
+    expect(t).toContain('NOMENCLATURE DU NŒUD');
+    expect(t).toContain('PO1');
+    expect(t).toContain('Poteau IPE 400');
+    // La platine, ses dimensions et son perçage.
+    expect(t.some((x) => / × 20 — \d+ × Ø22$/.test(x))).toBe(true);
+    // La boulonnerie par désignation, avec sa classe.
+    expect(t.some((x) => /^Boulon M20 × \d+ — cl\. 10\.9$/.test(x))).toBe(true);
+    expect(t).toContain('Soudure');
+    expect(t.some((x) => /^a\d+ — angle/.test(x))).toBe(true);
   });
 
   it('porte le symbole de soudure avec sa gorge, et le cercle du pourtour', () => {
@@ -333,9 +338,12 @@ describe('planches de détail d’assemblage', () => {
     expect(t.some((x) => /^2 × \d+$/.test(x)), 'longueur de pourtour écrite à tort').toBe(false);
   });
 
-  it('cote les perçages du nœud et donne leur diamètre', () => {
+  it('cote les perçages du nœud sur la platine en vraie grandeur, avec leur diamètre', () => {
     const t = textes('detail-genou');
-    expect(t.some((x) => /^\d+ trous Ø\d+$/.test(x))).toBe(true);
+    expect(t.some((x) => /VRAIE GRANDEUR$/.test(x))).toBe(true);
+    expect(t.some((x) => /^\d+ × Ø\d+$/.test(x))).toBe(true);
+    // Les ordonnées cumulées des rangées, depuis le bord.
+    expect(t).toEqual(expect.arrayContaining(['0', '85']));
   });
 
   it('repère les tôles par une bulle', () => {

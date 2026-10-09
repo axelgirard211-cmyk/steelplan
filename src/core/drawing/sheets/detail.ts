@@ -1,21 +1,26 @@
 import { getProfile } from '../../catalog/index';
-import { contourDeTrou, designationDeTrou } from '../../geometry/holes';
-import type { Plate, StructuralModel } from '../../build/types';
-import { memberFrame, type Member } from '../../geometry/member';
-import { sectionOutline, type Pt2 } from '../../geometry/section';
+import { diametreNominal, listerBoulons, type BoltPlacement } from '../../build/bolts';
+import { LIBELLE_TOLE, type Plate, type StructuralModel } from '../../build/types';
+import { boltLength, classeDe } from '../../bom/boulonnerie';
+import { designationDeTrou } from '../../geometry/holes';
+import { cutLengths, type Member } from '../../geometry/member';
+import type { Pt2 } from '../../geometry/section';
 import { designationSoudure, type Weld } from '../../geometry/weld';
-import { add, cross, dot, normalize, scale, type Vec3 } from '../../math/vec3';
+import { add, cross, dot, normalize, scale, sub, type Vec3 } from '../../math/vec3';
 import { roundMm } from '../../math/tolerance';
 import { buildingLength } from '../../model/grid';
 import type { ProjectParams } from '../../model/project';
-import { bulleRepere, chaineDeCotes } from '../dimension';
+import { chaineDeCotes } from '../dimension';
 import { dessinerCadre, fenetreDe, type CartoucheData, type SheetFormat } from '../layout';
-import { choisirEchelle } from '../scale';
 import { DrawScene, pt, type Bbox, type Pt } from '../scene';
 import type { Sheet } from '../sheet';
-import { appliquer, cadrer, project, VUE_LONG_PAN, VUE_TRANSVERSALE, type Transform2D, type ViewDir } from '../view';
-import { symboleSoudure } from '../weldSymbol';
-import { silhouette } from './ensemble';
+import { appliquer, project, viewNormal, VUE_LONG_PAN, VUE_TRANSVERSALE, type Transform2D, type ViewDir } from '../view';
+import { dessinerElevationDuNoeud, reperesEnMarge, rupture, souduresEnColonne } from './detailVues';
+import { contourJarret } from '../../build/jarret';
+import type { Haunch } from '../../build/types';
+import { coteLineaire } from '../dimension';
+import { dessinerTableau } from './nomenclature';
+import { dessinerToleAPlat } from './toleAPlat';
 
 /**
  * DÉTAILS D'ASSEMBLAGE.
@@ -89,90 +94,162 @@ export function sheetDetail(
     kind === 'palee'
       ? Math.abs(m.start.y - noeud.y) < epaisseurDuPlan && Math.abs(m.end.y - noeud.y) < epaisseurDuPlan
       : Math.abs(m.start.x - noeud.x) < 1;
-  const barres = model.members.filter((m) => dansLePlan(m) && distanceAuNoeud(m, noeud) < rayon);
-  const toles = model.plates.filter((pl) => distance(pl.origin, noeud) < rayon);
-  const jarrets = model.haunches.filter(
-    (h) => Math.abs(h.root.x - noeud.x) < 1 && distance(h.root, noeud) < rayon,
+  // Les pannes et lisses que la vue traverse se dessinent en section.
+  const traverseLaVue = (m: Member): boolean =>
+    kind !== 'palee' && Math.min(m.start.x, m.end.x) < noeud.x && Math.max(m.start.x, m.end.x) > noeud.x;
+  const barres = model.members.filter(
+    (m) => (dansLePlan(m) || traverseLaVue(m)) && distanceAuNoeud(m, noeud) < rayon,
   );
-  const cordons = model.welds.filter((w) => distance(w.at, noeud) < rayon);
+  const enProfondeur = (q: Vec3): boolean => Math.abs(dot(sub(q, noeud), viewNormal(v))) < epaisseurDuPlan + 200;
+  const toles = model.plates.filter((pl) => distance(pl.origin, noeud) < rayon && enProfondeur(pl.origin));
+  const jarrets = model.haunches.filter((h) => Math.abs(h.root.x - noeud.x) < 1 && distance(h.root, noeud) < rayon);
+  const cordons = model.welds.filter((w) => distance(w.at, noeud) < rayon && enProfondeur(w.at));
+  const boulons = listerBoulons(model.members, model.plates).filter(
+    (b) => distance(b.at, noeud) < rayon && enProfondeur(b.at),
+  );
   if (barres.length === 0) return null;
 
-  // ⚠ Un détail ne montre PAS les pièces entières : elles sont coupées à la
-  // limite du voisinage. Sans cela le poteau descendrait jusqu'au sol et la
-  // traverse filerait au faîtage, et le nœud — le sujet de la planche — se
-  // retrouverait minuscule au milieu d'une feuille vide.
-  const projeteNoeud = project(noeud, v);
-  const voisinage: Bbox = {
-    min: pt(projeteNoeud.x - rayon, projeteNoeud.y - rayon),
-    max: pt(projeteNoeud.x + rayon, projeteNoeud.y + rayon),
-  };
-  const silhouettes = barres
-    .map((m) => ({ m, sil: silhouetteLimitee(m, v, voisinage) }))
-    .filter((x) => x.sil.length > 0);
-
-  // L'emprise est celle du contenu réellement tracé, pas un carré arbitraire :
-  // c'est ce qui permet de remplir la feuille.
-  const emprise = empriseDe(silhouettes.map((x) => x.sil).flat(), projeteNoeud);
   const format = opts.format ?? 'A3';
   const fenetre = fenetreDe(format);
-  const echelle = choisirEchelle(emprise, fenetre, 1.08);
-  const t = cadrer(emprise, fenetre, echelle);
-
+  const xDroite = fenetre.max.x - LARGEUR_COLONNE;
   const s = new DrawScene();
   const titre = titreDetail(kind, opts.lettre);
-  dessinerCadre(s, format, {
-    meta: opts.meta,
-    titre,
-    echelle,
-    page: opts.page,
-    total: opts.total,
-  });
 
-  /* --- Barres, coupées au voisinage, en section hachurée si elles sont vues en bout --- */
-  for (const { m, sil } of silhouettes) {
-    s.polyligne(sil.map((q) => appliquer(t, q)), true, 'contour');
-    hachurerProfil(s, t, m, v);
-  }
-  for (const h of jarrets) {
-    const a = project(h.root, v);
-    const b = project(h.tip, v);
-    const prof = getProfile(h.profileId);
-    s.polyligne(
-      [a, b, pt(b.x, b.y - prof.h / 2), pt(a.x, a.y - prof.h / 2 - h.rootDepth)].map((q) =>
-        appliquer(t, q),
-      ),
-      true,
-      'contour',
-    );
+  /* --- Élévation, à gauche --- */
+  const zoneVue: Bbox = { min: fenetre.min, max: pt(xDroite - 4, fenetre.max.y - 6) };
+  const vue = dessinerElevationDuNoeud(
+    s,
+    { noeud, rayon, v, barres, toles, jarrets, cordons, boulons },
+    zoneVue,
+  );
+  s.texte(pt(fenetre.min.x, fenetre.max.y - 3), `ÉLÉVATION — 1:${vue.echelle}`, { hauteur: 2.6, gras: true });
+  const P3 = (q: Vec3): Pt => appliquer(vue.t, project(q, v));
+
+  const principale = platinePrincipale(kind, toles, noeud);
+  // Les rangées de boulons se cotent sur la platine en vraie grandeur ; ici, le jarret.
+  for (const j of jarrets) coterJarret(s, vue.t, j, v);
+  // Place prise par les cotes sous le dessin : les bulles du bas se posent au-delà.
+  let occupe = vue.dessin;
+  if (principale && kind === 'pied') {
+    coterAncrages(s, vue.t, principale, v, p);
+    occupe = { min: pt(vue.dessin.min.x, vue.dessin.min.y - 26), max: vue.dessin.max };
   }
 
-  /* --- Tôles et leurs perçages, en vraie forme --- */
-  for (const pl of toles) dessinerTole(s, t, pl, v);
-
-  /* --- Cotation des perçages sur la pièce percée --- */
-  for (const m of barres) coterPercagesDuNoeud(s, t, m, v, noeud, echelle);
-
-  /* --- Symboles de soudure : ligne de repère COURTE, au voisinage du cordon --- */
-  for (const [i, w] of cordons.slice(0, 3).entries()) {
-    const at = appliquer(t, project(w.at, v));
-    symboleSoudure(s, at, pt(at.x + 16, at.y + 14 + i * 9), w);
-  }
-
-  /* --- Repères et nomenclature du nœud --- */
-  for (const pl of toles) {
-    const c = appliquer(t, project(pl.origin, v));
-    bulleRepere(s, pt(c.x + 24, c.y + 24), c, pl.mark, 4);
-  }
-  nomenclatureDuNoeud(s, fenetre, barres, toles, cordons);
-
-  return {
-    id: `detail-${kind}`,
-    kind: 'detail',
-    titre,
-    format,
-    echelle,
-    scene: s,
+  // Repères : une bulle par repère, en marge, reliée à la partie VISIBLE de la pièce.
+  const dansLeCadre = (q: Vec3): boolean => {
+    const r = project(q, v);
+    return r.x >= vue.cadre.min.x && r.x <= vue.cadre.max.x && r.y >= vue.cadre.min.y && r.y <= vue.cadre.max.y;
   };
+  const cibles = [
+    ...new Map(
+      [
+        ...barres
+          .filter((m) => vue.ancres.has(m.id))
+          .map((m) => [m.mark, { repere: m.mark, vers: vue.ancres.get(m.id) as Pt }] as const),
+        ...toles.filter((pl) => dansLeCadre(pl.origin)).map((pl) => [pl.mark, { repere: pl.mark, vers: P3(pl.origin) }] as const),
+      ],
+    ).values(),
+  ];
+  reperesEnMarge(s, occupe, cibles);
+  souduresEnColonne(
+    s,
+    vue.dessin,
+    // Un symbole par désignation, au cordon le plus proche du nœud.
+    [...new Map([...cordons].sort((a, b) => distance(b.at, noeud) - distance(a.at, noeud)).map((w) => [designationSoudure(w), w])).values()]
+      .slice(0, 6)
+      .map((w) => ({ w, at: P3(w.at) })),
+  );
+
+  /* --- Platine principale en vraie grandeur, en haut à droite --- */
+  const hauteurPlatine = Math.min(130, (fenetre.max.y - fenetre.min.y) * 0.56);
+  if (principale) {
+    const nombre = model.plates.filter((x) => x.mark === principale.mark).length;
+    s.texte(pt(xDroite, fenetre.max.y - 3), `${LIBELLE_TOLE[principale.kind].toUpperCase()} ${principale.mark} — VRAIE GRANDEUR`, {
+      hauteur: 2.6,
+      gras: true,
+    });
+    dessinerToleAPlat(s, principale, nombre, {
+      min: pt(xDroite + 4, fenetre.max.y - hauteurPlatine),
+      max: pt(fenetre.max.x - 2, fenetre.max.y - 10),
+    });
+  }
+  s.ligne(pt(xDroite - 2, fenetre.min.y), pt(xDroite - 2, fenetre.max.y), 'cotation');
+
+  /* --- Nomenclature du nœud, en bas à droite : ce que le dessin montre --- */
+  nomenclatureDuNoeud(
+    s,
+    { min: pt(xDroite, fenetre.min.y), max: pt(fenetre.max.x, fenetre.max.y - hauteurPlatine - 14) },
+    p,
+    barres.filter((m) => vue.ancres.has(m.id)),
+    toles.filter((pl) => dansLeCadre(pl.origin)),
+    boulons.filter((b) => dansLeCadre(b.at)),
+    cordons.filter((w) => dansLeCadre(w.at)),
+  );
+
+  dessinerCadre(s, format, { meta: opts.meta, titre, echelle: vue.echelle, page: opts.page, total: opts.total });
+  return { id: `detail-${kind}`, kind: 'detail', titre, format, echelle: vue.echelle, scene: s };
+}
+
+/** Largeur de la colonne de droite : platine en vraie grandeur et nomenclature (mm). */
+const LARGEUR_COLONNE = 140;
+
+/** La tôle qui fait l'objet du détail : platine d'about, de faîtage, de pied, gousset. */
+function platinePrincipale(kind: DetailKind, toles: readonly Plate[], noeud: Vec3): Plate | undefined {
+  const sorte: Plate['kind'] = kind === 'pied' ? 'platine-pied' : kind === 'palee' ? 'gousset-cv' : 'platine-about';
+  return toles
+    .filter((pl) => pl.kind === sorte && (kind !== 'faitage' || pl.id.endsWith('-PLF')) && (kind !== 'genou' || pl.id.endsWith('-PLA')))
+    .sort((a, b) => distance(a.origin, noeud) - distance(b.origin, noeud))[0];
+}
+
+/**
+ * Tiges d'ancrage en élévation : leur entraxe sous la platine, et leur
+ * scellement dans le massif, qu'on dessine en caché.
+ */
+function coterAncrages(s: DrawScene, t: Transform2D, pl: Plate, v: ViewDir, p: ProjectParams): void {
+  const P = (q: Vec3): Pt => appliquer(t, project(q, v));
+  const cb = p.connections.columnBase;
+  const points = pl.holes.map((h) => sommetDe(pl, h.at));
+  const xs = [...new Set(points.map((q) => Math.round(P(q).x * 100) / 100))].sort((a, b) => a - b);
+  const bord = pl.outline.map((q) => P(sommetDe(pl, q)));
+  const yBas = Math.min(...bord.map((q) => q.y));
+  const gauche = Math.min(...bord.map((q) => q.x));
+  const droite = Math.max(...bord.map((q) => q.x));
+  const lignes = [gauche, ...xs, droite];
+  chaineDeCotes(
+    s,
+    lignes.map((x) => pt(x, yBas)),
+    -10,
+    lignes.slice(1).map((x, i) => Math.round((x - (lignes[i] as number)) / t.facteur)),
+    { total: true, decalageTotal: -20 },
+  );
+  /*
+   * Scellement : les tiges descendent dans le massif, sous l'arase du béton —
+   * interrompues sur le papier : 500 mm au 1:5 sortiraient de la feuille.
+   */
+  const calage = cb.groutThickness * t.facteur;
+  const scellement = Math.min(cb.anchorEmbedment * t.facteur, 30);
+  const arase = yBas - calage;
+  for (const x of xs) {
+    s.ligne(pt(x, arase), pt(x, arase - scellement), 'cachee');
+    rupture(s, pt(x - 3, arase - scellement), pt(x + 3, arase - scellement));
+  }
+  s.ligne(pt(gauche - 25, arase), pt(droite + 25, arase), 'contour-fin');
+  s.texte(pt(droite + 27, arase), `arase béton — calage ${cb.groutThickness} mm`, { hauteur: 2, ligneDeBase: 'milieu' });
+  s.texte(pt(droite + 27, arase - scellement), `scellement ${cb.anchorEmbedment} mm`, { hauteur: 2, ligneDeBase: 'milieu' });
+}
+
+/** Jarret : sa longueur le long de la traverse et sa hauteur à la racine. */
+function coterJarret(s: DrawScene, t: Transform2D, j: Haunch, v: ViewDir): void {
+  const k = contourJarret(j);
+  const P = (q: Vec3): Pt => appliquer(t, project(q, v));
+  const [haut, bas, pointe] = [P(k.haut), P(k.bas), P(k.pointe)];
+  const sens = pointe.x >= haut.x ? 1 : -1;
+  coteLineaire(s, bas, pt(pointe.x, bas.y), -8, Math.round(Math.abs(pointe.x - bas.x) / t.facteur));
+  coteLineaire(s, haut, bas, sens * 8, Math.round(Math.abs(haut.y - bas.y) / t.facteur));
+}
+
+function sommetDe(pl: Plate, q: Pt2): Vec3 {
+  return add(pl.origin, add(scale(pl.u, q.y), scale(pl.v, q.z)));
 }
 
 /* ------------------------------------------------------------------ */
@@ -283,55 +360,6 @@ function rayonDeVoisinage(p: ProjectParams, kind: DetailKind): number {
   return Math.max(700, 4 * hTraverse);
 }
 
-/**
- * Silhouette d'une barre LIMITÉE à un rectangle du plan de vue : le contour
- * réel de la pièce — coupes comprises — découpé par le rectangle (algorithme
- * de Sutherland-Hodgman).
- *
- * ⚠ On découpait l'AXE D'ÉPURE, puis on reconstruisait un rectangle autour : la
- * pièce s'étendait jusqu'à son point de travail, quelles que soient ses coupes.
- * Au genou, la console entrait jusqu'à l'axe du poteau.
- */
-function silhouetteLimitee(m: Member, v: ViewDir, rect: Bbox): Pt[] {
-  let poly = silhouette(m, v);
-  const bords: [(q: Pt) => number][] = [
-    [(q) => q.x - rect.min.x],
-    [(q) => rect.max.x - q.x],
-    [(q) => q.y - rect.min.y],
-    [(q) => rect.max.y - q.y],
-  ];
-  for (const [dedans] of bords) {
-    if (poly.length === 0) break;
-    const sortie: Pt[] = [];
-    for (let i = 0; i < poly.length; i++) {
-      const p0 = poly[i] as Pt;
-      const p1 = poly[(i + 1) % poly.length] as Pt;
-      const d0 = dedans(p0);
-      const d1 = dedans(p1);
-      if (d0 >= 0) sortie.push(p0);
-      if (d0 >= 0 !== d1 >= 0) {
-        const t = d0 / (d0 - d1);
-        sortie.push(pt(p0.x + (p1.x - p0.x) * t, p0.y + (p1.y - p0.y) * t));
-      }
-    }
-    poly = sortie;
-  }
-  return poly.length >= 3 ? poly : [];
-}
-
-/** Emprise des points tracés, élargie d'un peu autour du nœud. */
-function empriseDe(points: readonly Pt[], noeud: Pt): Bbox {
-  if (points.length === 0) return { min: noeud, max: noeud };
-  const xs = points.map((q) => q.x);
-  const ys = points.map((q) => q.y);
-  // Marge modèle pour loger cotes et symboles de soudure.
-  const marge = Math.max(120, (Math.max(...xs) - Math.min(...xs)) * 0.18);
-  return {
-    min: pt(Math.min(...xs) - marge, Math.min(...ys) - marge),
-    max: pt(Math.max(...xs) + marge, Math.max(...ys) + marge),
-  };
-}
-
 function distance(a: Vec3, b: Vec3): number {
   return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 }
@@ -353,139 +381,80 @@ function distanceAuNoeud(m: Member, q: Vec3): number {
   });
 }
 
-/** Hachure de la section d'une barre vue en coupe. */
-function hachurerProfil(s: DrawScene, t: Transform2D, m: Member, v: ViewDir): void {
-  const profil = getProfile(m.profileId);
-  const f = memberFrame(m);
-  // Barre perpendiculaire au plan de vue : on la voit en section.
-  const perpendiculaire = Math.abs(dot(f.ax, v.right)) < 0.05 && Math.abs(dot(f.ax, v.up)) < 0.05;
-  if (!perpendiculaire) return;
-
-  const contour = sectionOutline(profil, 8);
-  const centre = project(m.start, v);
-  const en2d = (q: { y: number; z: number }): Pt => {
-    const offset: Vec3 = {
-      x: f.ay.x * q.y + f.az.x * q.z,
-      y: f.ay.y * q.y + f.az.y * q.z,
-      z: f.ay.z * q.y + f.az.z * q.z,
-    };
-    return appliquer(t, pt(centre.x + dot(offset, v.right), centre.y + dot(offset, v.up)));
-  };
-  const ext = contour.outer.map(en2d);
-  s.hachure(ext, contour.holes.map((r) => r.map(en2d)), 1.4, 45);
-  s.polyligne(ext, true, 'contour');
-}
-
-/** Tôle d'assemblage vue de face ou de chant, avec ses perçages. */
-function dessinerTole(s: DrawScene, t: Transform2D, pl: Plate, v: ViewDir): void {
-  // Le contour d'une tôle est dans SON plan (y, z locaux) : on le remonte en 3D
-  // par son repère, puis on le projette comme n'importe quel point du modèle.
-  const en2d = (q: Pt2): Pt => {
-    const p3: Vec3 = {
-      x: pl.origin.x + pl.u.x * q.y + pl.v.x * q.z,
-      y: pl.origin.y + pl.u.y * q.y + pl.v.y * q.z,
-      z: pl.origin.z + pl.u.z * q.y + pl.v.z * q.z,
-    };
-    return appliquer(t, project(p3, v));
-  };
-  const contour = pl.outline.map(en2d);
-  s.hachure(contour, [], 1.1, 135);
-  s.polyligne(contour, true, 'contour');
-
-  for (const h of pl.holes) {
-    const c = en2d(h.at);
-    const r = (h.d / 2) * t.facteur;
-    if (h.oblong) s.polyligne(contourDeTrou(h).map(en2d), true, 'contour');
-    else s.cercle(c, Math.max(r, 0.4), 'contour');
-    s.ligne(pt(c.x - r - 1.5, c.y), pt(c.x + r + 1.5, c.y), 'axe');
-    s.ligne(pt(c.x, c.y - r - 1.5), pt(c.x, c.y + r + 1.5), 'axe');
-  }
-}
-
 /**
- * Cote les perçages présents au voisinage du nœud, sur la pièce qui les porte.
- * On cote les abscisses ET l'entraxe transversal : ce sont les deux données
- * nécessaires pour percer.
+ * Nomenclature du nœud, en tableau : les pièces assemblées, les tôles, la
+ * boulonnerie par désignation et les cordons — ce que l'atelier sort du magasin
+ * pour monter ce nœud-là.
  */
-function coterPercagesDuNoeud(
-  s: DrawScene,
-  t: Transform2D,
-  m: Member,
-  v: ViewDir,
-  noeud: Vec3,
-  echelle: number,
-): void {
-  if (m.holes.length === 0) return;
-  const f = memberFrame(m);
-  const proches = m.holes.filter((h) => {
-    const p3 = pointDuTrou(m, f, h);
-    return distance(p3, noeud) < 1200;
-  });
-  if (proches.length === 0) return;
-
-  const abscisses = [...new Set(proches.map((h) => Math.round(h.s)))].sort((a, b) => a - b);
-  if (abscisses.length < 2) return;
-
-  const papier = (abs: number): Pt => {
-    const h = proches.find((x) => Math.round(x.s) === abs);
-    if (!h) return pt(0, 0);
-    return appliquer(t, project(pointDuTrou(m, f, h), v));
-  };
-  const points = abscisses.map(papier);
-  const ecarts = abscisses.slice(1).map((a, i) => a - (abscisses[i] as number));
-  chaineDeCotes(s, points, 18 + 400 / echelle, ecarts, { total: false });
-
-  // Diamètre de perçage, une fois pour le groupe.
-  const premier = proches[0] as (typeof proches)[number];
-  s.texte(pt((points[0] as Pt).x, (points[0] as Pt).y - 8), `${proches.length} trous Ø${premier.d}`, {
-    hauteur: 2.2,
-  });
-}
-
-function pointDuTrou(
-  m: Member,
-  f: ReturnType<typeof memberFrame>,
-  h: { s: number; at: { y: number; z: number } },
-): Vec3 {
-  return {
-    x: m.start.x + f.ax.x * h.s + f.ay.x * h.at.y + f.az.x * h.at.z,
-    y: m.start.y + f.ax.y * h.s + f.ay.y * h.at.y + f.az.y * h.at.z,
-    z: m.start.z + f.ax.z * h.s + f.ay.z * h.at.z + f.az.z * h.at.z,
-  };
-}
-
-/** Nomenclature du nœud : pièces, tôles, boulonnerie, soudures. */
 function nomenclatureDuNoeud(
   s: DrawScene,
-  fenetre: Bbox,
+  zone: Bbox,
+  p: ProjectParams,
   barres: readonly Member[],
   toles: readonly Plate[],
+  boulons: readonly BoltPlacement[],
   cordons: readonly Weld[],
 ): void {
-  const lignes: string[] = [];
-  for (const m of [...new Map(barres.map((b) => [b.mark, b])).values()]) {
-    lignes.push(`${m.mark} — ${getProfile(m.profileId).id} (${m.grade})`);
+  const compte = <T,>(liste: readonly T[], cle: (x: T) => string): Map<string, { x: T; n: number }> => {
+    const m = new Map<string, { x: T; n: number }>();
+    for (const x of liste) {
+      const k = cle(x);
+      const d = m.get(k);
+      if (d) d.n += 1;
+      else m.set(k, { x, n: 1 });
+    }
+    return m;
+  };
+  const lignes: string[][] = [];
+  for (const { x: m, n } of compte(barres, (b) => b.mark).values()) {
+    lignes.push([m.mark, `${LIBELLE_ROLE[m.role] ?? m.role} ${getProfile(m.profileId).id}`, `L = ${roundMm(cutLengths(m).axis)} — ${m.grade}`, `${n}`]);
   }
-  for (const pl of [...new Map(toles.map((x) => [x.mark, x])).values()]) {
+  for (const { x: pl, n } of compte(toles, (t) => t.mark).values()) {
     const ys = pl.outline.map((q) => q.y);
     const zs = pl.outline.map((q) => q.z);
-    const l = roundMm(Math.max(...ys) - Math.min(...ys));
-    const h = roundMm(Math.max(...zs) - Math.min(...zs));
-    const trous = pl.holes.length > 0 ? ` — ${pl.holes.length} × ${[...new Set(pl.holes.map((x) => designationDeTrou(x)))].join(' / ')}` : '';
-    lignes.push(`${pl.mark} — tôle ${l} × ${h} × ${pl.thickness}${trous}`);
+    const trous = pl.holes.length > 0 ? ` — ${pl.holes.length} × ${[...new Set(pl.holes.map((h) => designationDeTrou(h)))].join(' / ')}` : '';
+    lignes.push([
+      pl.mark,
+      LIBELLE_TOLE[pl.kind],
+      `${roundMm(Math.max(...ys) - Math.min(...ys))} × ${roundMm(Math.max(...zs) - Math.min(...zs))} × ${pl.thickness}${trous}`,
+      `${n}`,
+    ]);
   }
-  for (const w of [...new Map(cordons.map((x) => [designationSoudure(x), x])).values()]) {
-    lignes.push(`Soudure ${designationSoudure(w)}`);
+  const designation = (b: BoltPlacement): string => {
+    const dn = diametreNominal(b);
+    if (b.kind === 'ancrage') return `Tige d’ancrage M${dn} — scellement ${p.connections.columnBase.anchorEmbedment}`;
+    return `Boulon M${dn} × ${boltLength(b.grip, dn)} — cl. ${classeDe(b.d, p)}`;
+  };
+  for (const { x: b, n } of compte(boulons, designation).values()) {
+    lignes.push(['', designation(b), b.kind === 'ancrage' ? 'écrou, contre-écrou, rondelle' : 'écrou, 2 rondelles', `${n}`]);
   }
-
-  let y = fenetre.min.y + 4 + lignes.length * 3.6;
-  s.texte(pt(fenetre.max.x, y + 4), 'NOMENCLATURE DU NŒUD', {
-    hauteur: 2.2,
-    ancrage: 'droite',
-    gras: true,
-  });
-  for (const l of lignes) {
-    s.texte(pt(fenetre.max.x, y), l, { hauteur: 2.2, ancrage: 'droite' });
-    y -= 3.6;
+  for (const { x: w, n } of compte(cordons, (c) => designationSoudure(c)).values()) {
+    lignes.push(['', 'Soudure', designationSoudure(w), `${n}`]);
   }
+  s.texte(pt(zone.min.x, zone.max.y + 2), 'NOMENCLATURE DU NŒUD', { hauteur: 2.6, gras: true });
+  dessinerTableau(
+    s,
+    [
+      { titre: 'Rep.', poids: 0.9 },
+      { titre: 'Désignation', poids: 3.4 },
+      { titre: 'Dimensions', poids: 3.6 },
+      { titre: 'Nb', poids: 0.7, aDroite: true },
+    ],
+    lignes,
+    zone,
+  );
 }
+
+/** Désignation courte d'une barre selon son rôle, pour la nomenclature du nœud. */
+const LIBELLE_ROLE: Partial<Record<Member['role'], string>> = {
+  poteau: 'Poteau',
+  traverse: 'Traverse',
+  console: 'Console',
+  panne: 'Panne',
+  lisse: 'Lisse',
+  potelet: 'Potelet',
+  contreventement: 'Diagonale',
+  attache: 'Échantignolle',
+  equerre: 'Équerre',
+  lierne: 'Lierne',
+};
