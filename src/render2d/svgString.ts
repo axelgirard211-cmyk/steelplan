@@ -26,7 +26,7 @@ export function sheetToSvg(sheet: Sheet, opts: SvgOptions = {}): string {
   const encre = opts.encre ?? '#111318';
   const papier = opts.papier === undefined ? '#ffffff' : opts.papier;
 
-  const corps = sheet.scene.entities.map((e) => entiteToSvg(e, f.hauteur, encre)).join('\n');
+  const corps = sheet.scene.entities.map((e) => entiteToSvg(e, f.hauteur, encre, papier)).join('\n');
   const fond =
     papier === null
       ? ''
@@ -47,7 +47,7 @@ export function tailleFeuille(format: SheetFormat): { largeur: number; hauteur: 
   return FORMATS[format];
 }
 
-function entiteToSvg(e: DrawEntity, hFeuille: number, encre: string): string {
+function entiteToSvg(e: DrawEntity, hFeuille: number, encre: string, papier: string | null = '#ffffff'): string {
   const style = LAYER_STYLES[e.layer];
   const trait = `stroke="${encre}" stroke-width="${style.width}"${
     style.dash.length > 0 ? ` stroke-dasharray="${style.dash.join(' ')}"` : ''
@@ -97,7 +97,9 @@ function entiteToSvg(e: DrawEntity, hFeuille: number, encre: string): string {
     case 'remplissage': {
       const d = [e.contour, ...e.trous].map((r) => cheminDe(r, Y, true)).join(' ');
       const gris = Math.round(e.gris * 255);
-      const couleur = e.gris === 0 ? encre : `rgb(${gris},${gris},${gris})`;
+      // Blanc = masque : il prend la couleur du papier, quel que soit le thème.
+      if (e.gris >= 0.999 && papier === null) return '';
+      const couleur = e.gris === 0 ? encre : e.gris >= 0.999 ? (papier as string) : `rgb(${gris},${gris},${gris})`;
       return `<path d="${d}" fill="${couleur}" fill-rule="evenodd" stroke="none"/>`;
     }
 

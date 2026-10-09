@@ -169,7 +169,8 @@ function diametreNominal(dPercage: number, p: ProjectParams): number {
   return dPercage - 2;
 }
 
-function classeDe(dPercage: number, p: ProjectParams): BoltClass {
+/** Classe de qualité du boulon dont vient ce perçage. */
+export function classeDe(dPercage: number, p: ProjectParams): BoltClass {
   const candidats = [
     p.connections.rafterToColumn.bolt,
     p.connections.ridge.bolt,

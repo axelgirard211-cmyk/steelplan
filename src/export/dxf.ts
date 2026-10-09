@@ -159,6 +159,9 @@ function ecrireEntite(g: Emit, e: DrawEntity, nom: (c: Layer) => string): void {
       break;
 
     case 'remplissage':
+      // Un masque blanc sous un repère n'a pas d'équivalent en R12 : un SOLID
+      // s'y dessinerait en noir. On l'omet — la CAO superpose sans masquer.
+      if (e.gris >= 0.999) break;
       // R12 n'a pas de polygone plein quelconque : on triangule en SOLID, ce qui
       // suffit aux flèches de cotation et aux petits symboles.
       for (let i = 1; i + 1 < e.contour.length; i++) {
