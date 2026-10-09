@@ -11,7 +11,8 @@ import {
 } from '../../model/ouvertures';
 import type { ProjectParams } from '../../model/project';
 import { barre } from './commun';
-import { railLevels } from './facades';
+import { debordDesLisses, railLevels } from './facades';
+import { sectionOutline } from '../../geometry/section';
 
 /**
  * CHEVÊTRES D'OUVERTURE — ce qui borde le vide.
@@ -84,9 +85,30 @@ export function intervallesInterrompus(
   face: FaceOuverture,
   z: number,
 ): [number, number][] {
-  return ouverturesValides(p)
-    .filter((o) => o.face === face && z >= o.allege && z <= o.allege + o.hauteur)
-    .map((o) => [o.position, o.position + o.largeur] as [number, number]);
+  /*
+   * ⚠ Les lisses s'arrêtent à la RIVE des montants, avec un jeu — pas sur leur
+   * axe, où elles entraient d'une demi-largeur de profil. Et sous l'allège d'un
+   * châssis, les montants descendent jusqu'au sol : les lisses qui y passent
+   * sont coupées autour d'eux.
+   */
+  const m = demiLargeur(p.ouvertures.profile) + JEU;
+  const out: [number, number][] = [];
+  for (const o of ouverturesValides(p)) {
+    if (o.face !== face) continue;
+    const g = o.position;
+    const d = o.position + o.largeur;
+    if (z >= o.allege && z <= o.allege + o.hauteur) out.push([g - m, d + m]);
+    else if (z < niveauDAppui(p, o)) out.push([g - m, g + m], [d - m, d + m]);
+  }
+  return out;
+}
+
+/** Jeu entre l'about d'une lisse et la rive du montant qui la reçoit (mm). */
+const JEU = 10;
+
+/** Demi-encombrement d'un profil dans le plan de façade (mm), côté le plus large. */
+function demiLargeur(profil: string): number {
+  return Math.max(...sectionOutline(getProfile(profil), 1).outer.map((q) => Math.abs(q.y)));
 }
 
 /**
@@ -154,8 +176,7 @@ export function repereFacade(
   face: FaceOuverture,
 ): { point: (s: number, z: number) => Vec3; up: Vec3 } {
   const g = p.grid;
-  const debord =
-    getProfile(p.frame.columnProfile).h / 2 + getProfile(p.secondary.rails.profile).h / 2;
+  const debord = debordDesLisses(p, face.startsWith('pignon'));
   switch (face) {
     case 'long-pan-gauche':
       return { point: (s, z) => v3(s, -debord, z), up: EY };
@@ -176,7 +197,11 @@ export function buildOuvertures(p: ProjectParams, out: Member[]): void {
     const gauche = o.position;
     const droite = o.position + o.largeur;
     const tete = o.allege + o.hauteur;
-    const sommet = niveauDAppui(p, o);
+    // La tête du montant s'arrête sous la lisse continue qui la tient, avec un jeu.
+    const appui = niveauDAppui(p, o);
+    const sommet = appui < p.grid.eaveHeight ? appui - demiLargeur(p.secondary.rails.profile) - JEU : appui - JEU;
+    // Linteau et traverse basse viennent entre les montants, au contact de leurs rives.
+    const rive = demiLargeur(par.profile);
     const nom = `${o.id}`;
 
     /*
@@ -211,8 +236,8 @@ export function buildOuvertures(p: ProjectParams, out: Member[]): void {
         'chevetre',
         par.profile,
         par.grade,
-        point(gauche, tete),
-        point(droite, tete),
+        point(gauche + rive, tete),
+        point(droite - rive, tete),
         up,
         `linteau — ${nom}`,
       ),
@@ -229,8 +254,8 @@ export function buildOuvertures(p: ProjectParams, out: Member[]): void {
           'chevetre',
           par.profile,
           par.grade,
-          point(gauche, o.allege),
-          point(droite, o.allege),
+          point(gauche + rive, o.allege),
+          point(droite - rive, o.allege),
           up,
           `traverse basse — ${nom}`,
         ),

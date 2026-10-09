@@ -1,10 +1,10 @@
 import { getProfile } from '../catalog/index';
 import { miterCut, squareCut, type CutPlane, type Member } from '../geometry/member';
-import { frameStations, rafterLength, ridgeHeight, ridgeY } from '../model/grid';
+import { frameStations, leftSlopeRad, rafterLength, ridgeHeight, ridgeY } from '../model/grid';
 import type { ProjectParams } from '../model/project';
 import { add, cross, dot, normalize, scale, sub, v3, EX, EY, type Vec3 } from '../math/vec3';
 import { consoleDeDebord, debordStructurel, genou, pointDeRive } from './genou';
-import { tieLevel } from './buildTruss';
+import { tieLevel, tieZ } from './buildTruss';
 import { sousLEntrait } from './connections/platines';
 import type { Haunch } from './types';
 
@@ -41,6 +41,24 @@ function profilsFile(p: ProjectParams, i: number): { poteau: string; traverse: s
 }
 
 /**
+ * Relèvement du portique de la file `i` (mm, vertical).
+ *
+ * ⚠ Un portique de pignon DISTINCT n'a pas la hauteur de traverse des autres.
+ * Monté sur les mêmes points de travail, le dessus de sa traverse n'était pas
+ * dans le plan des pannes : ses échantignolles flottaient au-dessus d'une
+ * traverse plus basse, ou entraient dans une plus haute. On l'aligne DESSUS DE
+ * TRAVERSE sur les portiques courants, comme on le fait en atelier : tout le
+ * portique monte (ou descend) de la différence de demi-hauteurs.
+ */
+export function releveDuPortique(p: ProjectParams, i: number): number {
+  if (!p.frame.enabled || appuiTreillis(p)) return 0;
+  const traverse = profilsFile(p, i).traverse;
+  if (traverse === p.frame.rafterProfile) return 0;
+  const ecart = (getProfile(p.frame.rafterProfile).h - getProfile(traverse).h) / 2;
+  return ecart / Math.cos(leftSlopeRad(p.grid));
+}
+
+/**
  * Altitude de tête des poteaux.
  *
  * Sous une traverse à âme pleine, c'est le point de travail, donc la hauteur à
@@ -55,7 +73,13 @@ function teteGauche(p: ProjectParams): number {
 function teteDroite(p: ProjectParams): number {
   const g = p.grid;
   const base = g.roofType === 'monopente' ? ridgeHeight(g) : g.eaveHeight;
-  return appuiTreillis(p) ? base - p.truss.heightAtSupport : base;
+  /*
+   * ⚠ Sous une ferme, l'altitude de l'ENTRAIT au droit du poteau. Sur une ferme
+   * monopente l'entrait reste droit : le poteau haut montait à la hauteur de
+   * l'égout haut moins la hauteur d'appui, en travers de l'entrait et de la
+   * dernière diagonale.
+   */
+  return appuiTreillis(p) ? tieZ(g, p.truss, g.span) : base;
 }
 
 /* ------------------------------------------------------------------ */
@@ -72,9 +96,10 @@ export function buildColumns(p: ProjectParams): Member[] {
     const file = `file ${i + 1}`;
 
     const piedG = v3(x, 0, 0);
-    const teteG = v3(x, 0, teteGauche(p));
+    const releve = releveDuPortique(p, i);
+    const teteG = v3(x, 0, teteGauche(p) + releve);
     const piedD = v3(x, g.span, 0);
-    const teteD = v3(x, g.span, teteDroite(p));
+    const teteD = v3(x, g.span, teteDroite(p) + releve);
     const dirs = directionsDeTraverse(p, x);
     const coupe = (tete: Vec3, versTravee: Vec3): CutPlane | null =>
       p.frame.enabled && !surTreillis
@@ -101,7 +126,8 @@ export function basDePlatineDeGenou(p: ProjectParams, i: number, cote: 'gauche' 
   if (x === undefined) return null;
   const profils = profilsFile(p, i);
   const dirs = directionsDeTraverse(p, x);
-  const tete = cote === 'gauche' ? v3(x, 0, teteGauche(p)) : v3(x, p.grid.span, teteDroite(p));
+  const releve = releveDuPortique(p, i);
+  const tete = cote === 'gauche' ? v3(x, 0, teteGauche(p) + releve) : v3(x, p.grid.span, teteDroite(p) + releve);
   const k = genou(p, tete, dirs[cote], profils.poteau, profils.traverse, p.frame.haunch.enabled);
   return k.platine.centre.z - k.platine.hauteur / 2;
 }
@@ -198,9 +224,10 @@ function bipente(
 ): void {
   const g = p.grid;
   const f = p.frame;
-  const genouG = v3(x, 0, g.eaveHeight);
-  const genouD = v3(x, g.span, g.eaveHeight);
-  const faitage = v3(x, ridgeY(g), ridgeHeight(g));
+  const releve = releveDuPortique(p, i);
+  const genouG = v3(x, 0, g.eaveHeight + releve);
+  const genouD = v3(x, g.span, g.eaveHeight + releve);
+  const faitage = v3(x, ridgeY(g), ridgeHeight(g) + releve);
 
   const rampantG = normalize(sub(faitage, genouG));
   const rampantD = normalize(sub(faitage, genouD));
@@ -259,8 +286,9 @@ function monopente(
 ): void {
   const g = p.grid;
   const f = p.frame;
-  const genouG = v3(x, 0, g.eaveHeight);
-  const genouD = v3(x, g.span, ridgeHeight(g));
+  const releve = releveDuPortique(p, i);
+  const genouG = v3(x, 0, g.eaveHeight + releve);
+  const genouD = v3(x, g.span, ridgeHeight(g) + releve);
   const rampant = normalize(sub(genouD, genouG));
   const rampantInverse = normalize(sub(genouG, genouD));
   // Deux genoux, bas et haut : la traverse s'arrête sur une platine à chacun.

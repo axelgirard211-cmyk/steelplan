@@ -4,7 +4,7 @@ import { v3, type Vec3 } from '../math/vec3';
 import { frameStations, rafterLength, ridgeY, roofNormal, roofZ } from '../model/grid';
 import type { ProjectParams } from '../model/project';
 import { distribute } from '../model/secondary';
-import { barre, hauteurPorteur } from './secondaire/commun';
+import { barre, dessusDuPorteur } from './secondaire/commun';
 import { semelleInferieure } from './connections/attaches';
 import { add, cross, normalize, scale, sub, EX } from '../math/vec3';
 import { buildGablePosts, buildRails } from './secondaire/facades';
@@ -137,8 +137,7 @@ export function purlinLines(p: ProjectParams): Map<'gauche' | 'droite', PurlinAx
    */
   const profilPanne = getProfile(p.secondary.purlins.profile);
   const dessous = -(semelleInferieure(profilPanne)?.z ?? -profilPanne.h / 2);
-  const recul =
-    hauteurPorteur(p) / 2 + getProfile(p.connections.purlinCleat.profile).h + dessous;
+  const recul = dessusDuPorteur(p) + getProfile(p.connections.purlinCleat.profile).h + dessous;
   const yFaitage = g.roofType === 'monopente' ? g.span : ridgeY(g);
   const cotes: ('gauche' | 'droite')[] =
     g.roofType === 'monopente' ? ['gauche'] : ['gauche', 'droite'];

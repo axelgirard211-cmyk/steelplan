@@ -35,7 +35,16 @@ export function rangDeTete(p: ProjectParams): number {
  * un jeu. Les attaches de contreventement posées sur le potelet restent dessous.
  */
 export function reserveDeTete(p: ProjectParams): number {
-  return rangDeTete(p) + p.connections.gusset.bolt.d + 10;
+  /*
+   * ⚠ Tout le gousset de tête, pas seulement son rang de boulons : ses oblongs
+   * descendent de la course sous le rang, et leur pince au-delà. Un gousset de
+   * contreventement posé juste sous le rang entrait dans le gousset de tête dès
+   * que les deux mailles d'un pignon se rejoignaient sur un seul potelet.
+   */
+  const bolt = p.connections.gusset.bolt;
+  const d0 = holeDiameter(bolt);
+  const pince = Math.max(1.5 * d0, minEdgeDistance(bolt));
+  return rangDeTete(p) + courseDeTete(p) + d0 / 2 + pince + 10;
 }
 
 /** Ce qui coiffe le potelet, côté gousset. */

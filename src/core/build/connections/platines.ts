@@ -1,5 +1,5 @@
 import { getProfile } from '../../catalog/index';
-import { boltGrid, hole, pitchFor, type Hole } from '../../geometry/holes';
+import { boltGrid, grilleDePlatine, hole, pitchFor, semellesDerrierePlatine, type Hole } from '../../geometry/holes';
 import { memberFrame, type Member } from '../../geometry/member';
 import { sectionOutline } from '../../geometry/section';
 import { add, cross, dot, normalize, scale, sub, v3 } from '../../math/vec3';
@@ -7,6 +7,7 @@ import { holeDiameter, minEdgeDistance, positionsDesAncrages, tigeDAncrage } fro
 import type { ProjectParams } from '../../model/project';
 import type { Plate, PlateHole } from '../types';
 import { consoleDeDebord, genou } from '../genou';
+import { releveDuPortique } from '../buildFrame';
 import { leftSlopeRad, ridgeHeight, rightSlopeRad } from '../../model/grid';
 import { rectangle, surLAxe } from './geom';
 import { trusquinage } from './eclisses';
@@ -241,8 +242,16 @@ export function genoux(
     );
 
     const f = memberFrame(po);
-    const pitch = pitchFor(g.platine.hauteurUtile, ep.rows, ep.edgeDistance);
-    const grille = boltGrid(ep.rows, ep.cols, pitch, ep.gauge);
+    const dir = normalize(sub(autreBout, po.end));
+    const tr = getProfile(traverse.profileId);
+    const grille = grilleDePlatine({
+      ...ep,
+      hauteurUtile: g.platine.hauteurUtile,
+      semelles:
+        tr.shape === 'I'
+          ? semellesDerrierePlatine(tr.h, tr.tf, Math.max(0.2, Math.hypot(dir.x, dir.y)), g.platine.hauteurUtile)
+          : [],
+    });
     const signe = g.platine.centre.y > po.end.y ? 1 : -1;
     const zSemelle = (signe * profilPoteau.h) / 2;
     // Le poteau est vertical, son abscisse est l'altitude depuis le pied. La
@@ -373,7 +382,7 @@ export function dimensionsPlatineDeFaitage(
 ): { largeur: number; hauteur: number; hauteurUtile: number; dessous: number } {
   const ep = p.connections.ridge;
   const h = getProfile(profilTraverse).h;
-  const hauteurUtile = p.frame.ridgeHaunch.enabled ? p.frame.ridgeHaunch.depth : getProfile(p.frame.rafterProfile).h;
+  const hauteurUtile = p.frame.ridgeHaunch.enabled ? p.frame.ridgeHaunch.depth : getProfile(profilTraverse).h;
   const sousJarret = p.frame.ridgeHaunch.enabled ? Math.max(0, p.frame.ridgeHaunch.depth - h) : 0;
   // Le versant le plus raide donne la platine la plus basse.
   const dessous = Math.max(
@@ -387,12 +396,30 @@ export function dimensionsPlatineDeFaitage(
   return { largeur: getProfile(profilTraverse).b + 2 * ep.overhang, hauteur: dessus + dessous, hauteurUtile, dessous };
 }
 
+/**
+ * Semelles derrière la platine de faîtage, sous la pente la plus raide : le
+ * calcul de l'assemblage lit les mêmes.
+ */
+export function semellesDuFaitage(
+  p: ProjectParams,
+  hauteur: number,
+  profilTraverse = p.frame.rafterProfile,
+): [number, number][] {
+  const tr = getProfile(profilTraverse);
+  if (tr.shape !== 'I') return [];
+  const cosA = Math.min(Math.cos(leftSlopeRad(p.grid)), Math.cos(rightSlopeRad(p.grid)));
+  return semellesDerrierePlatine(tr.h, tr.tf, cosA, hauteur);
+}
+
 export function faitages(p: ProjectParams, members: readonly Member[], plates: Plate[]): void {
   const ep = p.connections.ridge;
-  const hauteur = dimensionsPlatineDeFaitage(p, p.frame.rafterProfile).hauteurUtile;
-  const pitch = pitchFor(hauteur, ep.rows, ep.edgeDistance);
-  const grille = boltGrid(ep.rows, ep.cols, pitch, ep.gauge);
-  const trous = grille.map((g) => ({ at: g, d: holeDiameter(ep.bolt) }));
+  // ⚠ Par traverse : celle d'un portique de pignon distinct n'a pas la hauteur des autres.
+  const trousDe = (profil: string): PlateHole[] => {
+    const hauteur = dimensionsPlatineDeFaitage(p, profil).hauteurUtile;
+    return grilleDePlatine({ ...ep, hauteurUtile: hauteur, semelles: semellesDuFaitage(p, hauteur, profil) }).map(
+      (g) => ({ at: g, d: holeDiameter(ep.bolt) }),
+    );
+  };
 
   // Deux platines de faîtage se font face à chaque sommet : on les apparie, pour
   // que la boulonnerie ne soit pas comptée deux fois.
@@ -424,7 +451,7 @@ export function faitages(p: ProjectParams, members: readonly Member[], plates: P
      * de faîtage boulonnée sur rien — que la boulonnerie comptait, faute de
      * mieux, en tiges d'ancrage.
      */
-    if (Math.abs(sommet.z - zFaitage) > 1) continue;
+    if (Math.abs(sommet.z - zFaitage - releveDuPortique(p, Number(tr.id.split('-')[0]))) > 1) continue;
 
     // ⚠ La platine est soudée sur la FACE DE COUPE, pas perpendiculairement à
     // l'axe : au faîtage la coupe est verticale, la platine l'est donc aussi.
@@ -466,7 +493,8 @@ export function faitages(p: ProjectParams, members: readonly Member[], plates: P
       grade: tr.grade,
       thickness: ep.thickness,
       outline: rectangle(largeur, zHaut - zBas),
-      holes: trous.map((h) => ({ ...h, at: { y: h.at.y, z: h.at.z + decalage } })),
+      // ⚠ Le repère (u, v) de la tôle peut être retourné : la grille se compte vers le haut.
+      holes: trousDe(tr.profileId).map((h) => ({ ...h, at: { y: h.at.y, z: sens * h.at.z + decalage } })),
       pairedWith: partenaire.get(`${tr.id}-PLF`) ?? null,
       porteur: tr.id,
       origin: add(o, scale(vHaut, centre)),

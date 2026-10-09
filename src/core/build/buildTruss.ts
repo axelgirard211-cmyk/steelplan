@@ -461,7 +461,7 @@ function emit(
   };
 
   const profil = getProfile(profileId);
-  if (!p.truss.doubleAngles || profil.shape !== 'L') {
+  if (profil.shape !== 'L') {
     out.push(base);
     return;
   }
@@ -474,8 +474,17 @@ function emit(
     start: add(base.start, scale(f.ay, signe * d)),
     end: add(base.end, scale(f.ay, signe * d)),
     mirrored: miroir,
-    position: `${position} (cornière ${suffixe.toUpperCase()})`,
+    position: suffixe ? `${position} (cornière ${suffixe.toUpperCase()})` : position,
   });
+  /*
+   * ⚠ Une cornière SIMPLE se plaque, elle aussi, contre une face du gousset :
+   * posée sur le plan de la ferme, elle occupait l'épaisseur du gousset et
+   * ses boulons n'avaient rien à serrer.
+   */
+  if (!p.truss.doubleAngles) {
+    out.push(decale(1, false, ''));
+    return;
+  }
   out.push(decale(1, false, 'a'), decale(-1, true, 'b'));
 }
 

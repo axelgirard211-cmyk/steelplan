@@ -250,7 +250,8 @@ describe('invariant — jarrets et échantignolles font partie de leur traverse'
             : {
                 point: add(
                   add(porteur!.start, scale(fPo.ax, dot(sub(milieu, porteur!.start), fPo.ax))),
-                  scale(fPo.az, getProfile(porteur!.profileId).h / 2),
+                  // Le dessus RÉEL de la section : une cornière n'est pas centrée sur son axe.
+                  scale(fPo.az, Math.max(...sectionOutline(getProfile(porteur!.profileId)).outer.map((q) => q.z))),
                 ),
                 normal: fPo.az,
               };

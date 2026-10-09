@@ -7,6 +7,7 @@ import type { FaceOuverture } from '../../model/ouvertures';
 import { distribute } from '../../model/secondary';
 import { tieLevel, tieZ } from '../buildTruss';
 import { dimensionsPlatineDeFaitage } from '../connections/platines';
+import { releveDuPortique } from '../buildFrame';
 import { barre, hauteurPorteur } from './commun';
 import { intervallesInterrompus, soustraire } from './ouvertures';
 
@@ -38,9 +39,7 @@ export function railLevels(p: ProjectParams): number[] {
 export function buildRails(p: ProjectParams, out: Member[]): number {
   const g = p.grid;
   const r = p.secondary.rails;
-  const hLisse = getProfile(r.profile).h;
-  const hPoteau = getProfile(p.frame.columnProfile).h;
-  const debord = hPoteau / 2 + hLisse / 2; // lisse plaquée sur la face extérieure
+  const debord = debordDesLisses(p, false); // lisse plaquée sur la face extérieure
   const stations = frameStations(g);
   const niveaux = railLevels(p);
 
@@ -100,13 +99,8 @@ export function buildRails(p: ProjectParams, out: Member[]): number {
      * poteau, comme en long pan, et flottait à 110 mm des poteaux d'angle et
      * à 140 mm des potelets, sans rien pour la tenir.
      */
-    const appuiPignon = Math.max(
-      p.secondary.gablePosts.enabled && gablePostStations(p).length > 0
-        ? getProfile(p.secondary.gablePosts.profile).h / 2
-        : 0,
-      getProfile(p.frame.columnProfile).b / 2,
-    );
-    const debordPignon = appuiPignon + hLisse / 2;
+    const appuiPignon = appuiDesLissesDePignon(p);
+    const debordPignon = debordDesLisses(p, true);
     for (const [c, xMur, face] of [
       [0, -debordPignon, 'pignon-ouest'],
       [1, L + debordPignon, 'pignon-est'],
@@ -218,7 +212,9 @@ export function gablePostStations(p: ProjectParams): number[] {
 
 export function buildGablePosts(p: ProjectParams, out: Member[]): void {
   const g = p.grid;
-  const hPorteur = hauteurPorteur(p);
+  // Sous la traverse du PIGNON, qui peut être d'un autre profil que les courantes.
+  const hPorteur =
+    p.frame.enabled && p.frame.distinctGableFrame ? getProfile(p.frame.gableRafterProfile).h : hauteurPorteur(p);
   const L = buildingLength(g);
 
   for (const [c, x] of [
@@ -227,7 +223,8 @@ export function buildGablePosts(p: ProjectParams, out: Member[]): void {
   ] as const) {
     for (const [k, y] of gablePostStations(p).entries()) {
       // Le potelet monte jusque sous la pièce qui porte la toiture.
-      const zHaut = plafondPignon(p, y, hPorteur);
+      // Le portique de pignon peut être relevé pour aligner le dessus de sa traverse.
+      const zHaut = plafondPignon(p, y, hPorteur) + releveDuPortique(p, c === 0 ? 0 : g.nBays);
       if (zHaut <= 0) continue;
       out.push(
         potelet(p, `PT-${c}${k}`, v3(x, y, 0), v3(x, y, zHaut), y, `potelet ${k + 1} — pignon ${c === 0 ? 'ouest' : 'est'}`),
@@ -296,6 +293,26 @@ export function courseDeTete(p: ProjectParams): number {
  */
 export function jeuSousTraverse(p: ProjectParams): number {
   return courseDeTete(p) + 5;
+}
+
+/** Face d'appui des lisses de pignon : la semelle des potelets, ou la rive des poteaux d'angle. */
+function appuiDesLissesDePignon(p: ProjectParams): number {
+  return Math.max(
+    p.secondary.gablePosts.enabled && gablePostStations(p).length > 0
+      ? getProfile(p.secondary.gablePosts.profile).h / 2
+      : 0,
+    getProfile(p.frame.columnProfile).b / 2,
+  );
+}
+
+/**
+ * Distance du plan des lisses à l'axe des poteaux (long pan) ou des potelets
+ * (pignon). ⚠ Une seule écriture : les chevêtres d'ouverture se posent dans ce
+ * plan, et le dessin des façades l'y retrouve.
+ */
+export function debordDesLisses(p: ProjectParams, pignon: boolean): number {
+  const hLisse = getProfile(p.secondary.rails.profile).h;
+  return (pignon ? appuiDesLissesDePignon(p) : getProfile(p.frame.columnProfile).h / 2) + hLisse / 2;
 }
 
 /**

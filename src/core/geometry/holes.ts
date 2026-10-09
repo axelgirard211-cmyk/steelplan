@@ -77,6 +77,76 @@ export function boltGrid(rows: number, cols: number, pitch: number, gauge: numbe
 }
 
 /**
+ * Semelles du profil soudé derrière une platine d'about verticale, en distances
+ * depuis le HAUT de sa hauteur utile (mm) : celles de la traverse, coupée
+ * d'aplomb sous une pente de cosinus `cosA`, et celle du jarret s'il y en a un.
+ */
+export function semellesDerrierePlatine(
+  h: number,
+  tf: number,
+  cosA: number,
+  hauteurUtile: number,
+): [number, number][] {
+  const hv = h / cosA;
+  const e = tf / cosA;
+  const out: [number, number][] = [
+    [0, e],
+    [hv - e, hv],
+  ];
+  // Un jarret prolonge l'assemblage sous la traverse : sa semelle en ferme le bas.
+  if (hauteurUtile > hv + e) out.push([hauteurUtile - tf, hauteurUtile]);
+  return out;
+}
+
+/**
+ * Grille d'une platine d'about : les rangées réparties entre les deux pinces,
+ * puis ÉCARTÉES DES SEMELLES du profil soudé derrière elle.
+ *
+ * ⚠ Réparties sans regarder ce qu'il y a derrière, une rangée tombait dans la
+ * semelle basse de la traverse dès que la platine se prolongeait sur un jarret :
+ * la tête du boulon s'y logeait à moitié. Une rangée qui tombe dans une semelle,
+ * ou trop près pour la clé, saute au-dessus ou au-dessous, au plus près, sans
+ * jamais se rapprocher de ses voisines à moins de 2,2 d0.
+ *
+ * C'est la SEULE écriture : la platine, le perçage du porteur et le calcul de
+ * l'assemblage la lisent tous ici.
+ */
+export function grilleDePlatine(o: {
+  readonly hauteurUtile: number;
+  readonly rows: number;
+  readonly cols: number;
+  readonly edgeDistance: number;
+  readonly gauge: number;
+  readonly bolt: BoltSpec;
+  readonly semelles?: readonly (readonly [number, number])[];
+}): Pt2[] {
+  const H = o.hauteurUtile;
+  const pas = pitchFor(H, o.rows, o.edgeDistance);
+  const cle = (0.75 * o.bolt.d) / Math.cos(Math.PI / 6) + 2;
+  const pasMini = 2.2 * holeDiameter(o.bolt);
+  const interdits = (o.semelles ?? []).map(([a, b]) => [a - cle, b + cle] as const);
+  const dans = (d: number): (readonly [number, number]) | undefined => interdits.find(([a, b]) => d > a && d < b);
+  const rangees: number[] = [];
+  for (let i = 0; i < o.rows; i++) {
+    const voulu = o.edgeDistance + i * pas;
+    const mini = i > 0 ? (rangees[i - 1] as number) + pasMini : o.edgeDistance;
+    let d = Math.max(voulu, mini);
+    for (let k = 0; k < 4; k++) {
+      const bande = dans(d);
+      if (!bande) break;
+      const dessus = bande[0];
+      d = dessus >= mini && voulu - dessus <= bande[1] - voulu ? dessus : bande[1];
+    }
+    rangees.push(d);
+  }
+  const out: Pt2[] = [];
+  for (const d of rangees) {
+    for (let j = 0; j < o.cols; j++) out.push({ y: (j - (o.cols - 1) / 2) * o.gauge, z: H / 2 - d });
+  }
+  return out;
+}
+
+/**
  * Entraxe des rangées d'une platine dont la hauteur utile est imposée :
  * on répartit `rows` rangées entre les deux pinces.
  */

@@ -212,12 +212,16 @@ describe('ferme treillis — topologies de treillis', () => {
     expect(ti).toHaveLength(cf.length);
   });
 
-  it('toutes les barres de treillis restent dans le plan de leur ferme', () => {
+  it('toutes les barres de treillis restent dans le plan de leur ferme, plaquées contre le gousset', () => {
     for (const type of ['warren', 'pratt', 'howe', 'polonceau'] as TrussType[]) {
       const p = projetTreillis({ type, doubleAngles: false });
       for (const b of premiereFerme(buildProject(p).members)) {
-        expect(b.start.x, `${type} ${b.position}`).toBeCloseTo(0, 6);
-        expect(b.end.x, `${type} ${b.position}`).toBeCloseTo(0, 6);
+        // Une cornière simple a son dos contre une face du gousset : son axe en
+        // est écarté de cy + t/2, le même pour ses deux abouts.
+        const pr = getProfile(b.profileId);
+        const ecart = pr.shape === 'L' ? pr.cy + p.connections.gusset.thickness / 2 : 0;
+        expect(Math.abs(b.start.x), `${type} ${b.position}`).toBeCloseTo(ecart, 6);
+        expect(b.end.x, `${type} ${b.position}`).toBeCloseTo(b.start.x, 6);
       }
     }
   });
