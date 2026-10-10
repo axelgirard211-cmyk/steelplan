@@ -92,11 +92,11 @@ function FicheBarreAjoutee({ b, m, onSupprimee }: { b: FreeMember; m: Member; on
   const coord = (bout: 'start' | 'end', axe: 'x' | 'y' | 'z'): JSX.Element => (
     <span>
     <ChampNombre
-      valeur={b[bout][axe] / 1000}
-      pas={0.1}
-      unite="m"
-      largeur={70}
-      onChange={(v) => maj(`${bout === 'start' ? 'origine' : 'extrémité'} ${axe.toUpperCase()}`, (x) => void ((x[bout] as { x: number; y: number; z: number })[axe] = v * 1000))}
+      valeur={b[bout][axe]}
+      pas={100}
+      unite="mm"
+      largeur={76}
+      onChange={(v) => maj(`${bout === 'start' ? 'origine' : 'extrémité'} ${axe.toUpperCase()}`, (x) => void ((x[bout] as { x: number; y: number; z: number })[axe] = v))}
     />
     </span>
   );

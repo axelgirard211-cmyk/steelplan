@@ -120,7 +120,7 @@ dl.paires dd.coords {
 }
 
 dl.paires dd.coords input {
-  width: calc(100% - 18px) !important;
+  width: calc(100% - 30px) !important;
 }
 
 .edition-mode {

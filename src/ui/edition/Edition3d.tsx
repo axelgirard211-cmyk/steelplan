@@ -7,7 +7,7 @@ import { SteelScene, type StandardView } from '../../render3d/scene';
 import { useStructuralModel } from '../../state/derived';
 import { useProjectStore } from '../../state/store';
 import { ChampNombre, ChampNuance, ChampProfil } from '../champs';
-import { mm, num } from '../format';
+import { mm } from '../format';
 import { FichePiece3d } from './FichePiece3d';
 import { VoirEn2d } from './VoirEn2d';
 import { LIBELLE_TOLE } from '../../core/build/types';
@@ -36,7 +36,7 @@ const VUES: readonly (readonly [StandardView, string])[] = [
   ['dessus', 'Dessus'],
 ];
 
-const metresDe = (v: Vec3): string => `${num(v.x / 1000, 2)} / ${num(v.y / 1000, 2)} / ${num(v.z / 1000, 2)} m`;
+const coordDe = (v: Vec3): string => `${mm(v.x)} / ${mm(v.y)} / ${mm(v.z)} mm`;
 
 export function Edition3d(): JSX.Element {
   const model = useStructuralModel();
@@ -52,7 +52,7 @@ export function Edition3d(): JSX.Element {
   const [survol, setSurvol] = useState<PointCible | null>(null);
   const [profil, setProfil] = useState('IPE 200');
   const [nuance, setNuance] = useState<SteelGradeId>('S235');
-  const [saisie, setSaisie] = useState({ ax: 0, ay: 0, az: 0, bx: 6, by: 0, bz: 0 });
+  const [saisie, setSaisie] = useState({ ax: 0, ay: 0, az: 0, bx: 6000, by: 0, bz: 0 });
 
   // Rappels relus à chaque appel : la scène les garde, l'état de React change.
   const outilRef = useRef(outil);
@@ -136,7 +136,7 @@ export function Edition3d(): JSX.Element {
 
   const champ = (k: keyof typeof saisie): JSX.Element => (
     <span>
-      <ChampNombre valeur={saisie[k]} pas={0.1} unite="m" largeur={64} onChange={(v) => setSaisie((x) => ({ ...x, [k]: v }))} />
+      <ChampNombre valeur={saisie[k]} pas={100} unite="mm" largeur={70} onChange={(v) => setSaisie((x) => ({ ...x, [k]: v }))} />
     </span>
   );
 
@@ -159,7 +159,7 @@ export function Edition3d(): JSX.Element {
         <div ref={conteneur} className="edition3d-canevas" />
         <div className="edition3d-etat">
           {outil === 'barre'
-            ? `${premier ? `Depuis ${metresDe(premier)} — cliquez le point suivant, Échap pour arrêter` : 'Cliquez le premier point (extrémité ou milieu d’une barre)'}${survol ? ` · ${survol.nature === 'milieu' ? 'milieu' : 'extrémité'} ${metresDe(survol.p)}` : ''}`
+            ? `${premier ? `Depuis ${coordDe(premier)} — cliquez le point suivant, Échap pour arrêter` : 'Cliquez le premier point (extrémité ou milieu d’une barre)'}${survol ? ` · ${survol.nature === 'milieu' ? 'milieu' : 'extrémité'} ${coordDe(survol.p)}` : ''}`
             : 'Cliquez une pièce pour la modifier · glisser pour tourner · clic droit pour déplacer · molette pour zoomer · double-clic pour cadrer'}
         </div>
       </div>
@@ -209,9 +209,9 @@ export function Edition3d(): JSX.Element {
             <button
               type="button"
               style={{ marginTop: 8 }}
-              onClick={() => creer({ x: saisie.ax * 1000, y: saisie.ay * 1000, z: saisie.az * 1000 }, { x: saisie.bx * 1000, y: saisie.by * 1000, z: saisie.bz * 1000 })}
+              onClick={() => creer({ x: saisie.ax, y: saisie.ay, z: saisie.az }, { x: saisie.bx, y: saisie.by, z: saisie.bz })}
             >
-              Créer la barre ({mm(Math.hypot(saisie.bx - saisie.ax, saisie.by - saisie.ay, saisie.bz - saisie.az) * 1000)} mm)
+              Créer la barre ({mm(Math.hypot(saisie.bx - saisie.ax, saisie.by - saisie.ay, saisie.bz - saisie.az))} mm)
             </button>
           </div>
         )}

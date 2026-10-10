@@ -52,11 +52,11 @@ export function BarresLibresFiche(): JSX.Element {
     id: string,
     bout: 'start' | 'end',
     axe: 'x' | 'y' | 'z',
-    metres: number,
+    mmSaisis: number,
   ): void => {
     edit(`${id} — ${bout === 'start' ? 'origine' : 'extrémité'} ${axe.toUpperCase()}`, (d) => {
       const m = d.freeMembers.find((x) => x.id === id);
-      if (m) m[bout][axe] = metres * 1000;
+      if (m) m[bout][axe] = mmSaisis;
     });
   };
 
@@ -80,8 +80,8 @@ export function BarresLibresFiche(): JSX.Element {
                 <th>Rep.</th>
                 <th>Profil</th>
                 <th>Nuance</th>
-                <th colSpan={3}>Origine X / Y / Z (m)</th>
-                <th colSpan={3}>Extrémité X / Y / Z (m)</th>
+                <th colSpan={3}>Origine X / Y / Z (mm)</th>
+                <th colSpan={3}>Extrémité X / Y / Z (mm)</th>
                 <th className="nombre">Rot. (°)</th>
                 <th className="nombre">Long. (mm)</th>
                 <th>Repérage</th>
@@ -200,20 +200,20 @@ export function BarresLibresFiche(): JSX.Element {
   );
 }
 
-/** Coordonnée saisie en mètres, stockée en millimètres. */
+/** Coordonnée en millimètres, comme toutes les longueurs. */
 function Coord({
   valeur,
   onChange,
 }: {
   valeur: number;
-  onChange: (metres: number) => void;
+  onChange: (mm: number) => void;
 }): JSX.Element {
   return (
     <input
       type="number"
-      step={0.1}
-      value={valeur / 1000}
-      style={{ width: 68, textAlign: 'right' }}
+      step={100}
+      value={valeur}
+      style={{ width: 76, textAlign: 'right' }}
       onWheel={(e) => e.currentTarget.blur()}
       onChange={(e) => {
         const v = Number(e.target.value);
