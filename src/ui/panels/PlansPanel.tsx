@@ -1,15 +1,13 @@
 import { useMemo, useState } from 'react';
-import { buildSheets } from '../../core/drawing/buildSheets';
 import { libelleEchelle } from '../../core/drawing/scale';
 import type { Sheet, SheetKind } from '../../core/drawing/sheet';
 import { sheetToSvg, tailleFeuille } from '../../render2d/svgString';
 import { sheetToDxf } from '../../export/dxf';
-import { buildBom } from '../../core/bom/index';
 import { Visionneuse } from '../Visionneuse';
 import { Editeur } from '../editeur/Editeur';
 import { appliquerRetouches } from '../../core/drawing/retouches';
-import { useProjectStore } from '../../state/store';
-import { useChecksReport, useProjetEffectif, useStructuralModel } from '../../state/derived';
+import { useProjetEffectif, useStructuralModel } from '../../state/derived';
+import { useDossier } from '../useDossier';
 import { planchesDuPoste, POSTES, sheetsBordereau, type Poste } from '../../core/drawing/postes';
 import { archiveDstv, archiveDxfToles, lotDstvDuModele } from '../fichiersMachine';
 
@@ -23,7 +21,7 @@ import { archiveDstv, archiveDxfToles, lotDstvDuModele } from '../fichiersMachin
  */
 const pdf = (): Promise<typeof import('../../export/pdf')> => import('../../export/pdf');
 
-const LIBELLES: Record<SheetKind, string> = {
+export const LIBELLES: Record<SheetKind, string> = {
   bordereau: 'Bordereau d’envoi',
   ensemble: 'Plans d’ensemble',
   elevation: 'Élévations',
@@ -50,12 +48,7 @@ export function PlansPanel(): JSX.Element {
   const [choisie, setChoisie] = useState(0);
   const [fondClair, setFondClair] = useState(true);
 
-  const bom = useMemo(() => buildBom(project, model), [project, model]);
-  const checks = useChecksReport();
-  const dossier = useMemo(
-    () => buildSheets(model, project, bom, checks),
-    [model, project, bom, checks],
-  );
+  const { dossier, retouches: parPlanche } = useDossier();
   /*
    * Le DOSSIER D'UN POSTE : son bordereau d'envoi, puis ses planches, chacune
    * avec son numéro dans le dossier complet. C'est ce qu'on imprime pour le
@@ -75,8 +68,6 @@ export function PlansPanel(): JSX.Element {
    * sont lues dans la saisie, pas dans le projet effectif : une retouche ne
    * régénère rien.
    */
-  const retouches = useProjectStore((s) => s.project.retouches);
-  const parPlanche = useMemo(() => new Map(retouches.map((x) => [x.planche, x])), [retouches]);
   const generees = useMemo(() => vues.map((v) => v.sheet), [vues]);
   const sheets = useMemo(() => generees.map((s) => appliquerRetouches(s, parPlanche.get(s.id)).sheet), [generees, parPlanche]);
   const indexChoisi = Math.min(choisie, sheets.length - 1);

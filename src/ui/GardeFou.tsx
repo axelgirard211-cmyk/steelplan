@@ -67,6 +67,28 @@ export class BarriereErreur extends Component<
   override render(): ReactNode {
     const e = this.state.erreur;
     if (!e) return this.props.children;
+    /*
+     * ⚠ Un module chargé à la demande (la vue 3D) qui n'a pas pu être lu — le
+     * serveur a été arrêté ou l'application mise à jour — ne se relit pas :
+     * le navigateur garde l'échec, et « Réessayer » échouait à l'identique. Seul
+     * un rechargement de la page le relit ; la sauvegarde automatique garde le
+     * travail en cours.
+     */
+    if (moduleIntrouvable(e)) {
+      return (
+        <section className="principal">
+          <div className="bandeau-modele" role="alert">
+            <strong>Une partie de l’application n’a pas pu être chargée.</strong>
+            <ul>
+              <li>Le serveur de l’application ne répond plus, ou l’application a été mise à jour. Votre travail est conservé par la sauvegarde automatique.</li>
+            </ul>
+            <button type="button" className="plat" onClick={() => window.location.reload()}>
+              Recharger la page
+            </button>
+          </div>
+        </section>
+      );
+    }
     return (
       <section className="principal">
         <div className="bandeau-modele" role="alert">
@@ -91,4 +113,9 @@ export class BarriereErreur extends Component<
       </section>
     );
   }
+}
+
+/** L'erreur vient-elle d'un module chargé à la demande qui n'a pas pu être lu ? */
+export function moduleIntrouvable(e: Error): boolean {
+  return /dynamically imported module|Importing a module script failed|error loading dynamically|Loading chunk/i.test(e.message);
 }
