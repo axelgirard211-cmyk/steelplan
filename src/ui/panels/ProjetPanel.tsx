@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
   buildingLength,
   footprintArea,
@@ -23,6 +23,10 @@ import { SecondaireFiche } from './SecondaireFiche';
 import { SiteFiche } from './SiteFiche';
 import { StructureFiche } from './StructureFiche';
 import { useProjectStore } from '../../state/store';
+import { useNavigation } from '../../state/navigation';
+import { eclairer, Sommaire, type CompteRubrique } from '../projet/Sommaire';
+import { rubriqueParTitre } from '../projet/rubriques';
+import '../theme/projet.css';
 import { ChampNombre } from '../champs';
 import { metres, mm, num } from '../format';
 import { rad2deg } from '../../core/math/tolerance';
@@ -42,48 +46,142 @@ export function ProjetPanel(): JSX.Element {
   const issues = useProjectStore((s) => s.issues);
   const erreurs = issues.filter((i) => i.level === 'erreur');
   const avertissements = issues.filter((i) => i.level === 'avertissement');
+  const [apercu, setApercu] = useState(apercuMemorise);
+  const assezLarge = useAssezLarge();
+
+  const comptes = useMemo(() => {
+    const m = new Map<string, CompteRubrique>();
+    for (const i of issues) {
+      const t = rubriqueDe(i.path);
+      const c = m.get(t) ?? { erreurs: 0, avertissements: 0 };
+      m.set(t, i.level === 'erreur' ? { ...c, erreurs: c.erreurs + 1 } : { ...c, avertissements: c.avertissements + 1 });
+    }
+    return m;
+  }, [issues]);
+
+  const aller = (id: string): void => {
+    const el = document.getElementById(id);
+    if (el) eclairer(el, 'start');
+  };
+
+  // Une erreur cliquée ailleurs (bandeau, autre onglet) mène ici, à sa rubrique.
+  const demande = useNavigation((s) => s.rubrique);
+  useEffect(() => {
+    if (!demande) return;
+    const id = rubriqueParTitre(demande.titre).id;
+    // Après le rendu de l'onglet : la fiche doit exister pour qu'on s'y rende.
+    const t = window.setTimeout(() => aller(id), 60);
+    return () => window.clearTimeout(t);
+  }, [demande]);
+
+  const basculerApercu = (v: boolean): void => {
+    setApercu(v);
+    memoriserApercu(v);
+  };
+
+  // Une fiche qui porte une erreur se voit de loin, même en faisant défiler.
+  const ancre = (titre: string, contenu: JSX.Element): JSX.Element => (
+    <div id={rubriqueParTitre(titre).id} className={(comptes.get(titre)?.erreurs ?? 0) > 0 ? 'ancre-rubrique en-erreur' : 'ancre-rubrique'}>
+      {contenu}
+    </div>
+  );
 
   return (
-    <section className="principal">
-      <div className="grille-fiches">
-        <TrameFiche />
-        <TrameDeduite />
-        <StructureFiche />
-        <PortiqueFiche />
-        <SecondaireFiche />
-        <OuverturesFiche />
-        <ContreventementFiche />
-        <AssemblagesFiche />
-        <SiteFiche />
-        <ChargesFiche />
-        <FinitionFiche />
-        <AtelierFiche />
+    <>
+      <Sommaire comptes={comptes} apercu={apercu} setApercu={basculerApercu} onAller={aller} />
+      <section className="principal projet-fiches">
+        <div className="grille-fiches">
+          {ancre('Trame — paramètres', <TrameFiche />)}
+          {ancre('Trame — grandeurs déduites', <TrameDeduite />)}
+          {ancre('Toiture', <StructureFiche />)}
+          {ancre('Portique', <PortiqueFiche />)}
+          {ancre('Ossature secondaire', <SecondaireFiche />)}
+          {ancre('Ouvertures', <OuverturesFiche />)}
+          {ancre('Contreventements', <ContreventementFiche />)}
+          {ancre('Assemblages', <AssemblagesFiche />)}
+          {ancre('Site et charges climatiques', <SiteFiche />)}
+          {ancre('Charges et critères', <ChargesFiche />)}
+          {ancre('Traitement de surface', <FinitionFiche />)}
+          {ancre('Atelier', <AtelierFiche />)}
 
-        <div className="fiche">
-          <h3>
-            Contrôle du modèle{' '}
-            {erreurs.length === 0 && avertissements.length === 0 ? '— conforme' : ''}
-          </h3>
-          {issues.length === 0 ? (
-            <p className="aucune-anomalie">Aucune anomalie détectée.</p>
-          ) : (
-            <ul className="anomalies">
-              {[...erreurs, ...avertissements].map((i, k) => (
-                <li key={`${i.path}-${k}`} className={i.level}>
-                  <span className="rubrique">{rubriqueDe(i.path)}</span>
-                  {i.message}
-                </li>
-              ))}
-            </ul>
+          {ancre(
+            'Contrôle du modèle',
+            <div className="fiche">
+              <h3>
+                Contrôle du modèle{' '}
+                {erreurs.length === 0 && avertissements.length === 0 ? '— conforme' : ''}
+              </h3>
+              {issues.length === 0 ? (
+                <p className="aucune-anomalie">Aucune anomalie détectée.</p>
+              ) : (
+                <ul className="anomalies">
+                  {[...erreurs, ...avertissements].map((i, k) => (
+                    <li key={`${i.path}-${k}`} className={i.level}>
+                      {/* La rubrique mène à la fiche où se corrige le paramètre. */}
+                      <button type="button" className="rubrique lien" onClick={() => aller(rubriqueParTitre(rubriqueDe(i.path)).id)}>
+                        {rubriqueDe(i.path)} →
+                      </button>
+                      {i.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>,
           )}
         </div>
-      </div>
 
-      <BarresLibresFiche />
-      <CartoucheFiche />
-      <FicheFichier />
-    </section>
+        {ancre('Barres libres', <BarresLibresFiche />)}
+        {ancre('Cartouche et indices', <CartoucheFiche />)}
+        {ancre('Fichier projet', <FicheFichier />)}
+      </section>
+      {apercu && assezLarge && (
+        <Suspense fallback={<aside className="apercu3d"><p className="chargement">Chargement de l’aperçu 3D…</p></aside>}>
+          <Apercu3d />
+        </Suspense>
+      )}
+    </>
   );
+}
+
+/*
+ * L'aperçu 3D est chargé À LA DEMANDE, comme la vue 3D : l'onglet Projet
+ * s'ouvre en premier et ne doit pas attendre le moteur de rendu.
+ */
+const Apercu3d = lazy(() => import('../projet/Apercu3d').then((m) => ({ default: m.Apercu3d })));
+
+/**
+ * La fenêtre a-t-elle la place d'un aperçu ? En dessous, il n'est pas monté du
+ * tout : masqué seulement, son moteur 3D tournerait pour rien.
+ */
+function useAssezLarge(): boolean {
+  const requete = '(min-width: 961px)';
+  const [ok, setOk] = useState(() => typeof window !== 'undefined' && window.matchMedia(requete).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(requete);
+    const suivre = (): void => setOk(mq.matches);
+    mq.addEventListener('change', suivre);
+    return () => mq.removeEventListener('change', suivre);
+  }, []);
+  return ok;
+}
+
+const CLE_APERCU = 'steelplan.apercu3d';
+
+/** Préférence d'affichage, propre à ce navigateur ; le stockage peut être refusé. */
+function apercuMemorise(): boolean {
+  try {
+    return localStorage.getItem(CLE_APERCU) !== 'non';
+  } catch {
+    return true;
+  }
+}
+
+function memoriserApercu(v: boolean): void {
+  try {
+    localStorage.setItem(CLE_APERCU, v ? 'oui' : 'non');
+  } catch {
+    /* stockage indisponible : le choix vaut pour la session */
+  }
 }
 
 /* ------------------------------------------------------------------ */

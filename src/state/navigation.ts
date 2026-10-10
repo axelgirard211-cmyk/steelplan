@@ -19,6 +19,10 @@ export interface Demande2d {
 interface Navigation {
   onglet: Onglet;
   demande2d: Demande2d | null;
+  /** Rubrique de l'onglet Projet à montrer — celle où se corrige une erreur. */
+  rubrique: { readonly titre: string; readonly n: number } | null;
+  /** Ouvre l'onglet Projet sur la rubrique, qui s'éclaire. */
+  allerA(titre: string): void;
   setOnglet(o: Onglet): void;
   /** Ouvre la planche en 2D dans la page d'édition, cadrée sur les repères. */
   voirEn2d(planche: string, reperes: readonly string[]): void;
@@ -27,6 +31,8 @@ interface Navigation {
 export const useNavigation = create<Navigation>((set, get) => ({
   onglet: 'projet',
   demande2d: null,
+  rubrique: null,
+  allerA: (titre) => set({ onglet: 'projet', rubrique: { titre, n: (get().rubrique?.n ?? 0) + 1 } }),
   setOnglet: (onglet) => set({ onglet }),
   voirEn2d: (planche, reperes) => set({ onglet: 'edition', demande2d: { planche, reperes, n: (get().demande2d?.n ?? 0) + 1 } }),
 }));
