@@ -27,8 +27,8 @@ import { useNavigation } from '../../state/navigation';
 import { eclairer, Sommaire, type CompteRubrique } from '../projet/Sommaire';
 import { rubriqueParTitre } from '../projet/rubriques';
 import '../theme/projet.css';
-import { ChampNombre } from '../champs';
-import { metres, mm, num } from '../format';
+import { ChampLongueur, ChampNombre } from '../champs';
+import { mm, num } from '../format';
 import { rad2deg } from '../../core/math/tolerance';
 
 /**
@@ -206,30 +206,15 @@ function TrameFiche(): JSX.Element {
         </dd>
         <dt>Entraxe des portiques</dt>
         <dd>
-          <ChampNombre
-            valeur={g.baySpacing / 1000}
-            pas={0.5}
-            unite="m"
-            onChange={(v) => edit('Entraxe', (d) => void (d.grid.baySpacing = v * 1000))}
-          />
+          <ChampLongueur valeur={g.baySpacing} pas={500} onChange={(v) => edit('Entraxe', (d) => void (d.grid.baySpacing = v))} />
         </dd>
         <dt>Portée</dt>
         <dd>
-          <ChampNombre
-            valeur={g.span / 1000}
-            pas={0.5}
-            unite="m"
-            onChange={(v) => edit('Portée', (d) => void (d.grid.span = v * 1000))}
-          />
+          <ChampLongueur valeur={g.span} pas={500} onChange={(v) => edit('Portée', (d) => void (d.grid.span = v))} />
         </dd>
         <dt>Hauteur à l’égout</dt>
         <dd>
-          <ChampNombre
-            valeur={g.eaveHeight / 1000}
-            pas={0.25}
-            unite="m"
-            onChange={(v) => edit('Hauteur égout', (d) => void (d.grid.eaveHeight = v * 1000))}
-          />
+          <ChampLongueur valeur={g.eaveHeight} pas={250} onChange={(v) => edit('Hauteur égout', (d) => void (d.grid.eaveHeight = v))} />
         </dd>
         <dt>Pente</dt>
         <dd>
@@ -259,9 +244,9 @@ function TrameDeduite(): JSX.Element {
       <h3>Trame — grandeurs déduites</h3>
       <dl className="paires">
         <dt>Hauteur au faîtage</dt>
-        <dd className="derive">{v(() => `${metres(ridgeHeight(g))} m`)}</dd>
+        <dd className="derive">{v(() => `${mm(ridgeHeight(g))} mm`)}</dd>
         <dt>Position du faîtage</dt>
-        <dd className="derive">{v(() => `${metres(ridgeY(g))} m`)}</dd>
+        <dd className="derive">{v(() => `${mm(ridgeY(g))} mm`)}</dd>
         <dt>Pente</dt>
         <dd className="derive">{v(() => `${num(rad2deg(leftSlopeRad(g)), 2)} °`)}</dd>
         <dt>Rampant gauche</dt>
@@ -269,7 +254,7 @@ function TrameDeduite(): JSX.Element {
         <dt>Rampant droit</dt>
         <dd className="derive">{v(() => `${mm(rafterLength(g, 'droite'))} mm`)}</dd>
         <dt>Longueur du bâtiment</dt>
-        <dd className="derive">{v(() => `${metres(buildingLength(g))} m`)}</dd>
+        <dd className="derive">{v(() => `${mm(buildingLength(g))} mm`)}</dd>
         <dt>Emprise au sol</dt>
         <dd className="derive">{v(() => `${num(footprintArea(g), 1)} m²`)}</dd>
         <dt>Toiture développée</dt>

@@ -208,3 +208,10 @@ button.lien:hover {
   margin-bottom: 10px;
   font-size: 13px;
 }
+
+/* Une longueur au-delà d'un mètre se relit aussi en mètres, à côté du champ. */
+.equivalent {
+  font-size: 11px;
+  color: var(--texte-doux);
+  white-space: nowrap;
+}

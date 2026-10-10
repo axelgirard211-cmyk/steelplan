@@ -90,6 +90,36 @@ export function ChampNombre({
 }
 
 /**
+ * Longueur, en MILLIMÈTRES comme tout le reste du logiciel.
+ *
+ * ⚠ La trame se saisissait en mètres et tout le reste en millimètres : on
+ * tapait « 6 » pour un entraxe et « 6000 » pour une barre libre, et une
+ * habitude prise d'un côté donnait une valeur mille fois fausse de l'autre. Une
+ * seule unité, celle des plans et des nomenclatures ; au-delà d'un mètre, la
+ * valeur se relit aussi en mètres à côté du champ.
+ */
+export function ChampLongueur({
+  valeur,
+  onChange,
+  pas = 10,
+  min,
+  largeur = 82,
+}: {
+  valeur: number;
+  onChange: (mm: number) => void;
+  pas?: number;
+  min?: number;
+  largeur?: number;
+}): JSX.Element {
+  return (
+    <>
+      <ChampNombre valeur={valeur} pas={pas} {...(min === undefined ? {} : { min })} unite="mm" largeur={largeur} onChange={onChange} />
+      {Math.abs(valeur) >= 1000 && <span className="equivalent"> = {(valeur / 1000).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })} m</span>}
+    </>
+  );
+}
+
+/**
  * Champ texte, validé à la SORTIE du champ ou sur Entrée.
  *
  * ⚠ Pas à chaque frappe. L'historique enregistre une étape par modification :
