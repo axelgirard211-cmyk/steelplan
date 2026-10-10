@@ -21,11 +21,20 @@ export function Modale({
   titre,
   onFermer,
   etroit = false,
+  large = false,
+  fermerAuClic = true,
   children,
 }: {
   titre: string;
   onFermer: () => void;
   etroit?: boolean;
+  /** Fenêtre de travail (assistant) plutôt que de choix. */
+  large?: boolean;
+  /**
+   * Un clic sur le voile ferme-t-il ? Non pour un assistant : un clic à côté
+   * perdrait cinq étapes de saisie.
+   */
+  fermerAuClic?: boolean;
   children: ReactNode;
 }): JSX.Element {
   const boite = useRef<HTMLDivElement>(null);
@@ -58,10 +67,10 @@ export function Modale({
   }, [onFermer]);
 
   return (
-    <div className="voile" onClick={onFermer}>
+    <div className="voile" onClick={fermerAuClic ? onFermer : undefined}>
       <div
         ref={boite}
-        className={etroit ? 'dialogue etroit' : 'dialogue'}
+        className={etroit ? 'dialogue etroit' : large ? 'dialogue large' : 'dialogue'}
         role="dialog"
         aria-modal="true"
         aria-label={titre}
