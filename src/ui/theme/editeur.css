@@ -123,3 +123,25 @@ button.plat.actif {
   margin-top: 2px;
   font-variant-numeric: tabular-nums;
 }
+
+.groupe-outils {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--texte-doux);
+  margin: 0 2px 0 4px;
+}
+
+.calques-affiches {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 12.5px;
+}
+
+.calques-affiches .compte {
+  color: var(--texte-doux);
+  font-size: 11px;
+}

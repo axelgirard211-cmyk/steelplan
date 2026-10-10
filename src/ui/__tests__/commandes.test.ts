@@ -130,3 +130,46 @@ describe('commandes de modification', () => {
     expect(demarrer('effacer', avecSel).actions).toEqual([{ type: 'effacer' }]);
   });
 });
+
+describe('commandes qui désignent un objet', () => {
+  const l = (x0: number, y0: number, x1: number, y1: number): Extract<DrawEntity, { kind: 'ligne' }> => ({ kind: 'ligne', a: pt(x0, y0), b: pt(x1, y1), layer: 'contour' });
+  const cible = l(0, 0, 10, 0);
+  const autres = [l(3, -5, 3, 5), l(7, -5, 7, 5)];
+  const avecTraits: Contexte = { ...CTX, traits: [cible, ...autres] };
+  const sur = (x: number, y: number): Evenement => ({ type: 'point', p: pt(x, y), sous: { cle: 'g:cible', entite: cible } });
+
+  it('trace un arc par trois points', () => {
+    const { actions } = jouer(REPOS, [T('A'), P(10, 0), P(0, 10), P(-10, 0)]);
+    expect(entites(actions)[0]).toMatchObject({ kind: 'arc', r: 10 });
+  });
+
+  it('décale à la distance tapée en mm réels, objet après objet', () => {
+    const { etape, actions } = jouer(REPOS, [T('O'), T('40'), sur(5, 0), P(5, 3)], avecTraits);
+    // Au 1:20, 40 mm réels font 2 mm de papier.
+    expect(entites(actions)[0]).toMatchObject({ kind: 'ligne', a: { x: 0, y: 2 } });
+    expect(etape).toMatchObject({ cmd: 'decaler', objet: null });
+  });
+
+  it('ajuste la ligne cliquée entre les traits qui la coupent', () => {
+    const { actions } = jouer(REPOS, [T('AJ'), sur(5, 0)], avecTraits);
+    expect(actions[0]).toMatchObject({ type: 'remplacer', cle: 'g:cible' });
+    expect((actions[0] as Extract<Action, { type: 'remplacer' }>).par).toHaveLength(2);
+  });
+
+  it('prolonge la ligne jusqu’au trait suivant', () => {
+    const courte = l(4, 0, 5, 0);
+    const { actions } = jouer(REPOS, [T('PR'), { type: 'point', p: pt(4.9, 0), sous: { cle: 'a:c', entite: courte } }], { ...CTX, traits: [courte, ...autres] });
+    expect((actions[0] as Extract<Action, { type: 'remplacer' }>).par[0]).toMatchObject({ b: { x: 7 } });
+  });
+
+  it('dit pourquoi elle ne peut rien faire', () => {
+    expect(jouer(REPOS, [T('AJ'), P(5, 0)], avecTraits).messages[0]).toMatch(/cliquez une ligne/);
+    expect(demarrer('hachurer', { ...CTX, nbSelection: 1, selection: [cible] }).message).toMatch(/contours fermés/);
+  });
+
+  it('hachure les contours fermés de la sélection', () => {
+    const rect: DrawEntity = { kind: 'polyligne', points: [pt(0, 0), pt(10, 0), pt(10, 5), pt(0, 5)], fermee: true, layer: 'contour' };
+    const r = demarrer('hachurer', { ...CTX, nbSelection: 1, selection: [rect] });
+    expect(r.actions[0]).toMatchObject({ type: 'ajouter', entites: [{ kind: 'hachure', contour: rect.points }] });
+  });
+});
