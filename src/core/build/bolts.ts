@@ -193,9 +193,17 @@ function regrouperCoaxiaux(occ: readonly Occurrence[]): Occurrence[][] {
     Math.floor(q.y / PAS),
     Math.floor(q.z / PAS),
   ];
-  const grille = new Map<string, number[]>();
+  /*
+   * Clé NUMÉRIQUE de case : une clé texte fabriquée vingt-sept fois par trou
+   * faisait de ce regroupement le premier poste de la génération du modèle.
+   * Décalage de 2^10 cases (61 km) : aucun bâtiment n'en sort.
+   */
+  const D = 1024;
+  const cle = (x: number, y: number, z: number): number => ((x + D) * 2 * D + (y + D)) * 2 * D + (z + D);
+  const grille = new Map<number, number[]>();
   occ.forEach((o, i) => {
-    const k = cellule(o.centre).join('|');
+    const [x, y, z] = cellule(o.centre);
+    const k = cle(x, y, z);
     const l = grille.get(k);
     if (l) l.push(i);
     else grille.set(k, [i]);
@@ -206,7 +214,7 @@ function regrouperCoaxiaux(occ: readonly Occurrence[]): Occurrence[][] {
     for (let dx = -1; dx <= 1; dx++) {
       for (let dy = -1; dy <= 1; dy++) {
         for (let dz = -1; dz <= 1; dz++) {
-          for (const j of grille.get(`${cx + dx}|${cy + dy}|${cz + dz}`) ?? []) {
+          for (const j of grille.get(cle(cx + dx, cy + dy, cz + dz)) ?? []) {
             if (j <= i) continue;
             const b = occ[j] as Occurrence;
             if (b.piece === a.piece || b.d !== a.d) continue;

@@ -266,3 +266,48 @@ describe('robustesse du solveur', () => {
     ).toThrow(/singulier|tenue/);
   });
 });
+
+describe('rigidité factorisée une fois pour tous les cas de charge', () => {
+  /*
+   * ⚠ La factorisation est gardée d'un cas de charge à l'autre : c'est ce qui
+   * rend la vérification trois fois plus rapide. Elle ne doit JAMAIS servir à
+   * une ossature dont la géométrie ou les sections ont changé.
+   */
+  const portique = (h: number, Iinput = I, q = -10): Frame2dInput => ({
+    nodes: [
+      { y: 0, z: 0 },
+      { y: 0, z: h },
+      { y: 8000, z: h },
+      { y: 8000, z: 0 },
+    ],
+    elements: [elem(0, 1, { I: Iinput }), elem(1, 2, { qPerp: q }), elem(2, 3, { I: Iinput })],
+    supports: new Map([
+      [0, APPUI_ROTULE],
+      [3, APPUI_ROTULE],
+    ]),
+    nodalLoads: new Map([[1, [5000, 0, 0] as const]]),
+  });
+
+  it('rend, pour un nouveau cas de charge, le résultat d’un calcul neuf', () => {
+    const a = solveFrame2d(portique(5000, I, -10));
+    const b = solveFrame2d(portique(5000, I, -25)); // même rigidité, autre charge
+    expect(b.d).not.toEqual(a.d);
+    // Superposition : la réponse est linéaire en la charge répartie.
+    const c = solveFrame2d(portique(5000, I, -40));
+    for (let i = 0; i < a.d.length; i++) {
+      expect((c.d[i] as number) - (b.d[i] as number)).toBeCloseTo((b.d[i] as number) - (a.d[i] as number), 6);
+    }
+  });
+
+  it('refactorise quand la géométrie ou une section change', () => {
+    const base = solveFrame2d(portique(5000)).d[3] as number;
+    expect(solveFrame2d(portique(6000)).d[3]).not.toBeCloseTo(base, 3);
+    expect(solveFrame2d(portique(5000, I / 2)).d[3]).not.toBeCloseTo(base, 3);
+  });
+
+  it('signale toujours le mécanisme, même rappelé', () => {
+    const libre: Frame2dInput = { ...portique(5000), supports: new Map() };
+    expect(() => solveFrame2d(libre)).toThrow(/singulier|tenue/);
+    expect(() => solveFrame2d(libre)).toThrow(/singulier|tenue/);
+  });
+});

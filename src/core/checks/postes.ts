@@ -32,6 +32,17 @@ export interface Poste {
   readonly concerne: (m: Member) => boolean;
   /** Pièces qui SUIVENT ce poste sans être vérifiées avec lui, s'il y en a. */
   readonly entraine?: (p: ProjectParams) => string | null;
+  /**
+   * Le taux décroît-il avec la masse, dans une même famille ? Vrai pour les
+   * poutrelles et les U, dont toutes les caractéristiques croissent ensemble,
+   * et pour les contreventements, tendus : leur taux ne dépend que de l'aire.
+   * FAUX pour les barres de ferme, comprimées : à masse égale, un tube plus
+   * large et plus mince flambe moins. C'est ce qui autorise une recherche
+   * LOCALE autour du profil actuel au lieu de tout le catalogue.
+   */
+  readonly monotone: boolean;
+  /** Partie du rapport où se lisent ses pièces : le dimensionnement n'établit qu'elle. */
+  readonly perimetre: 'portique' | 'secondaire';
 }
 
 /**
@@ -76,6 +87,8 @@ export function postesActifs(p: ProjectParams): Poste[] {
         secondary: { ...x.secondary, purlins: { ...x.secondary.purlins, profile: v } },
       }),
       concerne: (m) => m.role === 'panne',
+      monotone: true,
+      perimetre: 'secondaire',
     });
   }
 
@@ -92,6 +105,8 @@ export function postesActifs(p: ProjectParams): Poste[] {
         ouvertures: chevetresSuivent(x) ? { ...x.ouvertures, profile: v } : x.ouvertures,
       }),
       concerne: (m) => m.role === 'lisse',
+      monotone: true,
+      perimetre: 'secondaire',
       entraine: (x) => (chevetresSuivent(x) ? 'chevêtres d’ouverture (même hauteur que les lisses)' : null),
     });
   }
@@ -108,6 +123,8 @@ export function postesActifs(p: ProjectParams): Poste[] {
         secondary: { ...x.secondary, gablePosts: { ...x.secondary.gablePosts, profile: v } },
       }),
       concerne: (m) => m.role === 'potelet',
+      monotone: true,
+      perimetre: 'secondaire',
     });
   }
 
@@ -128,6 +145,8 @@ export function postesActifs(p: ProjectParams): Poste[] {
         bracing: { ...x.bracing, [cle]: { ...x.bracing[cle], profile: v } },
       }),
       concerne: (m) => m.role === 'contreventement' && m.position.startsWith(motif),
+      monotone: true,
+      perimetre: 'secondaire',
     });
   }
 
@@ -146,6 +165,8 @@ export function postesActifs(p: ProjectParams): Poste[] {
       nuance: (x) => x.truss.grade,
       poser: (x, v) => ({ ...x, truss: { ...x.truss, [cle]: v } }),
       concerne: (m) => m.role === role,
+      monotone: false,
+      perimetre: 'portique',
     });
     out.push(
       membre('membrure-sup', 'Membrure supérieure', 'topChordProfile', 'membrure-sup', TREILLIS),
@@ -164,6 +185,8 @@ export function postesActifs(p: ProjectParams): Poste[] {
       nuance: (x) => x.frame.grade,
       poser: (x, v) => ({ ...x, frame: { ...x.frame, rafterProfile: v } }),
       concerne: (m) => m.role === 'traverse',
+      monotone: true,
+      perimetre: 'portique',
     });
   }
 
@@ -178,6 +201,8 @@ export function postesActifs(p: ProjectParams): Poste[] {
     nuance: (x) => x.frame.grade,
     poser: (x, v) => ({ ...x, frame: { ...x.frame, columnProfile: v } }),
     concerne: (m) => m.role === 'poteau',
+    monotone: true,
+    perimetre: 'portique',
   });
 
   return out;

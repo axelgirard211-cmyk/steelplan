@@ -1,7 +1,7 @@
 import { produce, type Draft } from 'immer';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildProject } from '../../core/build/buildProject';
-import { dimensionner } from '../../core/checks/dimensionner';
+import { dimensionnerEnFond, type Avancement } from '../dimensionnerEnFond';
 import { runChecks } from '../../core/checks/index';
 import { DEFAULT_PROJECT } from '../../core/model/defaults';
 import { buildingLength } from '../../core/model/grid';
@@ -53,6 +53,7 @@ export function Assistant({
   const [n, setN] = useState(0);
   const [dimensionnerAuto, setDimensionnerAuto] = useState(true);
   const [calcul, setCalcul] = useState(false);
+  const [avancement, setAvancement] = useState<Avancement | null>(null);
   const corps = useRef<HTMLDivElement>(null);
 
   const maj = (recette: (d: Draft<ProjectParams>) => void): void => setP((x) => produce(x, recette));
@@ -75,15 +76,16 @@ export function Assistant({
   });
 
   const creer = (): void => {
+    if (!dimensionnerAuto) {
+      onCreer(p);
+      return;
+    }
     setCalcul(true);
-    // Un tour de boucle avant le calcul : l'écran affiche « calcul en cours ».
-    setTimeout(() => {
-      try {
-        onCreer(dimensionnerAuto ? dimensionner(p).projet : p);
-      } finally {
-        setCalcul(false);
-      }
-    }, 30);
+    // À côté de l'interface : la fenêtre reste vivante et dit où en est la recherche.
+    dimensionnerEnFond(p, {}, setAvancement)
+      .resultat.then((r) => onCreer(r.projet))
+      .catch(() => undefined)
+      .finally(() => setCalcul(false));
   };
 
   return (
@@ -134,7 +136,7 @@ export function Assistant({
           </button>
         ) : (
           <button type="button" onClick={creer} disabled={bloquantes.length > 0 || calcul}>
-            {calcul ? 'Dimensionnement en cours…' : 'Créer le projet'}
+            {calcul ? `Dimensionnement${avancement ? ` — ${avancement.libelle} (${avancement.fait}/${avancement.total})` : '…'}` : 'Créer le projet'}
           </button>
         )}
       </div>

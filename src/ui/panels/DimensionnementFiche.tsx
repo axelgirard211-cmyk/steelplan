@@ -1,9 +1,6 @@
-import { useState } from 'react';
-import {
-  dimensionner,
-  MOTIFS,
-  type Proposition,
-} from '../../core/checks/dimensionner';
+import { useEffect, useRef, useState } from 'react';
+import { MOTIFS, type Proposition } from '../../core/checks/dimensionner';
+import { dimensionnerEnFond, type Avancement } from '../dimensionnerEnFond';
 import { FAMILY_LABELS } from '../../core/catalog/index';
 import { useProjectStore } from '../../state/store';
 import { num } from '../format';
@@ -25,19 +22,25 @@ export function DimensionnementFiche(): JSX.Element {
   const edit = useProjectStore((s) => s.edit);
   const [prop, setProp] = useState<Proposition | null>(null);
   const [calcul, setCalcul] = useState(false);
+  const [avancement, setAvancement] = useState<Avancement | null>(null);
   const [changerDeFamille, setChangerDeFamille] = useState(false);
+  const interrompre = useRef<(() => void) | null>(null);
+  // Quitter l'onglet interrompt une recherche en cours : personne ne la lirait.
+  useEffect(() => () => interrompre.current?.(), []);
 
   const lancer = (): void => {
     setCalcul(true);
-    // Un tour de boucle d'événements avant de bloquer : sans lui, l'écran ne
-    // repeint jamais l'état « calcul en cours » et paraît figé une seconde.
-    setTimeout(() => {
-      try {
-        setProp(dimensionner(project, { changerDeFamille }));
-      } finally {
+    setAvancement(null);
+    // À côté de l'interface : l'écran reste vivant et suit l'avancement.
+    const tache = dimensionnerEnFond(project, { changerDeFamille }, setAvancement);
+    interrompre.current = tache.interrompre;
+    tache.resultat
+      .then(setProp)
+      .catch(() => undefined)
+      .finally(() => {
         setCalcul(false);
-      }
-    }, 0);
+        interrompre.current = null;
+      });
   };
 
   const appliquer = (p: Proposition): void => {
@@ -88,6 +91,15 @@ export function DimensionnementFiche(): JSX.Element {
       <button type="button" className="plat" onClick={lancer} disabled={calcul}>
         {calcul ? 'Recherche en cours…' : 'Rechercher les profils les plus légers'}
       </button>
+      {calcul && (
+        <span className="avancement">
+          <progress max={avancement?.total ?? 1} value={avancement?.fait ?? 0} />{' '}
+          {avancement ? `${avancement.libelle} — ${avancement.fait} / ${avancement.total}` : 'Préparation…'}{' '}
+          <button type="button" className="plat" onClick={() => interrompre.current?.()}>
+            Interrompre
+          </button>
+        </span>
+      )}
 
       {prop && <Resultat prop={prop} onAppliquer={() => appliquer(prop)} onAnnuler={() => setProp(null)} />}
       {prop === null && !calcul && (
