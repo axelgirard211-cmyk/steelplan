@@ -215,3 +215,41 @@ button.lien:hover {
   color: var(--texte-doux);
   white-space: nowrap;
 }
+
+/*
+ * Aide d'un paramètre : ⓘ sur sa ligne, explication au survol du libellé ou
+ * quand le champ a le focus — au clavier comme à la souris.
+ */
+dl.paires dt.avec-aide {
+  position: relative;
+  cursor: help;
+}
+
+dl.paires dt.avec-aide::after {
+  content: 'ⓘ';
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+dl.paires dt.avec-aide:hover::before,
+dl.paires dt.avec-aide:has(+ dd :focus)::before {
+  content: attr(data-aide);
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
+  width: 260px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--fond-panneau);
+  border: 1px solid var(--bord-fort);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  color: var(--texte);
+  font-size: 12px;
+  font-weight: normal;
+  line-height: 1.45;
+  text-transform: none;
+  white-space: normal;
+  pointer-events: none;
+}

@@ -7,6 +7,7 @@ import {
   type ProfileFamily,
 } from '../core/catalog/index';
 import type { SteelGradeId } from '../core/catalog/types';
+import { aideDuChamp } from './aide';
 
 /**
  * CHAMPS DE SAISIE PARTAGÉS.
@@ -30,14 +31,36 @@ export function libeller(el: HTMLElement | null): void {
   if (!el || el.closest('label')) return;
   const dt = el.closest('dd')?.previousElementSibling;
   if (!dt || dt.tagName !== 'DT') return;
-  const texte = (dt.textContent ?? '').trim();
-  let libelle = texte.replace(/^—\s*/, '');
-  if (texte.startsWith('—')) {
-    let r = dt.previousElementSibling;
-    while (r && !(r.tagName === 'DT' && !(r.textContent ?? '').trim().startsWith('—'))) r = r.previousElementSibling;
-    if (r) libelle = `${(r.textContent ?? '').trim()} — ${libelle}`;
-  }
+  const { libelle, ligne } = libelleDeLaLigne(dt);
   if (libelle) el.setAttribute('aria-label', libelle);
+  // L'aide du paramètre, lue par les lecteurs d'écran avec son nom.
+  const aide = aideDuChamp(libelle, ligne, el.closest('.fiche')?.querySelector('h3')?.textContent ?? '');
+  if (aide) el.setAttribute('aria-description', aide);
+}
+
+/** Libellé d'une ligne de fiche : « Pannes — liernes » pour la sous-ligne « — liernes ». */
+export function libelleDeLaLigne(dt: Element): { libelle: string; ligne: string } {
+  const texte = (dt.textContent ?? '').trim();
+  const ligne = texte.replace(/^—\s*/, '');
+  if (!texte.startsWith('—')) return { libelle: ligne, ligne };
+  let r = dt.previousElementSibling;
+  while (r && !(r.tagName === 'DT' && !(r.textContent ?? '').trim().startsWith('—'))) r = r.previousElementSibling;
+  return { libelle: r ? `${(r.textContent ?? '').trim()} — ${ligne}` : ligne, ligne };
+}
+
+/**
+ * Marque d'un ⓘ les lignes qui ont une aide, et y range l'explication que la
+ * feuille de style affiche au survol ou au focus du champ.
+ */
+export function marquerLesAides(racine: ParentNode): void {
+  for (const dt of racine.querySelectorAll('dl.paires > dt')) {
+    if (dt.hasAttribute('data-aide')) continue;
+    const { libelle, ligne } = libelleDeLaLigne(dt);
+    const aide = aideDuChamp(libelle, ligne, dt.closest('.fiche')?.querySelector('h3')?.textContent ?? '');
+    if (!aide) continue;
+    dt.setAttribute('data-aide', aide);
+    dt.classList.add('avec-aide');
+  }
 }
 
 /** Même étiquette, précisée : deux champs dans une même ligne (« M 20 × 10.9 »). */
