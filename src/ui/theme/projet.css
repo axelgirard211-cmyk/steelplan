@@ -199,3 +199,12 @@ button.lien:hover {
   border-color: var(--alerte, #c62828);
   box-shadow: inset 3px 0 0 var(--alerte, #c62828);
 }
+
+/* Onglet Plans : filtre de la liste des planches. */
+.filtre-planches {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
