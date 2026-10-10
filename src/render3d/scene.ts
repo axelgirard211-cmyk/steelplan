@@ -53,9 +53,9 @@ interface Piece {
  * React ne fait qu'instancier cette classe et lui pousser des ordres.
  */
 export class SteelScene {
-  private readonly renderer: THREE.WebGLRenderer;
-  private readonly scene = new THREE.Scene();
-  private readonly camera: THREE.PerspectiveCamera;
+  readonly renderer: THREE.WebGLRenderer;
+  readonly scene = new THREE.Scene();
+  readonly camera: THREE.PerspectiveCamera;
   private readonly controls: OrbitControls;
   private readonly racine = new THREE.Group();
   private grille: THREE.GridHelper;

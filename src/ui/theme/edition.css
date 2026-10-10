@@ -1,0 +1,124 @@
+/* ---- Page d'édition : modèle 3D et plans 2D, sur toute la page ---- */
+
+.principal.edition {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px;
+  overflow: hidden;
+  background: var(--fond);
+}
+
+/* En plein écran, la page prend la fenêtre entière, fond compris. */
+.principal.edition:fullscreen {
+  padding: 10px 14px;
+}
+
+.edition-entete {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.segments {
+  display: inline-flex;
+  border: 1px solid var(--bord-fort);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.segments button {
+  background: var(--fond-panneau);
+  color: var(--texte);
+  border: none;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.segments button + button {
+  border-left: 1px solid var(--bord-fort);
+}
+
+.segments button[aria-selected='true'] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.edition-corps {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.edition3d {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 10px;
+}
+
+.edition3d-vue {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.edition3d-outils {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.edition3d-outils button.plat {
+  padding: 4px 9px;
+  font-size: 12.5px;
+}
+
+.edition3d-canevas {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--fond-panneau), var(--fond-alt));
+}
+
+.edition3d-canevas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.edition3d-etat {
+  font-size: 12px;
+  color: var(--texte-doux);
+  font-variant-numeric: tabular-nums;
+}
+
+.edition3d-panneau {
+  width: 320px;
+  flex: none;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* X, Y, Z sur une ligne pleine largeur, sous leur libellé. */
+dl.paires dd.coords {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+dl.paires dd.coords input {
+  width: calc(100% - 18px) !important;
+}

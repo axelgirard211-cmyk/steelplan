@@ -68,7 +68,7 @@ type Glisse =
   | { readonly type: 'pan'; readonly x: number; readonly y: number }
   | { readonly type: 'fenetre'; readonly a: Pt; readonly x: number; readonly y: number; readonly maj: boolean };
 
-export function Editeur({ sheet, retouches, fondClair, onQuitter }: { sheet: Sheet; retouches: RetouchesDePlanche | undefined; fondClair: boolean; onQuitter: () => void }): JSX.Element {
+export function Editeur({ sheet, retouches, fondClair, onQuitter }: { sheet: Sheet; retouches: RetouchesDePlanche | undefined; fondClair: boolean; onQuitter?: () => void }): JSX.Element {
   const edit = useProjectStore((s) => s.edit);
   const r = useMemo(() => retouches ?? retouchesVides(sheet.id), [retouches, sheet.id]);
   const { largeur: W, hauteur: H } = FORMATS[sheet.format];
@@ -379,10 +379,14 @@ export function Editeur({ sheet, retouches, fondClair, onQuitter }: { sheet: She
         <button type="button" className="plat" onClick={() => setVue(vueEtendue(W, H, taille.l, taille.h))}>
           Tout voir
         </button>
-        <span className="separateur" />
-        <button type="button" onClick={onQuitter}>
-          Terminer l’édition
-        </button>
+        {onQuitter && (
+          <>
+            <span className="separateur" />
+            <button type="button" onClick={onQuitter}>
+              Terminer l’édition
+            </button>
+          </>
+        )}
       </div>
 
       <div className="editeur-corps">

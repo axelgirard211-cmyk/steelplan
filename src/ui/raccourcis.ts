@@ -45,6 +45,7 @@ export const RACCOURCIS: readonly Raccourci[] = [
   { id: 'onglet-nomenclatures', touche: '4', libelle: 'Onglet Nomenclatures', groupe: 'Navigation' },
   { id: 'onglet-verifications', touche: '5', libelle: 'Onglet Vérifications', groupe: 'Navigation' },
   { id: 'onglet-catalogue', touche: '6', libelle: 'Onglet Catalogue', groupe: 'Navigation' },
+  { id: 'onglet-edition', touche: '7', libelle: 'Onglet Édition 3D / 2D', groupe: 'Navigation' },
   { id: 'aide', touche: '?', maj: true, libelle: 'Afficher cette aide', groupe: 'Navigation', dansLesChamps: true },
   { id: 'fermer', touche: 'Escape', libelle: 'Fermer le panneau ou la sélection', groupe: 'Navigation', dansLesChamps: true },
 

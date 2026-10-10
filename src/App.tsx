@@ -19,14 +19,19 @@ import { trouverRaccourci } from './ui/raccourcis';
 const Vue3dPanel = lazy(() =>
   import('./ui/panels/Vue3dPanel').then((m) => ({ default: m.Vue3dPanel })),
 );
+// La page d'édition embarque elle aussi le moteur 3D : même chargement à la demande.
+const EditionPanel = lazy(() =>
+  import('./ui/edition/EditionPanel').then((m) => ({ default: m.EditionPanel })),
+);
 
-type Onglet = 'projet' | 'vue3d' | 'plans' | 'nomenclatures' | 'verifications' | 'catalogue';
+type Onglet = 'projet' | 'vue3d' | 'plans' | 'edition' | 'nomenclatures' | 'verifications' | 'catalogue';
 
 /** Onglet visé par chaque raccourci de navigation. */
 const ONGLET_PAR_RACCOURCI: Readonly<Record<string, Onglet>> = {
   'onglet-projet': 'projet',
   'onglet-vue3d': 'vue3d',
   'onglet-plans': 'plans',
+  'onglet-edition': 'edition',
   'onglet-nomenclatures': 'nomenclatures',
   'onglet-verifications': 'verifications',
   'onglet-catalogue': 'catalogue',
@@ -193,6 +198,9 @@ export function App(): JSX.Element {
         <button type="button" role="tab" aria-selected={onglet === 'plans'} onClick={() => setOnglet('plans')}>
           Plans
         </button>
+        <button type="button" role="tab" aria-selected={onglet === 'edition'} onClick={() => setOnglet('edition')}>
+          Édition 3D / 2D
+        </button>
         <button
           type="button"
           role="tab"
@@ -230,6 +238,10 @@ export function App(): JSX.Element {
           </Suspense>
         ) : onglet === 'plans' ? (
           <PlansPanel />
+        ) : onglet === 'edition' ? (
+          <Suspense fallback={<p className="chargement">Chargement de l’édition…</p>}>
+            <EditionPanel />
+          </Suspense>
         ) : onglet === 'nomenclatures' ? (
           <NomenclaturesPanel />
         ) : onglet === 'verifications' ? (
