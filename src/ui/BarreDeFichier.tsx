@@ -4,6 +4,7 @@ import { creerAutosave, oublierAuto, relireAuto, type Autosave } from '../core/i
 import type { Template } from '../core/model/templates';
 import { useProjectStore } from '../state/store';
 import { GabaritsDialog } from './GabaritsDialog';
+import { Assistant } from './assistant/Assistant';
 import { enregistrer, fichierCourant, oublierFichierCourant, ouvrir } from './fichier';
 
 /**
@@ -29,6 +30,7 @@ export function BarreDeFichier({
   const nbEditions = useProjectStore((s) => s.past.length);
 
   const [gabarits, setGabarits] = useState(false);
+  const [assistant, setAssistant] = useState(false);
   const [message, setMessage] = useState<{ texte: string; erreur: boolean } | null>(null);
   const [aRestaurer, setARestaurer] = useState<Autosave | null>(null);
   const [enregistreA, setEnregistreA] = useState<number | null>(null);
@@ -49,6 +51,9 @@ export function BarreDeFichier({
     // On ne propose que s'il y avait un travail commencé : restaurer un projet
     // par défaut intact n'apporte rien et transforme l'ouverture en question.
     if (trouve && trouve.edits > 0) setARestaurer(trouve);
+    // ⚠ Toute première visite, sans travail à restaurer : l'assistant s'ouvre
+    // de lui-même, une fois. Ensuite, il attend derrière « Nouveau ».
+    else if (premiereVisite()) setAssistant(true);
   }, []);
 
   /* --- Enregistrement automatique à chaque changement --- */
@@ -160,8 +165,26 @@ export function BarreDeFichier({
         ouvert={gabarits}
         travauxEnCours={nbEditions}
         onChoisir={appliquerGabarit}
+        onAssistant={() => {
+          setGabarits(false);
+          setAssistant(true);
+        }}
         onFermer={() => setGabarits(false)}
       />
+      {assistant && (
+        <Assistant
+          travauxEnCours={nbEditions}
+          onCreer={(p) => {
+            loadProject(p);
+            oublierFichierCourant();
+            setEnregistreA(null);
+            setARestaurer(null);
+            setAssistant(false);
+            signaler(`Projet « ${p.meta.nom || 'sans nom'} » créé.`);
+          }}
+          onFermer={() => setAssistant(false)}
+        />
+      )}
 
       {message ? (
         <span className={message.erreur ? 'notice erreur' : 'notice'} role="status">
@@ -215,4 +238,18 @@ function depuis(at: number): string {
   if (min < 60) return `il y a ${min} min`;
   const h = Math.round(min / 60);
   return h < 24 ? `il y a ${h} h` : `il y a ${Math.round(h / 24)} j`;
+}
+
+const CLE_ACCUEIL = 'steelplan.accueil';
+
+/** Première visite sur ce navigateur ? Elle n'est vraie qu'une fois. */
+function premiereVisite(): boolean {
+  try {
+    if (localStorage.getItem(CLE_ACCUEIL)) return false;
+    localStorage.setItem(CLE_ACCUEIL, '1');
+    return true;
+  } catch {
+    // Stockage refusé : on ne saurait pas s'en souvenir, on n'impose rien.
+    return false;
+  }
 }

@@ -12,12 +12,15 @@ export function GabaritsDialog({
   ouvert,
   travauxEnCours,
   onChoisir,
+  onAssistant,
   onFermer,
 }: {
   ouvert: boolean;
   /** Nombre d'éditions déjà faites : sert à prévenir de ce qui va être perdu. */
   travauxEnCours: number;
   onChoisir: (t: Template) => void;
+  /** Ouvre l'assistant pas à pas, au lieu de partir d'un gabarit tel quel. */
+  onAssistant: () => void;
   onFermer: () => void;
 }): JSX.Element | null {
   if (!ouvert) return null;
@@ -31,6 +34,12 @@ export function GabaritsDialog({
         </p>
       ) : null}
 
+      <button type="button" className="assistant-lancer" onClick={onAssistant}>
+        <strong>Assistant pas à pas — recommandé</strong>
+        <span>Type de bâtiment, dimensions, ossature et charges en cinq étapes, avec dimensionnement automatique des profils.</span>
+      </button>
+
+      <h3>Ou partir directement d’un gabarit</h3>
       <ul className="gabarits">
         {TEMPLATES.map((t) => (
           <li key={t.id}>
