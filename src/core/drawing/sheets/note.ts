@@ -288,7 +288,7 @@ function planchHypotheses(rapport: ChecksReport, opts: NoteOptions): Sheet {
   section('Combinaisons examinées');
   for (const c of rapport.combinations) {
     paragraphe(
-      `${c.id} : ${c.label}${c.windDirection < 0 ? ' (vent en sens inverse)' : ''}`,
+      `${c.id} : ${c.label}${c.windDirection < 0 && !c.vent ? ' (vent en sens inverse)' : ''}`,
       '·',
     );
   }

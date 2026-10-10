@@ -150,6 +150,7 @@ export function dimensionner(
     let max = 0;
     let vues = 0;
     for (const l of rapport.lines) {
+      if (poste.partage) max = Math.max(max, poste.partage(l));
       if (!concernes.has(l.mark)) continue;
       vues += 1;
       max = Math.max(max, l.ratio);

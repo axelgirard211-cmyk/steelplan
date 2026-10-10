@@ -17,7 +17,9 @@ import { transcriptible, versCp1252 } from '../../../export/glyphes';
 describe('glyphes imprimables en PDF', () => {
   it('sait écrire chaque caractère du dossier, tel quel ou translittéré', () => {
     const fautes = new Set<string>();
-    for (const p of [DEFAULT_PROJECT, ...TEMPLATES.map((t) => t.build())]) {
+    // Le site en Eurocode écrit ses cas de vent dans la note : « ← », « − »…
+    const eurocode = { ...DEFAULT_PROJECT, site: { ...DEFAULT_PROJECT.site, mode: 'eurocode' as const } };
+    for (const p of [DEFAULT_PROJECT, eurocode, ...TEMPLATES.map((t) => t.build())]) {
       const M = buildProject(p);
       const sheets = buildSheets(M, p, buildBom(p, M), runChecks(p, M));
       const toutes = [...sheets, ...POSTES.flatMap((x) => sheetsBordereau(x.id, sheets, p.meta))];

@@ -19,6 +19,9 @@ const TABLE: Readonly<Record<string, string>> = {
   '≤': '<=',
   '≈': '~',
   '→': '->',
+  '←': '<-',
+  '⇒': '=>',
+  '−': '-', // signe moins
   '∞': 'inf',
   '√': 'rac',
   '☐': '[ ]',

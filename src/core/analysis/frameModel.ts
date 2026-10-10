@@ -1,7 +1,8 @@
 import { getProfile } from '../catalog/index';
 import type { StructuralModel } from '../build/types';
 import { cutLengths, type MemberRole } from '../geometry/member';
-import { frameStations, roofArea, roofNormal } from '../model/grid';
+import { frameStations, roofArea, roofNormal, roofSide } from '../model/grid';
+import { ventSurPortique, type VentSurPortique } from '../climat/zonesVent';
 import type { ProjectParams } from '../model/project';
 import type { Element2, Frame2dInput, Node2, Support } from './frame2d';
 import { APPUI_ENCASTRE, APPUI_ROTULE } from './frame2d';
@@ -322,6 +323,8 @@ export function chargerModele(
   const g = (a: ActionId): number => comb.factors[a] ?? 0;
   const b = fm.tributary; // largeur reprise (mm)
   const sens = comb.windDirection;
+  // Vent par zones : coefficients nets de la bande que reprend CE portique.
+  const zones = comb.vent && q.qp > 0 && g('W') !== 0 ? ventSurPortique(p.grid, comb.vent, ...bandeReprise(fm, p)) : null;
 
   const elements: Element2[] = fm.segments.map((seg) => {
     const profil = getProfile(seg.profileId);
@@ -340,10 +343,18 @@ export function chargerModele(
       // Par m² de rampant → densité linéique directe.
       vz -= (g('G') * q.gToit * bande) / 1000;
       // Par m² de projection horizontale → × cos α le long du rampant.
-      vz -=
-        ((g('Q') * q.qToit + g('S') * q.sToit + g('Sacc') * q.sAccToit) * bande * cosA) / 1000;
-      // Dépression : perpendiculaire au rampant, dirigée vers l'extérieur.
-      if (g('W') !== 0 && q.wToit > 0) {
+      const neige = g('S') * q.sToit * facteurDeNeige(comb, roofSide(p.grid, milieuY(fm, seg)));
+      vz -= ((g('Q') * q.qToit + neige + g('Sacc') * q.sAccToit) * bande * cosA) / 1000;
+      if (zones) {
+        // Coefficient net du tronçon de toiture que couvre la barre ; positif,
+        // il presse vers l'intérieur, donc à l'opposé de la normale extérieure.
+        const n = roofNormal(p.grid, milieuY(fm, seg));
+        const c = zones.toit((fm.nodes[seg.a] as Node2).y, (fm.nodes[seg.b] as Node2).y);
+        const intensite = (g('W') * q.qp * c * bande) / 1000;
+        vy -= n.y * intensite;
+        vz -= n.z * intensite;
+      } else if (g('W') !== 0 && q.wToit > 0) {
+        // Dépression saisie : perpendiculaire au rampant, dirigée vers l'extérieur.
         const n = roofNormal(p.grid, milieuY(fm, seg));
         const intensite = (g('W') * q.wToit * bande) / 1000;
         vy += n.y * intensite;
@@ -351,7 +362,11 @@ export function chargerModele(
       }
     }
 
-    if (seg.role === 'poteau' && g('W') !== 0 && q.wMur > 0) {
+    if (seg.role === 'poteau' && zones) {
+      // Les DEUX long-pans : pression au vent, succion sous le vent — toutes
+      // deux poussent le portique dans le sens du vent.
+      vy += (g('W') * q.qp * murDuPoteau(fm, seg, zones) * bande) / 1000;
+    } else if (seg.role === 'poteau' && g('W') !== 0 && q.wMur > 0) {
       // Pression sur la façade au vent seulement : le poteau sous le vent est
       // vérifié par l'autre sens de vent, qui le met à son tour au vent.
       const auVent = sens > 0 ? estPoteauGauche(fm, seg) : !estPoteauGauche(fm, seg);
@@ -392,6 +407,31 @@ export function chargerModele(
    * déplacement latéral RIGOUREUSEMENT NUL — ce qu'aucun bâtiment ne fait.
    */
   return { ...brut, nodalLoads: forcesImperfection(fm, brut, sens) };
+}
+
+/**
+ * Bande du bâtiment, le long des files (mm depuis le pignon), dont le portique
+ * reçoit le vent. Le portique de RIVE reprend la demi-travée contre le pignon ;
+ * le portique COURANT représente toutes les files intérieures, on lui donne la
+ * plus exposée — la première, que touchent encore les zones de rive.
+ */
+function bandeReprise(fm: FrameAnalysisModel, p: ProjectParams): [number, number] {
+  const t = p.grid.baySpacing;
+  return fm.tributary < t - 1 ? [0, fm.tributary] : [t / 2, (3 * t) / 2];
+}
+
+/** Coefficient net du long-pan d'un poteau, compté positif vers les y croissants. */
+function murDuPoteau(fm: FrameAnalysisModel, seg: Segment, zones: VentSurPortique): number {
+  // Une pression (coefficient positif) presse vers l'intérieur : vers +y à
+  // gauche, vers −y à droite.
+  return estPoteauGauche(fm, seg) ? zones.murGauche : -zones.murDroit;
+}
+
+/** Part de la neige que reçoit un versant : la moitié sur le versant réduit. */
+function facteurDeNeige(comb: Combination, versant: 'gauche' | 'droite'): number {
+  if (comb.neige === 'reduitGauche') return versant === 'gauche' ? 0.5 : 1;
+  if (comb.neige === 'reduitDroite') return versant === 'droite' ? 0.5 : 1;
+  return 1;
 }
 
 function milieuY(fm: FrameAnalysisModel, seg: Segment): number {

@@ -253,7 +253,7 @@ export function VerificationsPanel(): JSX.Element {
         {rapport.combinations.map((c) => (
           <li key={c.id}>
             <strong>{c.id}</strong> — {c.label}
-            {c.windDirection < 0 ? ' (vent en sens inverse)' : ''}
+            {c.windDirection < 0 && !c.vent ? ' (vent en sens inverse)' : ''}
           </li>
         ))}
       </ul>
