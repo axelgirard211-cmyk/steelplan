@@ -27,7 +27,7 @@ import { useNavigation } from '../../state/navigation';
 import { eclairer, Sommaire, type CompteRubrique } from '../projet/Sommaire';
 import { rubriqueParTitre } from '../projet/rubriques';
 import '../theme/projet.css';
-import { ChampLongueur, ChampNombre } from '../champs';
+import { ChampLongueur, ChampNombre, marquerLesAides } from '../champs';
 import { mm, num } from '../format';
 import { rad2deg } from '../../core/math/tolerance';
 
@@ -73,6 +73,12 @@ export function ProjetPanel(): JSX.Element {
     const t = window.setTimeout(() => aller(id), 60);
     return () => window.clearTimeout(t);
   }, [demande]);
+
+  // Les aides se posent sur les lignes affichées — une option cochée en fait apparaître.
+  useEffect(() => {
+    const racine = document.querySelector('.projet-fiches');
+    if (racine) marquerLesAides(racine);
+  });
 
   const basculerApercu = (v: boolean): void => {
     setApercu(v);
