@@ -55,8 +55,23 @@ function repli(): { projet: ProjectParams; modele: StructuralModel } {
   return dernierValide;
 }
 
+/**
+ * Deux saisies ne diffèrent-elles que par les retouches des planches ?
+ *
+ * ⚠ Une retouche ne change ni le modèle, ni les calculs, ni les planches
+ * générées : elle se pose PAR-DESSUS. Sans ce test, chaque trait tiré dans
+ * l'éditeur relançait la génération, les vérifications et la centaine de
+ * planches du dossier.
+ */
+function memeHorsRetouches(a: ProjectParams, b: ProjectParams): boolean {
+  for (const k of Object.keys(b) as (keyof ProjectParams)[]) {
+    if (k !== 'retouches' && a[k] !== b[k]) return false;
+  }
+  return true;
+}
+
 function effectif(p: ProjectParams): Effectif {
-  if (cacheEffectif && cacheEffectif.saisi === p) return cacheEffectif;
+  if (cacheEffectif && (cacheEffectif.saisi === p || memeHorsRetouches(cacheEffectif.saisi, p))) return cacheEffectif;
 
   const erreurs = validateProject(p).filter((i: Issue) => i.level === 'erreur');
   let resultat: Effectif;

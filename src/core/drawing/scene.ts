@@ -202,6 +202,12 @@ export class DrawScene {
     return this;
   }
 
+  /** Ajoute une entité telle quelle — celles que le dessinateur a retouchées. */
+  entite(e: DrawEntity): this {
+    this.entites.push(e);
+    return this;
+  }
+
   /** Ajoute toutes les entités d'une autre scène, telles quelles. */
   fusionner(autre: DrawScene): this {
     this.entites.push(...autre.entities);

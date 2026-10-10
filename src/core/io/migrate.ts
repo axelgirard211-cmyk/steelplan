@@ -6,16 +6,22 @@
  * une fonction de migration ; on ne modifie JAMAIS une migration déjà publiée.
  */
 
-export const CURRENT_VERSION = 1;
+export const CURRENT_VERSION = 2;
 
 /** Une migration transforme un projet de la version `n` vers `n + 1`. */
 type Migration = (raw: Record<string, unknown>) => Record<string, unknown>;
 
 /**
  * Migrations indexées par version de départ.
- * Vide pour l'instant : le format n'a pas encore évolué.
+ *
+ * ⚠ 1 → 2 : arrivée des retouches du dessinateur. Le champ manquant prendrait
+ * de lui-même sa valeur par défaut ; la version change pour l'autre sens : une
+ * version antérieure de SteelPlan, qui ignore ce champ, refuse le fichier au
+ * lieu de l'ouvrir en perdant les retouches sans un mot.
  */
-const MIGRATIONS: Readonly<Record<number, Migration>> = {};
+const MIGRATIONS: Readonly<Record<number, Migration>> = {
+  1: (raw) => ({ ...raw, retouches: [] }),
+};
 
 export class FormatError extends Error {
   constructor(message: string) {
