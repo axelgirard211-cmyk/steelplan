@@ -21,6 +21,12 @@ export const CALQUES: readonly (readonly [Layer, string])[] = [
   ['cartouche', 'Cartouche'],
 ];
 
+const LIBELLE_CALQUE: Readonly<Partial<Record<Layer, string>>> = {
+  ...Object.fromEntries(CALQUES),
+  hachure: 'Hachures',
+  cadre: 'Cadre',
+};
+
 const NATURE: Readonly<Record<EntiteDessin['kind'], string>> = {
   ligne: 'ligne',
   polyligne: 'polyligne',
@@ -49,6 +55,9 @@ export function EditeurPanneau({
   bilan,
   valider,
   reinitialiser,
+  calquesPlanche,
+  calquesMasques,
+  basculerCalque,
 }: {
   selection: readonly ElementEditable[];
   calque: Layer;
@@ -59,6 +68,10 @@ export function EditeurPanneau({
   bilan: BilanRetouches;
   valider: () => void;
   reinitialiser: () => void;
+  /** Calques présents sur la planche, et leur nombre d'objets. */
+  calquesPlanche: readonly (readonly [Layer, number])[];
+  calquesMasques: ReadonlySet<Layer>;
+  basculerCalque: (l: Layer) => void;
 }): JSX.Element {
   const seul = selection.length === 1 ? selection[0]?.source : undefined;
   const calques = [...new Set(selection.map((el) => el.source.layer))];
@@ -78,6 +91,23 @@ export function EditeurPanneau({
             <ChampNombre valeur={hauteurTexte} pas={0.5} min={1} unite="mm" largeur={60} onChange={(v) => v > 0 && setHauteurTexte(v)} />
           </dd>
         </dl>
+      </div>
+
+      <div className="fiche">
+        <h3>Calques affichés</h3>
+        <ul className="calques-affiches">
+          {calquesPlanche.map(([l, n]) => (
+            <li key={l}>
+              <label className="etiquette">
+                <input type="checkbox" checked={!calquesMasques.has(l)} onChange={() => basculerCalque(l)} /> {LIBELLE_CALQUE[l] ?? l}
+                <span className="compte"> {n}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+        <p className="note" style={{ margin: '6px 0 0' }}>
+          Un calque masqué ne se voit ni ne se sélectionne pendant l’édition ; il reste sur le plan imprimé.
+        </p>
       </div>
 
       <div className="fiche">

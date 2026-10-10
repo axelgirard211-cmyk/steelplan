@@ -1,5 +1,5 @@
 import { castDraft } from 'immer';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   accrocher,
   boitesSeTouchent,
@@ -12,45 +12,34 @@ import {
   type PointAccroche,
 } from '../../core/drawing/geometrie2d';
 import { FORMATS } from '../../core/drawing/layout';
+import { poigneesDe, type Poignee } from '../../core/drawing/operations2d';
 import {
-  ajouter,
   appliquerRetouches,
   cleDeRef,
-  copier,
-  effacer,
   elementsEditables,
   modifier,
   retouchesVides,
   traitsDe,
   valider,
+  type ElementEditable,
   type EntiteDessin,
   type RetouchesDePlanche,
 } from '../../core/drawing/retouches';
-import { pt, type Bbox, type DrawEntity, type Layer, type Pt } from '../../core/drawing/scene';
+import { DrawScene, pt, type Bbox, type DrawEntity, type Layer, type Pt } from '../../core/drawing/scene';
 import type { Sheet } from '../../core/drawing/sheet';
 import { sheetToSvg } from '../../render2d/svgString';
 import { useProjectStore } from '../../state/store';
 import { num } from '../format';
 import { dansUnChamp } from '../raccourcis';
-import {
-  ALIAS,
-  apercu,
-  avancer,
-  demarrer,
-  dernierPoint,
-  invite,
-  LIBELLE_COMMANDE,
-  REPOS,
-  transformationEnCours,
-  type Action,
-  type Contexte,
-  type Etape,
-  type NomCommande,
-  type Resultat,
-} from './commandes';
+import { appliquerActions } from './actions';
+import { CalqueEditeur } from './CalqueEditeur';
+import { ALIAS, apercu, avancer, demarrer, dernierPoint, invite, LIBELLE_COMMANDE, REPOS, transformationEnCours, type Action, type Contexte, type Etape, type NomCommande, type Resultat } from './commandes';
+import { attendUnObjet } from './commandesObjets';
 import { EditeurPanneau } from './EditeurPanneau';
-import { LIBELLE_ACCROCHAGE, Marqueur, Reticule, Trait } from './Traits';
-import { auxProportions, deplacer, mmParPixel, versFeuille, vueEtendue, vueSur, zoomer, type Vue } from './vue';
+import { LigneDeCommande } from './LigneDeCommande';
+import { lireSaisie, pointSaisi } from './saisie';
+import { LIBELLE_ACCROCHAGE } from './Traits';
+import { useVueEditeur } from './useVueEditeur';
 import '../theme/editeur.css';
 
 /**
@@ -62,7 +51,10 @@ import '../theme/editeur.css';
  * « L », Entrée, on clique ou l'on tape « @1000,0 » — comme partout ailleurs.
  */
 
-const OUTILS: readonly NomCommande[] = ['ligne', 'polyligne', 'rectangle', 'cercle', 'texte', 'cote', 'deplacer', 'copier', 'rotation', 'miroir', 'echelle', 'effacer'];
+const DESSIN: readonly NomCommande[] = ['ligne', 'polyligne', 'rectangle', 'cercle', 'arc', 'texte', 'cote', 'hachurer'];
+const MODIFICATION: readonly NomCommande[] = ['deplacer', 'copier', 'rotation', 'miroir', 'echelle', 'decaler', 'ajuster', 'prolonger', 'effacer'];
+/** Au-delà, les poignées encombreraient l'écran sans servir. */
+const MAX_POIGNEES = 30;
 
 type Glisse =
   | { readonly type: 'pan'; readonly x: number; readonly y: number }
@@ -85,30 +77,34 @@ export function Editeur({
   const edit = useProjectStore((s) => s.edit);
   const r = useMemo(() => retouches ?? retouchesVides(sheet.id), [retouches, sheet.id]);
   const { largeur: W, hauteur: H } = FORMATS[sheet.format];
+  const [masques, setMasques] = useState<ReadonlySet<Layer>>(new Set());
 
-  const elements = useMemo(() => elementsEditables(sheet, r), [sheet, r]);
+  const tous = useMemo(() => elementsEditables(sheet, r), [sheet, r]);
+  // Les calques masqués disparaissent de l'écran, de la sélection et de l'accrochage — pas du plan imprimé.
+  const elements = useMemo(() => (masques.size === 0 ? tous : tous.filter((el) => !masques.has(el.source.layer))), [tous, masques]);
   const compose = useMemo(() => appliquerRetouches(sheet, r), [sheet, r]);
-  const svg = useMemo(() => sheetToSvg(compose.sheet, fondClair ? {} : { encre: '#e6e9ef', papier: '#1b1f26' }), [compose, fondClair]);
+  const svg = useMemo(() => {
+    const affichee = masques.size === 0 ? compose.sheet : { ...compose.sheet, scene: filtrer(compose.sheet.scene, masques) };
+    return sheetToSvg(affichee, fondClair ? {} : { encre: '#e6e9ef', papier: '#1b1f26' });
+  }, [compose, fondClair, masques]);
   // Index à plat des traits, avec leur emprise : la désignation au pointeur et
   // l'accrochage ne parcourent que ceux dont la boîte est proche.
   const index = useMemo(() => elements.flatMap((el, i) => el.traits.map((t) => ({ t, i, b: emprise([t]) }))), [elements]);
+  const traits = useMemo(() => index.map((x) => x.t), [index]);
 
-  const cadre = useRef<HTMLDivElement>(null);
-  const fond = useRef<HTMLDivElement>(null);
-  const champ = useRef<HTMLInputElement>(null);
-  const [taille, setTaille] = useState({ l: 800, h: 500 });
-  const [vue, setVue] = useState<Vue>(() => vueEtendue(W, H, 800, 500));
-  const [etape, setEtape] = useState<Etape>(REPOS);
   // Repères de la pièce venue de la 3D, cherchés une fois, à l'ouverture.
   // Ceux du DESSIN d'abord : la nomenclature de la planche porte aussi le repère,
   // et cadrer sur elle éloignerait la vue de la pièce.
   const [cibles] = useState(() => {
     if (!cible || cible.length === 0) return [];
-    const trouves = elements.filter((el) => el.source.kind === 'texte' && cible.includes(el.source.texte));
+    const trouves = tous.filter((el) => el.source.kind === 'texte' && cible.includes(el.source.texte));
     const dessin = trouves.filter((el) => el.source.layer === 'reperage');
     return dessin.length > 0 ? dessin : trouves;
   });
-  const cadrage = useRef(cibles.length > 0 ? emprise(cibles.flatMap((el) => el.traits)) : null);
+  const { cadre, fond, vue, k, auPapier, glisser, toutVoir } = useVueEditeur(W, H, svg, cibles.length > 0 ? emprise(cibles.flatMap((el) => el.traits)) : null);
+
+  const champ = useRef<HTMLInputElement>(null);
+  const [etape, setEtape] = useState<Etape>(REPOS);
   const [selection, setSelection] = useState<ReadonlySet<string>>(() => new Set(cibles.map((el) => cleDeRef(el.ref))));
   const [brut, setBrut] = useState<Pt | null>(null);
   const [orthoActif, setOrtho] = useState(false);
@@ -122,48 +118,18 @@ export function Editeur({
   );
   const [saisie, setSaisie] = useState('');
   const [fenetre, setFenetre] = useState<{ a: Pt; b: Pt } | null>(null);
+  /** Poignée saisie : elle suit le pointeur jusqu'au clic qui la dépose. */
+  const [chaude, setChaude] = useState<{ el: ElementEditable; poignee: Poignee } | null>(null);
   const glisse = useRef<Glisse | null>(null);
   const derniere = useRef<NomCommande | null>(null);
 
-  const k = mmParPixel(vue, taille.l);
   const noter = (m: string): void => setJournal((j) => [...j.slice(-4), m]);
-
-  // Cadre d'affichage : la vue garde ses proportions, la feuille s'ouvre entière.
-  useEffect(() => {
-    const el = cadre.current;
-    if (!el) return undefined;
-    let premier = true;
-    const ro = new ResizeObserver(() => {
-      const l = el.clientWidth;
-      const h = el.clientHeight;
-      setTaille({ l, h });
-      // ⚠ La vue d'ouverture se calcule ICI, pas dans une fonction de mise à
-      // jour : celle-ci s'exécute au rendu, quand `premier` est déjà faux, et la
-      // feuille s'ouvrait alors cadrée pour un écran supposé de 800 × 500.
-      const c = cadrage.current;
-      if (premier) setVue(c ? vueSur(c, H, l, h) : vueEtendue(W, H, l, h));
-      else setVue((v) => auxProportions(v, l, h));
-      premier = false;
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [W, H]);
-
-  // Le plan est un SVG figé : seule sa fenêtre suit la vue, sans le reconstruire.
-  useLayoutEffect(() => {
-    const s = fond.current?.querySelector('svg');
-    if (!s) return;
-    s.setAttribute('viewBox', `${vue.x} ${vue.y} ${vue.w} ${vue.h}`);
-    s.setAttribute('width', '100%');
-    s.setAttribute('height', '100%');
-    s.setAttribute('preserveAspectRatio', 'none');
-  }, [svg, vue]);
-
-  const auPapier = (e: { clientX: number; clientY: number }): Pt => {
-    const b = cadre.current?.getBoundingClientRect();
-    const q = versFeuille(vue, e.clientX - (b?.left ?? 0), e.clientY - (b?.top ?? 0), taille.l, taille.h);
-    return pt(q.x, H - q.y);
-  };
+  const choisis = elements.filter((el) => selection.has(cleDeRef(el.ref)));
+  const poignees = useMemo(
+    () => (etape.cmd === 'repos' && choisis.length <= MAX_POIGNEES ? choisis.flatMap((el) => poigneesDe(el.source).map((poignee) => ({ el, poignee }))) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [etape, selection, elements],
+  );
 
   /** Traits proches d'un point, d'après leur emprise. */
   const proches = (p: Pt, tol: number): { t: DrawEntity; i: number }[] => {
@@ -171,39 +137,39 @@ export function Editeur({
     return index.filter((x) => boitesSeTouchent(x.b, zone));
   };
 
-  const base = dernierPoint(etape);
-  /** Le point visé depuis une position du pointeur : accrochage d'abord, ortho sinon. */
+  const actif = etape.cmd !== 'repos' || chaude !== null;
+  const base = chaude ? chaude.poignee.p : dernierPoint(etape);
+  /** Le point visé : accrochage d'abord, ortho sinon — rien quand on désigne un objet. */
   const viser = (p: Pt): { p: Pt; accroche: PointAccroche | null } => {
-    if (accrochageActif && etape.cmd !== 'repos') {
+    if (!actif || attendUnObjet(etape)) return { p, accroche: null };
+    if (accrochageActif) {
       const deja: DrawEntity[] =
         (etape.cmd === 'ligne' || etape.cmd === 'polyligne') && etape.points.length >= 2 ? [{ kind: 'polyligne', points: etape.points, fermee: false, layer: 'contour' }] : [];
       const a = accrocher(p, [...proches(p, 12 * k).map((x) => x.t), ...deja], 10 * k);
       if (a) return { p: a.p, accroche: a };
     }
-    return { p: orthoActif && base && etape.cmd !== 'repos' ? ortho(base, p) : p, accroche: null };
+    return { p: orthoActif && base ? ortho(base, p) : p, accroche: null };
   };
   const vise = brut ? viser(brut) : null;
   const accroche = vise?.accroche ?? null;
   const curseur: Pt | null = vise?.p ?? null;
 
-  const ctx: Contexte = { echelle: sheet.echelle, curseur: curseur ?? pt(0, 0), nbSelection: selection.size, calque, hauteurTexte };
-  const choisis = elements.filter((el) => selection.has(cleDeRef(el.ref)));
+  const ctx: Contexte = { echelle: sheet.echelle, curseur: curseur ?? pt(0, 0), nbSelection: selection.size, calque, hauteurTexte, traits, selection: choisis.map((el) => el.source) };
 
-  /** Élément sous le pointeur, au repos : celui qu'un clic sélectionnerait. */
-  const designe = (p: Pt): number | null => {
-    const tol = 6 * k;
-    let best: number | null = null;
-    let d = tol;
-    for (const x of proches(p, tol)) {
+  /** Élément sous le pointeur : celui qu'un clic désignerait. */
+  const designe = (p: Pt): ElementEditable | null => {
+    let best: ElementEditable | null = null;
+    let d = 6 * k;
+    for (const x of proches(p, 6 * k)) {
       const dx = distanceA(p, x.t);
       if (dx <= d) {
         d = dx;
-        best = x.i;
+        best = elements[x.i] ?? null;
       }
     }
     return best;
   };
-  const survol = etape.cmd === 'repos' && brut && !fenetre ? designe(brut) : null;
+  const survol = (etape.cmd === 'repos' || attendUnObjet(etape)) && brut && !fenetre && !chaude ? designe(brut) : null;
 
   /* ---------------- Écriture des retouches ---------------- */
 
@@ -219,25 +185,7 @@ export function Editeur({
   };
 
   const appliquer = (actions: readonly Action[]): void => {
-    let r2 = r;
-    let libelle = '';
-    let vider = false;
-    for (const a of actions) {
-      if (a.type === 'ajouter') {
-        r2 = ajouter(r2, a.entites);
-        libelle = a.libelle;
-      } else if (a.type === 'effacer') {
-        r2 = effacer(r2, choisis.map((el) => el.ref));
-        libelle = 'Effacer';
-        vider = true;
-      } else {
-        const f = (e: EntiteDessin): EntiteDessin => transformer(e, a.affine);
-        r2 = a.copie ? copier(r2, choisis, f) : modifier(r2, choisis, f);
-        libelle = a.libelle;
-        // Une entité générée modifiée devient un ajout : son ancienne référence n'existe plus.
-        if (!a.copie) vider = true;
-      }
-    }
+    const { retouches: r2, libelle, vider } = appliquerActions(r, actions, choisis, elements);
     if (r2 !== r) ecrire(libelle, r2);
     if (vider) setSelection(new Set());
   };
@@ -250,14 +198,30 @@ export function Editeur({
 
   const lancer = (nom: NomCommande): void => {
     derniere.current = nom;
+    setChaude(null);
     noter(`> ${LIBELLE_COMMANDE[nom]}`);
     traiter(demarrer(nom, ctx));
     champ.current?.focus();
   };
 
+  /** Dépose la poignée saisie : l'entité est retouchée, la sélection vidée. */
+  const deposer = (p: Pt): void => {
+    if (!chaude) return;
+    ecrire('Poignée', modifier(r, [chaude.el], () => chaude.poignee.vers(p)));
+    setChaude(null);
+    setSelection(new Set());
+  };
+
   const soumettre = (): void => {
     const t = saisie;
     setSaisie('');
+    if (chaude) {
+      // Poignée saisie : la valeur tapée est un déplacement depuis elle.
+      const p = pointSaisi(lireSaisie(t), chaude.poignee.p, curseur ?? chaude.poignee.p, sheet.echelle);
+      if (p) deposer(p);
+      else noter(`Saisie non comprise : « ${t} ».`);
+      return;
+    }
     if (t.trim() === '') {
       // Entrée seule : termine la commande, ou relance la dernière.
       if (etape.cmd === 'repos' && derniere.current) lancer(derniere.current);
@@ -280,7 +244,8 @@ export function Editeur({
     } else if (e.key === 'Escape') {
       e.preventDefault();
       setSaisie('');
-      if (etape.cmd === 'repos') setSelection(new Set());
+      if (chaude) setChaude(null);
+      else if (etape.cmd === 'repos') setSelection(new Set());
       else traiter(avancer(etape, { type: 'echap' }, ctx));
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && saisie === '' && etape.cmd === 'repos' && selection.size > 0) {
       e.preventDefault();
@@ -296,23 +261,6 @@ export function Editeur({
 
   /* ---------------- Pointeur ---------------- */
 
-  // Molette native (non passive) : la page ne doit ni défiler ni zoomer avec la planche.
-  useEffect(() => {
-    const el = cadre.current;
-    if (!el) return undefined;
-    const surMolette = (e: WheelEvent): void => {
-      e.preventDefault();
-      const b = el.getBoundingClientRect();
-      const q = versFeuille(vue, e.clientX - b.left, e.clientY - b.top, taille.l, taille.h);
-      // Molette de souris ou pincement : zoom au pointeur. Pavé tactile : déplacement.
-      const souris = e.deltaMode === 1 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 50);
-      if (e.ctrlKey || e.metaKey || souris) setVue((v) => zoomer(v, Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)), q.x, q.y));
-      else setVue((v) => deplacer(v, -e.deltaX, -e.deltaY, taille.l));
-    };
-    el.addEventListener('wheel', surMolette, { passive: false });
-    return () => el.removeEventListener('wheel', surMolette);
-  }, [vue, taille]);
-
   const auPointeur = (e: React.PointerEvent<HTMLDivElement>): void => {
     e.preventDefault();
     champ.current?.focus({ preventScroll: true });
@@ -323,14 +271,23 @@ export function Editeur({
       return;
     }
     if (e.button !== 0) return;
+    const brutClic = auPapier(e);
+    setBrut(brutClic);
+    // Le point se lit sur le clic lui-même : un clic sans mouvement préalable compte.
+    const p = viser(brutClic).p;
+    if (chaude) return deposer(p);
     if (etape.cmd !== 'repos') {
-      // Le point se lit sur le clic lui-même : un clic sans mouvement préalable compte.
-      const p = viser(auPapier(e)).p;
-      setBrut(auPapier(e));
-      traiter(avancer(etape, { type: 'point', p }, { ...ctx, curseur: p }));
+      const objet = designe(brutClic);
+      traiter(avancer(etape, { type: 'point', p, ...(objet ? { sous: { cle: cleDeRef(objet.ref), entite: objet.source } } : {}) }, { ...ctx, curseur: p }));
       return;
     }
-    glisse.current = { type: 'fenetre', a: auPapier(e), x: e.clientX, y: e.clientY, maj: e.shiftKey };
+    // Une poignée sous le pointeur se saisit ; sinon, sélection par clic ou fenêtre.
+    const prise = poignees.find((x) => Math.hypot(x.poignee.p.x - brutClic.x, x.poignee.p.y - brutClic.y) <= 6 * k);
+    if (prise) {
+      setChaude(prise);
+      return;
+    }
+    glisse.current = { type: 'fenetre', a: brutClic, x: e.clientX, y: e.clientY, maj: e.shiftKey };
   };
 
   const enDeplacement = (e: React.PointerEvent<HTMLDivElement>): void => {
@@ -338,7 +295,7 @@ export function Editeur({
     setBrut(p);
     const g = glisse.current;
     if (g?.type === 'pan') {
-      setVue((v) => deplacer(v, e.clientX - g.x, e.clientY - g.y, taille.l));
+      glisser(e.clientX - g.x, e.clientY - g.y);
       glisse.current = { ...g, x: e.clientX, y: e.clientY };
     } else if (g?.type === 'fenetre' && Math.hypot(e.clientX - g.x, e.clientY - g.y) > 4) {
       setFenetre({ a: g.a, b: p });
@@ -363,24 +320,35 @@ export function Editeur({
       setFenetre(null);
       return;
     }
-    const i = designe(auPapier(e));
-    if (i === null) {
+    const el = designe(auPapier(e));
+    if (!el) {
       if (!g.maj) setSelection(new Set());
-    } else basculer([cleDeRef((elements[i] as (typeof elements)[number]).ref)]);
+    } else basculer([cleDeRef(el.ref)]);
   };
 
   /* ---------------- Rendu ---------------- */
 
   const enCours = curseur ? transformationEnCours(etape, curseur) : null;
-  const fantomes = enCours ? choisis.flatMap((el) => traitsDe(transformer(el.source, enCours), sheet.echelle)) : [];
-  const elastique = curseur ? apercu(etape, ctx).flatMap((e) => traitsDe(e, sheet.echelle)) : [];
+  const fantomes = enCours
+    ? choisis.flatMap((el) => traitsDe(transformer(el.source, enCours), sheet.echelle))
+    : chaude && curseur
+      ? traitsDe(chaude.poignee.vers(curseur), sheet.echelle)
+      : [];
+  const elastique = curseur ? apercu(etape, ctx).flatMap((x) => traitsDe(x, sheet.echelle)) : [];
   const longueurReelle = base && curseur ? Math.hypot(curseur.x - base.x, curseur.y - base.y) * sheet.echelle : null;
 
-  const modifierSelection = (libelle: string, f: (e: EntiteDessin) => EntiteDessin): void => {
+  const modifierSelection = (libelle: string, f: (x: EntiteDessin) => EntiteDessin): void => {
     if (choisis.length === 0) return;
     ecrire(libelle, modifier(r, choisis, f));
     setSelection(new Set());
   };
+
+  // Calques présents sur la planche, avec le nombre d'objets de chacun.
+  const calques = useMemo(() => {
+    const m = new Map<Layer, number>();
+    for (const el of tous) m.set(el.source.layer, (m.get(el.source.layer) ?? 0) + 1);
+    return [...m.entries()];
+  }, [tous]);
 
   /*
    * ⚠ Une frappe hors de la ligne de commande — après un clic sur un bouton du
@@ -393,14 +361,20 @@ export function Editeur({
     champ.current?.focus();
   };
 
+  const bouton = (o: NomCommande): JSX.Element => (
+    <button key={o} type="button" className={`plat${etape.cmd === o ? ' actif' : ''}`} onClick={() => lancer(o)} title={`${LIBELLE_COMMANDE[o]} (${Object.entries(ALIAS).find(([, n]) => n === o)?.[0] ?? ''})`}>
+      {LIBELLE_COMMANDE[o]}
+    </button>
+  );
+
   return (
     <div className="editeur" onKeyDown={rameneLaFrappe}>
       <div className="editeur-outils">
-        {OUTILS.map((o) => (
-          <button key={o} type="button" className={`plat${etape.cmd === o ? ' actif' : ''}`} onClick={() => lancer(o)} title={`${LIBELLE_COMMANDE[o]} (${Object.entries(ALIAS).find(([, n]) => n === o)?.[0] ?? ''})`}>
-            {LIBELLE_COMMANDE[o]}
-          </button>
-        ))}
+        <span className="groupe-outils">Dessiner</span>
+        {DESSIN.map(bouton)}
+        <span className="separateur" />
+        <span className="groupe-outils">Modifier</span>
+        {MODIFICATION.map(bouton)}
         <span className="separateur" />
         <button type="button" className={`plat${accrochageActif ? ' actif' : ''}`} onClick={() => setAccrochage((a) => !a)} title="F3">
           Accrochage
@@ -408,49 +382,34 @@ export function Editeur({
         <button type="button" className={`plat${orthoActif ? ' actif' : ''}`} onClick={() => setOrtho((o) => !o)} title="F8">
           Ortho
         </button>
-        <button type="button" className="plat" onClick={() => setVue(vueEtendue(W, H, taille.l, taille.h))}>
+        <button type="button" className="plat" onClick={toutVoir}>
           Tout voir
         </button>
         {onQuitter && (
-          <>
-            <span className="separateur" />
-            <button type="button" onClick={onQuitter}>
-              Terminer l’édition
-            </button>
-          </>
+          <button type="button" onClick={onQuitter}>
+            Terminer l’édition
+          </button>
         )}
       </div>
 
       <div className="editeur-corps">
-        <div
-          ref={cadre}
-          className="editeur-cadre"
-          onPointerDown={auPointeur}
-          onPointerMove={enDeplacement}
-          onPointerUp={relache}
-          onPointerLeave={() => setBrut(null)}
-          onContextMenu={(e) => e.preventDefault()}
-        >
+        <div ref={cadre} className="editeur-cadre" onPointerDown={auPointeur} onPointerMove={enDeplacement} onPointerUp={relache} onPointerLeave={() => setBrut(null)} onContextMenu={(e) => e.preventDefault()}>
           <div ref={fond} className="editeur-fond" dangerouslySetInnerHTML={{ __html: svg }} />
-          <svg className="editeur-calque" viewBox={`${vue.x} ${vue.y} ${vue.w} ${vue.h}`} preserveAspectRatio="none">
-            {elements.map((el) => (el.aRevoir ? el.traits.map((t, j) => <Trait key={`${cleDeRef(el.ref)}-${j}`} e={t} H={H} couleur="#f08c00" epaisseur={2} />) : null))}
-            {survol !== null && !selection.has(cleDeRef((elements[survol] as (typeof elements)[number]).ref)) &&
-              (elements[survol] as (typeof elements)[number]).traits.map((t, j) => <Trait key={`s${j}`} e={t} H={H} couleur="#3b82f6" epaisseur={2} tirets="6 4" />)}
-            {choisis.flatMap((el) => el.traits.map((t, j) => <Trait key={`${cleDeRef(el.ref)}-${j}`} e={t} H={H} couleur="#3b82f6" epaisseur={2.5} />))}
-            {fantomes.map((t, j) => <Trait key={`f${j}`} e={t} H={H} couleur="#22a06b" epaisseur={1.5} />)}
-            {elastique.map((t, j) => <Trait key={`e${j}`} e={t} H={H} couleur="#22a06b" epaisseur={1.5} />)}
-            {fenetre && (
-              <rect
-                x={Math.min(fenetre.a.x, fenetre.b.x)}
-                y={H - Math.max(fenetre.a.y, fenetre.b.y)}
-                width={Math.abs(fenetre.b.x - fenetre.a.x)}
-                height={Math.abs(fenetre.b.y - fenetre.a.y)}
-                style={{ vectorEffect: 'non-scaling-stroke', stroke: fenetre.b.x < fenetre.a.x ? '#22a06b' : '#3b82f6', strokeWidth: 1, strokeDasharray: fenetre.b.x < fenetre.a.x ? '6 4' : undefined, fill: fenetre.b.x < fenetre.a.x ? 'rgba(34,160,107,0.08)' : 'rgba(59,130,246,0.08)' }}
-              />
-            )}
-            {accroche && <Marqueur a={accroche} H={H} k={k} />}
-            {curseur && <Reticule p={curseur} H={H} k={k} />}
-          </svg>
+          <CalqueEditeur
+            vue={vue}
+            H={H}
+            k={k}
+            elements={elements}
+            survol={survol}
+            choisis={choisis}
+            fantomes={fantomes}
+            elastique={elastique}
+            fenetre={fenetre}
+            poignees={poignees.map((x) => x.poignee.p)}
+            poigneeChaude={chaude?.poignee.p ?? null}
+            accroche={accroche}
+            curseur={curseur}
+          />
         </div>
         <EditeurPanneau
           selection={choisis}
@@ -465,34 +424,35 @@ export function Editeur({
             ecrire('Retour à la planche générée', retouchesVides(sheet.id));
             setSelection(new Set());
           }}
+          calquesPlanche={calques}
+          calquesMasques={masques}
+          basculerCalque={(l) =>
+            setMasques((m) => {
+              const n = new Set(m);
+              if (n.has(l)) n.delete(l);
+              else n.add(l);
+              return n;
+            })
+          }
         />
       </div>
 
-      <div className="editeur-commande">
-        <div className="journal">
-          {journal.map((l, i) => (
-            <div key={i}>{l}</div>
-          ))}
-        </div>
-        <label className="ligne-de-commande">
-          <span className="invite">{invite(etape)} :</span>
-          <input
-            ref={champ}
-            autoFocus
-            value={saisie}
-            onChange={(e) => setSaisie(e.target.value)}
-            onKeyDown={auClavier}
-            aria-label="Ligne de commande"
-            spellCheck={false}
-            autoComplete="off"
-          />
-        </label>
-        <div className="etat">
-          {curseur ? `X ${num(curseur.x, 1)}  Y ${num(curseur.y, 1)} mm papier` : '—'}
-          {longueurReelle !== null ? ` · longueur ${num(longueurReelle, 0)} mm réels` : ''}
-          {accroche ? ` · ${LIBELLE_ACCROCHAGE[accroche.mode]}` : ''} · échelle 1:{sheet.echelle} · {selection.size} sélectionné(s)
-        </div>
-      </div>
+      <LigneDeCommande
+        champ={champ}
+        journal={journal}
+        invite={chaude ? 'Poignée — cliquez la nouvelle position, ou tapez un déplacement (@dx,dy) ; Échap pour annuler' : invite(etape)}
+        saisie={saisie}
+        setSaisie={setSaisie}
+        auClavier={auClavier}
+        etat={`${curseur ? `X ${num(curseur.x, 1)}  Y ${num(curseur.y, 1)} mm papier` : '—'}${longueurReelle !== null ? ` · longueur ${num(longueurReelle, 0)} mm réels` : ''}${accroche ? ` · ${LIBELLE_ACCROCHAGE[accroche.mode]}` : ''} · échelle 1:${sheet.echelle} · ${selection.size} sélectionné(s)`}
+      />
     </div>
   );
+}
+
+/** La scène sans les entités des calques masqués. */
+function filtrer(scene: DrawScene, masques: ReadonlySet<Layer>): DrawScene {
+  const s = new DrawScene();
+  for (const e of scene.entities) if (!masques.has(e.layer)) s.entite(e);
+  return s;
 }

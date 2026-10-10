@@ -6,8 +6,19 @@ import {
   type Affine,
 } from '../../core/drawing/geometrie2d';
 import type { CoteDessin, EntiteDessin } from '../../core/drawing/retouches';
-import { pt, type Layer, type Pt } from '../../core/drawing/scene';
+import { pt, type DrawEntity, type Layer, type Pt } from '../../core/drawing/scene';
 import { lireSaisie, pointSaisi } from './saisie';
+import {
+  apercuObjet,
+  avancerObjet,
+  demarrerObjet,
+  dernierPointObjet,
+  estEtapeObjet,
+  inviteObjet,
+  NOMS_OBJET,
+  type EtapeObjet,
+  type ObjetDesigne,
+} from './commandesObjets';
 
 /**
  * COMMANDES DE L'ÉDITEUR — une machine à états, sans écran.
@@ -31,7 +42,12 @@ export type NomCommande =
   | 'rotation'
   | 'miroir'
   | 'echelle'
-  | 'effacer';
+  | 'effacer'
+  | 'arc'
+  | 'decaler'
+  | 'ajuster'
+  | 'prolonger'
+  | 'hachurer';
 
 /** Alias de la ligne de commande : ceux de la DAO, en français et en anglais. */
 export const ALIAS: Readonly<Record<string, NomCommande>> = {
@@ -75,6 +91,24 @@ export const ALIAS: Readonly<Record<string, NomCommande>> = {
   EF: 'effacer',
   EFFACER: 'effacer',
   ERASE: 'effacer',
+  A: 'arc',
+  ARC: 'arc',
+  O: 'decaler',
+  DEC: 'decaler',
+  DECALER: 'decaler',
+  OFFSET: 'decaler',
+  AJ: 'ajuster',
+  TR: 'ajuster',
+  AJUSTER: 'ajuster',
+  TRIM: 'ajuster',
+  PR: 'prolonger',
+  EX: 'prolonger',
+  PROLONGER: 'prolonger',
+  EXTEND: 'prolonger',
+  H: 'hachurer',
+  HA: 'hachurer',
+  HACHURER: 'hachurer',
+  HATCH: 'hachurer',
 };
 
 export const LIBELLE_COMMANDE: Readonly<Record<NomCommande, string>> = {
@@ -90,20 +124,26 @@ export const LIBELLE_COMMANDE: Readonly<Record<NomCommande, string>> = {
   miroir: 'Miroir',
   echelle: 'Échelle',
   effacer: 'Effacer',
+  arc: 'Arc',
+  decaler: 'Décaler',
+  ajuster: 'Ajuster',
+  prolonger: 'Prolonger',
+  hachurer: 'Hachurer',
 };
 
 /** Commandes qui portent sur la sélection : on sélectionne d'abord, puis on agit. */
-const SUR_SELECTION: ReadonlySet<NomCommande> = new Set(['deplacer', 'copier', 'rotation', 'miroir', 'echelle', 'effacer']);
+const SUR_SELECTION: ReadonlySet<NomCommande> = new Set(['deplacer', 'copier', 'rotation', 'miroir', 'echelle', 'effacer', 'hachurer']);
 
 export type Etape =
   | { readonly cmd: 'repos' }
   | { readonly cmd: 'ligne' | 'polyligne'; readonly points: readonly Pt[] }
   | { readonly cmd: 'rectangle' | 'cercle' | 'texte' | 'miroir'; readonly a: Pt | null }
   | { readonly cmd: 'cote'; readonly a: Pt | null; readonly b: Pt | null }
-  | { readonly cmd: 'deplacer' | 'copier' | 'rotation' | 'echelle'; readonly base: Pt | null };
+  | { readonly cmd: 'deplacer' | 'copier' | 'rotation' | 'echelle'; readonly base: Pt | null }
+  | EtapeObjet;
 
 export type Evenement =
-  | { readonly type: 'point'; readonly p: Pt }
+  | { readonly type: 'point'; readonly p: Pt; readonly sous?: ObjetDesigne }
   | { readonly type: 'saisie'; readonly texte: string }
   | { readonly type: 'valider' }
   | { readonly type: 'echap' };
@@ -111,7 +151,9 @@ export type Evenement =
 export type Action =
   | { readonly type: 'ajouter'; readonly entites: readonly EntiteDessin[]; readonly libelle: string }
   | { readonly type: 'transformer'; readonly affine: Affine; readonly copie: boolean; readonly libelle: string }
-  | { readonly type: 'effacer' };
+  | { readonly type: 'effacer' }
+  /** Une entité désignée devient ces entités-ci (aucune : elle disparaît). */
+  | { readonly type: 'remplacer'; readonly cle: string; readonly par: readonly EntiteDessin[]; readonly libelle: string };
 
 export interface Contexte {
   /** Dénominateur de l'échelle de la planche : les saisies sont en mm réels. */
@@ -122,6 +164,10 @@ export interface Contexte {
   readonly calque: Layer;
   /** Hauteur des textes et des chiffres de cote (mm papier). */
   readonly hauteurTexte: number;
+  /** Traits affichés : ce que coupent « ajuster » et « prolonger ». */
+  readonly traits?: readonly DrawEntity[];
+  /** Entités sélectionnées : ce que hachure « hachurer ». */
+  readonly selection?: readonly EntiteDessin[];
 }
 
 export interface Resultat {
@@ -140,6 +186,7 @@ export function demarrer(nom: NomCommande, ctx: Contexte): Resultat {
   if (SUR_SELECTION.has(nom) && ctx.nbSelection === 0) {
     return fin([], `${LIBELLE_COMMANDE[nom]} : sélectionnez d’abord les objets, puis relancez la commande.`);
   }
+  if (NOMS_OBJET.has(nom)) return demarrerObjet(nom, ctx);
   switch (nom) {
     case 'effacer':
       return fin([{ type: 'effacer' }]);
@@ -153,16 +200,22 @@ export function demarrer(nom: NomCommande, ctx: Contexte): Resultat {
       return { etape: { cmd: nom, a: null }, actions: [] };
     case 'cote':
       return { etape: { cmd: 'cote', a: null, b: null }, actions: [] };
-    default:
+    case 'deplacer':
+    case 'copier':
+    case 'rotation':
+    case 'echelle':
       return { etape: { cmd: nom, base: null }, actions: [] };
+    default:
+      return demarrerObjet(nom, ctx);
   }
 }
 
 /** Ce que la ligne de commande demande à cette étape. */
 export function invite(e: Etape): string {
+  if (estEtapeObjet(e)) return inviteObjet(e);
   switch (e.cmd) {
     case 'repos':
-      return 'Commande (L, PL, REC, C, T, COT, M, CO, RO, MI, SC, E) — ou sélectionnez des objets';
+      return 'Commande (L, PL, REC, C, A, T, COT, M, CO, RO, MI, SC, O, AJ, PR, H, E) — ou sélectionnez des objets';
     case 'ligne':
       return e.points.length === 0 ? 'Ligne — premier point' : 'Ligne — point suivant [C pour fermer, Entrée pour finir]';
     case 'polyligne':
@@ -189,6 +242,7 @@ export function invite(e: Etape): string {
 
 /** Le dernier point posé : base des saisies relatives et de l'ortho. */
 export function dernierPoint(e: Etape): Pt | null {
+  if (estEtapeObjet(e)) return dernierPointObjet(e);
   switch (e.cmd) {
     case 'ligne':
     case 'polyligne':
@@ -244,6 +298,7 @@ export function transformationEnCours(e: Etape, p: Pt): Affine | null {
 
 /** Entités en cours de tracé, pour l'aperçu élastique. */
 export function apercu(e: Etape, ctx: Contexte): EntiteDessin[] {
+  if (estEtapeObjet(e)) return apercuObjet(e, ctx);
   const p = ctx.curseur;
   switch (e.cmd) {
     case 'ligne':
@@ -278,6 +333,7 @@ export function avancer(e: Etape, ev: Evenement, ctx: Contexte): Resultat {
     const nom = ALIAS[ev.texte.trim().toUpperCase()];
     return nom ? demarrer(nom, ctx) : { etape: e, actions: [], message: `Commande inconnue : « ${ev.texte.trim()} ».` };
   }
+  if (estEtapeObjet(e)) return avancerObjet(e, ev, ctx);
 
   // Le texte en cours de saisie n'est pas une coordonnée : on le pose tel quel.
   if (e.cmd === 'texte' && e.a && ev.type === 'saisie') {
