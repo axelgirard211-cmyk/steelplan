@@ -7,8 +7,9 @@ import {
   type Frame2dResult,
   type Node2,
 } from '../analysis/frame2d';
-import { combinations, intensities, type Combination } from '../analysis/loadCases';
-import { modeleDeCharges } from '../climat/index';
+import { combinaisonsSecondaires, combinations, intensities, type CasNeige, type Combination } from '../analysis/loadCases';
+import { chargesClimatiques, modeleDeCharges } from '../climat/index';
+import { casDeVent } from '../climat/zonesVent';
 import type { StructuralModel } from '../build/types';
 import type { SteelGradeId } from '../catalog/types';
 import type { MemberRole } from '../geometry/member';
@@ -59,8 +60,17 @@ export function runChecks(p: ProjectParams, model: StructuralModel, perimetre: P
    * séparément permettrait de combiner une neige et d'en appliquer une autre.
    */
   const charges = modeleDeCharges(p);
-  const combs = combinations(charges);
-  const q = intensities(charges, secondaryLoadKnM2(p, model));
+  /*
+   * Vent PAR ZONES quand il vient du site : chaque cas (travers dans les deux
+   * sens, pignon ; pressions intérieures +0,2 et −0,3) devient une action, que
+   * le portique reçoit paroi par paroi. Saisi à la main, il reste deux nombres :
+   * on ne connaît pas qp, on ne peut pas zoner. La neige dissymétrique ne
+   * dépend que de la forme de la toiture, elle vaut dans les deux modes.
+   */
+  const qp = p.site.mode === 'eurocode' ? chargesClimatiques(p).vent.qp : 0;
+  const neiges: CasNeige[] = p.grid.roofType === 'bipente' ? ['uniforme', 'reduitGauche', 'reduitDroite'] : ['uniforme'];
+  const combs = combinations(charges, { neiges, ...(qp > 0 ? { vents: casDeVent() } : {}) });
+  const q = intensities(charges, secondaryLoadKnM2(p, model), qp);
 
   /*
    * Portiques à vérifier, et la bande de toiture que chacun reprend.
@@ -183,7 +193,7 @@ export function runChecks(p: ProjectParams, model: StructuralModel, perimetre: P
     }
   }
 
-  const secondaire = perimetre === 'portique' ? { lines: [], piedsPotelets: [], tractions: [], exclus: [] } : checkSecondary(p, model, q, combs);
+  const secondaire = perimetre === 'portique' ? { lines: [], piedsPotelets: [], tractions: [], exclus: [] } : checkSecondary(p, model, q, combinaisonsSecondaires(combs));
   for (const ligne of secondaire.lines) retenir(ligne);
 
   const reactions = enveloppe.resultat();

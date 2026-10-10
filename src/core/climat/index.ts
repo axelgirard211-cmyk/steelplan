@@ -14,6 +14,7 @@ import {
   type PressionDynamique,
   type ZonageToiture,
 } from './vent';
+import { cpePannes } from './zonesVent';
 
 export * from './neige';
 export * from './vent';
@@ -37,7 +38,13 @@ export interface ChargesClimatiques {
   readonly paroi: CoefficientsParoi;
   readonly toiture: CoefficientsToiture;
   readonly zonage: ZonageToiture;
-  /** Ce qui alimente le modèle de charges, en kN/m². */
+  /** Succion de la bande de rive G, celle des pannes. */
+  readonly cpePannes: number;
+  /**
+   * Ce qui alimente le modèle de charges, en kN/m². Les portiques reçoivent le
+   * vent zone par zone ; ces deux valeurs enveloppes servent à l'ossature
+   * secondaire, et à l'affichage.
+   */
   readonly valeurs: {
     readonly neige: number;
     readonly neigeAccidentelle: number;
@@ -72,6 +79,7 @@ export function chargesClimatiques(p: ProjectParams): ChargesClimatiques {
   // Vent transversal : il traverse la PORTÉE, la longueur du bâtiment lui est
   // perpendiculaire.
   const zonage = zonageToiture(toiture, buildingLength(g) / 1000, g.span / 1000, h);
+  const pannes = cpePannes(g);
 
   return {
     neige,
@@ -79,6 +87,7 @@ export function chargesClimatiques(p: ProjectParams): ChargesClimatiques {
     paroi,
     toiture,
     zonage,
+    cpePannes: pannes,
     valeurs: {
       neige: arrondi(neige.s),
       neigeAccidentelle: arrondi(neige.sAccidentelle),
@@ -91,13 +100,14 @@ export function chargesClimatiques(p: ProjectParams): ChargesClimatiques {
        */
       ventPression: arrondi(vent.qp * (paroi.D - CPI_NEGATIF)),
       /*
-       * ⚠ Le coefficient MOYEN pondéré par les aires, et non celui de rive. La
-       * zone F ne couvre qu'une bande de e/10 aux deux angles au vent : sur ce
-       * hangar, dix mètres carrés sur six cents. L'appliquer partout triplait le
-       * soulèvement d'ensemble et condamnait des bâtiments corrects. La pointe de
-       * rive reste exposée pour la fixation du bac, où elle est la bonne valeur.
+       * ⚠ La succion de la bande de rive G, pas la moyenne de la toiture. La
+       * moyenne vaut pour une résultante — c'est pourquoi les portiques
+       * reçoivent désormais chaque zone pour sa part —, mais une panne ne
+       * reçoit que la bande où elle se trouve, et la panne sablière court
+       * toute sa portée dans G. Toutes les pannes ont son profil. Les angles
+       * F restent l'affaire de la fixation du bac.
        */
-      ventDepression: arrondi(Math.abs(vent.qp * (zonage.cpeMoyen - CPI_POSITIF))),
+      ventDepression: arrondi(Math.abs(vent.qp * (pannes - CPI_POSITIF))),
     },
   };
 }
@@ -131,10 +141,17 @@ export function modeleDeCharges(p: ProjectParams): ProjectParams['loads'] {
 
 /** Lignes d'hypothèses décrivant le climat retenu, pour le rapport. */
 export function hypothesesClimat(p: ProjectParams): string[] {
+  // La dissymétrie ne dépend que de la forme de la toiture : elle vaut aussi
+  // pour une neige saisie.
+  const repartition =
+    p.grid.roofType === 'bipente'
+      ? ['Neige répartie uniformément, puis réduite de moitié sur un versant et sur l’autre (EN 1991-1-3 § 5.3.3, figure 5.3).']
+      : [];
   if (p.site.mode === 'manuel') {
     return [
       'Neige et vent SAISIS À LA MAIN : le logiciel ne les a ni calculés ni vérifiés. ' +
-        'Basculer le site en mode Eurocode les déduit de la région et de l’altitude.',
+        'Basculer le site en mode Eurocode les déduit de la région et de l’altitude, et applique le vent par zones.',
+      ...repartition,
     ];
   }
 
@@ -147,33 +164,32 @@ export function hypothesesClimat(p: ProjectParams): string[] {
   const out = [
     `Neige EN 1991-1-3 : région ${n.sol.zone} à ${n.sol.altitude} m ⇒ sk = ${n.sol.sk.toFixed(2)} kN/m², ` +
       `µ1 = ${n.mu1.toFixed(2)} ⇒ s = ${n.s.toFixed(2)} kN/m².`,
+    ...repartition,
     `Vent EN 1991-1-4 : région ${p.site.zoneVent}, terrain ${p.site.terrain}, ze = ${v.ze.toFixed(1)} m ⇒ ` +
       `vb = ${v.vb.toFixed(0)} m/s, vm = ${v.vm.toFixed(1)} m/s, qp = ${v.qp.toFixed(3)} kN/m².`,
-    `Coefficients de paroi : D = ${c.paroi.D.toFixed(2)} (au vent), E = ${c.paroi.E.toFixed(2)} (sous le vent).`,
-    `Coefficients de toiture (négatif / positif) : F ${z(c.toiture.F)} · G ${z(c.toiture.G)} · ` +
+    `Coefficients de paroi : D = ${c.paroi.D.toFixed(2)} (au vent), E = ${c.paroi.E.toFixed(2)} (sous le vent), ` +
+      `A ${c.paroi.A.toFixed(1)} · B ${c.paroi.B.toFixed(1)} · C ${c.paroi.C.toFixed(1)} (parois parallèles au vent).`,
+    `Coefficients de toiture, vent de travers (négatif / positif) : F ${z(c.toiture.F)} · G ${z(c.toiture.G)} · ` +
       `H ${z(c.toiture.H)} · I ${z(c.toiture.I)} · J ${z(c.toiture.J)}.`,
-    `Zonage EN 1991-1-4 figure 7.8 : e = ${c.zonage.e.toFixed(1)} m, aires F ${c.zonage.aires.F.toFixed(0)} m², ` +
-      `G ${c.zonage.aires.G.toFixed(0)} m², H ${c.zonage.aires.H.toFixed(0)} m², ` +
-      `I ${c.zonage.aires.I.toFixed(0)} m², J ${c.zonage.aires.J.toFixed(0)} m².`,
-    `Dépression appliquée à l’OSSATURE : coefficient moyen pondéré par les aires, ` +
-      `cpe = ${c.zonage.cpeMoyen.toFixed(2)}, augmenté de la pression intérieure cpi = +${CPI_POSITIF.toFixed(2)}. ` +
-      `La POINTE de rive vaut ${c.zonage.cpePointe.toFixed(2)} : c'est elle qui dimensionne la ` +
-      `fixation du bac, et SteelPlan ne vérifie pas cette fixation.`,
-    `Pression intérieure prise à ${CPI_POSITIF.toFixed(2)} ou ${CPI_NEGATIF.toFixed(2)} selon ce qui ` +
-      'aggrave (EN 1991-1-4 § 7.2.9), bâtiment sans face dominante.',
+    'Portiques : vent PAR ZONES, en huit cas — de travers dans les deux sens, versant au vent aspiré ' +
+      `(cpi +${CPI_POSITIF.toFixed(1)} puis ${CPI_NEGATIF.toFixed(1)}) ou poussé (cpi ${CPI_NEGATIF.toFixed(1)}), ` +
+      `puis sur pignon (cpi +${CPI_POSITIF.toFixed(1)} puis ${CPI_NEGATIF.toFixed(1)}). Chaque paroi reçoit qp × (cpe − cpi) ` +
+      'de sa zone : D et E sur les long-pans, F à J en toiture, A à C et F à I sous vent de pignon. Le portique ' +
+      'courant reçoit la bande de la première file intérieure, la plus exposée.',
+    `Pannes : succion de la bande de rive G, cpe = ${c.cpePannes.toFixed(2)}, augmentée de cpi = +${CPI_POSITIF.toFixed(2)} ; ` +
+      `lisses et potelets : pression D, augmentée de cpi = ${CPI_NEGATIF.toFixed(2)}. La pointe des angles F ` +
+      `(${c.zonage.cpePointe.toFixed(2)}) dimensionne la fixation du bac, que SteelPlan ne vérifie pas.`,
+    'Coefficients cpe,10 RECOMMANDÉS par l’EN 1991-1-4 (tableaux 7.1, 7.3a-b, 7.4a-b). L’annexe nationale ' +
+      'française remplace le tableau 7.4a : ses valeurs ne sont pas appliquées ici et sont à contrôler.',
+    `Pression intérieure prise à +${CPI_POSITIF.toFixed(2)} et à ${CPI_NEGATIF.toFixed(2)} (EN 1991-1-4 § 7.2.9), ` +
+      'bâtiment sans face dominante.',
+    'Vent sur pignon : la pression sur le pignon lui-même descend par les potelets et la poutre au vent, ' +
+      'calculés par le cheminement simplifié des contreventements.',
   ];
   if (n.sAccidentelle > 0) {
     out.push(
       `Région ${n.sol.zone} : charge de neige ACCIDENTELLE sAd = ${n.sol.sAd.toFixed(2)} kN/m² au sol, ` +
         `soit ${n.sAccidentelle.toFixed(2)} kN/m² en toiture, vérifiée sous combinaison accidentelle.`,
-    );
-  }
-  // Le bâtiment allongé n'est pas traité par le seul vent transversal.
-  if (buildingLength(p.grid) > 4 * p.grid.span) {
-    out.push(
-      'Bâtiment très allongé : seul le vent TRANSVERSAL est appliqué au portique. Le vent en ' +
-        'long pan, qui dimensionne la poutre au vent, n’est pris en compte que par le ' +
-        'cheminement simplifié des contreventements.',
     );
   }
   return out;

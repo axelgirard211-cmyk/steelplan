@@ -122,11 +122,11 @@ export function SiteFiche(): JSX.Element {
             <dd className="derive">{num(c.toiture.F[0], 2)}</dd>
             <dt>— toiture, succion courante (H)</dt>
             <dd className="derive">{num(c.toiture.H[0], 2)}</dd>
-            <dt>Pression retenue au calcul</dt>
+            <dt>Pression retenue — lisses, potelets</dt>
             <dd className="derive">
               <strong>{num(c.valeurs.ventPression, 2)} kN/m²</strong>
             </dd>
-            <dt>Dépression retenue au calcul</dt>
+            <dt>Dépression retenue — pannes (rive G)</dt>
             <dd className="derive">
               <strong>{num(c.valeurs.ventDepression, 2)} kN/m²</strong>
             </dd>
@@ -136,8 +136,10 @@ export function SiteFiche(): JSX.Element {
 
       {eurocode && (
         <p style={{ marginTop: 8, opacity: 0.75, fontSize: '0.9em' }}>
-          La dépression appliquée est la succion la plus défavorable de la toiture, étendue à
-          tous les versants. C’est sévère en partie courante et juste en rive.
+          Les portiques reçoivent le vent zone par zone, en huit cas (travers dans les deux
+          sens, pignon ; pression intérieure +0,2 et −0,3). Les deux valeurs ci-dessus servent
+          à l’ossature secondaire.
+          {project.grid.roofType === 'bipente' && ' La neige est aussi examinée réduite de moitié sur un versant.'}
         </p>
       )}
       {!eurocode && (

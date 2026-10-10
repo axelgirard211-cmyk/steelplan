@@ -2,6 +2,7 @@ import { PROFILES, type ProfileFamily } from '../catalog/index';
 import type { SteelGradeId } from '../catalog/types';
 import type { Member } from '../geometry/member';
 import type { ProjectParams } from '../model/project';
+import type { CheckLine } from './types';
 
 /**
  * LES POSTES DIMENSIONNABLES.
@@ -43,6 +44,11 @@ export interface Poste {
   readonly monotone: boolean;
   /** Partie du rapport où se lisent ses pièces : le dimensionnement n'établit qu'elle. */
   readonly perimetre: 'portique' | 'secondaire';
+  /**
+   * Critère d'une AUTRE pièce que ce poste commande aussi : le taux à en
+   * retenir pour une ligne du rapport, 0 si elle ne le regarde pas.
+   */
+  readonly partage?: (l: CheckLine) => number;
 }
 
 /**
@@ -187,6 +193,14 @@ export function postesActifs(p: ProjectParams): Poste[] {
       concerne: (m) => m.role === 'traverse',
       monotone: true,
       perimetre: 'portique',
+      /*
+       * ⚠ Le déplacement en tête se lit sur le POTEAU, mais la traverse en
+       * décide autant que lui — davantage sur des pieds articulés, où aucun
+       * poteau ne le tient seul derrière une traverse trop souple. Sans ce
+       * partage, le vent par zones laissait des hangars « insuffisants » que
+       * renforcer la traverse d'un cran suffisait à faire passer.
+       */
+      partage: (l) => (l.role === 'poteau' ? l.ratios.fleche : 0),
     });
   }
 

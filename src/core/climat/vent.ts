@@ -163,9 +163,9 @@ export interface CoefficientsToiture {
   readonly G: readonly [number, number];
   /** Reste du versant au vent. */
   readonly H: readonly [number, number];
-  /** Versant sous le vent, près du faîtage. */
+  /** Versant sous le vent, au-delà de la bande J. */
   readonly I: readonly [number, number];
-  /** Versant sous le vent, au-delà. */
+  /** Versant sous le vent, bande de e/10 le long du faîtage. */
   readonly J: readonly [number, number];
 }
 

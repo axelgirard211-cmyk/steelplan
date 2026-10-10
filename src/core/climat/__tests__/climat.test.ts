@@ -213,10 +213,12 @@ describe('pression intérieure', () => {
       site: { ...DEFAULT_PROJECT.site, mode: 'eurocode' },
     };
     const c = chargesClimatiques(p);
-    const sansCpi = Math.abs(c.vent.qp * c.zonage.cpeMoyen);
+    // Valeur des pannes : la bande de rive G, la plus aspirée hors angles.
+    expect(c.cpePannes).toBeCloseTo(c.toiture.G[0], 6);
+    const sansCpi = Math.abs(c.vent.qp * c.cpePannes);
     expect(c.valeurs.ventDepression).toBeGreaterThan(sansCpi);
     expect(c.valeurs.ventDepression).toBeCloseTo(
-      Math.abs(c.vent.qp * (c.zonage.cpeMoyen - CPI_POSITIF)),
+      Math.abs(c.vent.qp * (c.cpePannes - CPI_POSITIF)),
       2,
     );
   });
