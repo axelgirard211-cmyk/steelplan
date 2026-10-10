@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useChecksReport, useStructuralModel } from '../../state/derived';
+import { useChecksReport, useProjetEffectif, useStructuralModel } from '../../state/derived';
+import { maquetteIfc } from '../../export/ifc/index';
 import type { ColorMode } from '../../render3d/colorMaps';
 import { Legende, LegendeTaux } from './Vue3dLegendes';
 import { FicheBarre, FicheJarret, FicheTole } from './Vue3dFiches';
@@ -19,6 +20,7 @@ const VUES: readonly { id: StandardView; label: string }[] = [
 /** Vue 3D interactive : orbite, sélection, isolement, coupe dynamique, mesure. */
 export function Vue3dPanel(): JSX.Element {
   const model = useStructuralModel();
+  const projet = useProjetEffectif();
   const rapport = useChecksReport();
   const conteneur = useRef<HTMLDivElement>(null);
   const scene = useRef<SteelScene | null>(null);
@@ -195,6 +197,16 @@ export function Vue3dPanel(): JSX.Element {
           Mesurer
         </label>
         {mesure !== null && <span className="mesure">{mm(mesure)} mm ({metres(mesure)} m)</span>}
+
+        <span className="separateur" />
+        <button
+          type="button"
+          className="plat"
+          onClick={() => exporterIfc(projet, model)}
+          title="Maquette IFC4 de la charpente — barres, tôles, boulons, assemblages et repères — pour la synthèse BIM"
+        >
+          Exporter en IFC
+        </button>
       </div>
 
       <div className="barre-outils">
@@ -327,4 +339,18 @@ function CoupeDynamique({
       )}
     </>
   );
+}
+
+/**
+ * Télécharge la maquette IFC du modèle AFFICHÉ — celui que montre la vue, tiré
+ * du dernier projet valide.
+ */
+function exporterIfc(projet: Parameters<typeof maquetteIfc>[0], model: Parameters<typeof maquetteIfc>[1]): void {
+  const m = maquetteIfc(projet, model);
+  const url = URL.createObjectURL(new Blob([m.contenu], { type: 'application/x-step' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = m.nom;
+  a.click();
+  URL.revokeObjectURL(url);
 }

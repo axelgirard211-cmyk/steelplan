@@ -1,4 +1,4 @@
-import { epaisseurParoi, listerBoulons } from '../build/bolts';
+import { epaisseurParoi, listerBoulons, type BoltPlacement } from '../build/bolts';
 import type { StructuralModel } from '../build/types';
 import { getProfile } from '../catalog/index';
 import { RHO_ACIER } from '../math/tolerance';
@@ -85,36 +85,9 @@ export function boltList(p: ProjectParams, model: StructuralModel): BoltLine[] {
    * c'est sa copie, restée en arrière d'une correction, qui commandait des
    * M12×230 pour serrer dix millimètres.
    */
-  const cb = p.connections.columnBase;
   for (const b of listerBoulons(model.members, model.plates)) {
-    if (b.kind === 'ancrage') {
-      const d = cb.anchorDiameter;
-      const length = cb.anchorEmbedment + b.grip + cb.groutThickness + 2 * d;
-      ajouter(`ancrage|${d}|${length}`, {
-        designation: `Tige d’ancrage M${d}×${length}`,
-        piece: 'ancrage',
-        diameter: d,
-        cls: '8.8',
-        length,
-        grip: b.grip + cb.groutThickness,
-        usage: 'pieds de poteaux',
-        massUnit: boltMass(length, d),
-      });
-      continue;
-    }
-    const diameter = diametreNominal(b.d, p);
-    const cls = classeDe(b.d, p);
-    const length = boltLength(b.grip, diameter);
-    ajouter(`${diameter}|${cls}|${length}|${b.usage}`, {
-      designation: `M${diameter}×${length} ${cls}`,
-      piece: 'boulon',
-      diameter,
-      cls,
-      length,
-      grip: b.grip,
-      usage: b.usage,
-      massUnit: boltMass(length, diameter),
-    });
+    const l = boulonCommande(b, p);
+    ajouter(`${l.piece}|${l.diameter}|${l.cls}|${l.length}|${l.usage}`, l);
   }
 
   /*
@@ -144,6 +117,42 @@ export function boltList(p: ProjectParams, model: StructuralModel): BoltLine[] {
   return [...lignes.values()]
     .map(({ n, ...l }) => ({ ...l, count: n, massTotal: l.massUnit * n }))
     .sort((a, b) => a.diameter - b.diameter || a.length - b.length);
+}
+
+/**
+ * Ce qui se commande pour UN boulon posé : désignation, diamètre, classe,
+ * longueur. La liste de boulonnerie et la maquette IFC le lisent toutes deux
+ * ici — deux règles finiraient par nommer différemment le même boulon.
+ */
+export function boulonCommande(b: BoltPlacement, p: ProjectParams): Omit<BoltLine, 'count' | 'massTotal'> {
+  if (b.kind === 'ancrage') {
+    const cb = p.connections.columnBase;
+    const d = cb.anchorDiameter;
+    const length = cb.anchorEmbedment + b.grip + cb.groutThickness + 2 * d;
+    return {
+      designation: `Tige d’ancrage M${d}×${length}`,
+      piece: 'ancrage',
+      diameter: d,
+      cls: '8.8',
+      length,
+      grip: b.grip + cb.groutThickness,
+      usage: 'pieds de poteaux',
+      massUnit: boltMass(length, d),
+    };
+  }
+  const diameter = diametreNominal(b.d, p);
+  const cls = classeDe(b.d, p);
+  const length = boltLength(b.grip, diameter);
+  return {
+    designation: `M${diameter}×${length} ${cls}`,
+    piece: 'boulon',
+    diameter,
+    cls,
+    length,
+    grip: b.grip,
+    usage: b.usage,
+    massUnit: boltMass(length, diameter),
+  };
 }
 
 /* ------------------------------------------------------------------ */
