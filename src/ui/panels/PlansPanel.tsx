@@ -6,6 +6,9 @@ import { sheetToSvg, tailleFeuille } from '../../render2d/svgString';
 import { sheetToDxf } from '../../export/dxf';
 import { buildBom } from '../../core/bom/index';
 import { Visionneuse } from '../Visionneuse';
+import { Editeur } from '../editeur/Editeur';
+import { appliquerRetouches } from '../../core/drawing/retouches';
+import { useProjectStore } from '../../state/store';
 import { useChecksReport, useProjetEffectif, useStructuralModel } from '../../state/derived';
 import { planchesDuPoste, POSTES, sheetsBordereau, type Poste } from '../../core/drawing/postes';
 import { archiveDstv, archiveDxfToles, lotDstvDuModele } from '../fichiersMachine';
@@ -66,8 +69,20 @@ export function PlansPanel(): JSX.Element {
       ...planchesDuPoste(dossier, poste),
     ];
   }, [dossier, poste, project.meta]);
-  const sheets = useMemo(() => vues.map((v) => v.sheet), [vues]);
-  const sheet = (sheets[Math.min(choisie, sheets.length - 1)] ?? sheets[0]) as Sheet;
+  /*
+   * ⚠ Les RETOUCHES du dessinateur se posent sur les planches générées : c'est
+   * la planche retouchée qu'on affiche, qu'on exporte et qu'on imprime. Elles
+   * sont lues dans la saisie, pas dans le projet effectif : une retouche ne
+   * régénère rien.
+   */
+  const retouches = useProjectStore((s) => s.project.retouches);
+  const parPlanche = useMemo(() => new Map(retouches.map((x) => [x.planche, x])), [retouches]);
+  const generees = useMemo(() => vues.map((v) => v.sheet), [vues]);
+  const sheets = useMemo(() => generees.map((s) => appliquerRetouches(s, parPlanche.get(s.id)).sheet), [generees, parPlanche]);
+  const indexChoisi = Math.min(choisie, sheets.length - 1);
+  const sheet = (sheets[indexChoisi] ?? sheets[0]) as Sheet;
+  const generee = (generees[indexChoisi] ?? generees[0]) as Sheet;
+  const [edition, setEdition] = useState(false);
   const svg = useMemo(
     () =>
       sheetToSvg(sheet, fondClair ? {} : { encre: '#e6e9ef', papier: '#1b1f26' }),
@@ -182,7 +197,10 @@ export function PlansPanel(): JSX.Element {
                     aria-current={index === choisie}
                     onClick={() => setChoisie(index)}
                   >
-                    <span>{s.titre}</span>
+                    <span>
+                      {s.titre}
+                      {parPlanche.has(s.id) ? <span title="Planche retouchée à la main"> ✎</span> : null}
+                    </span>
                     <span className="compte">{libelleEchelle(s.echelle)}</span>
                   </button>
                 </li>
@@ -244,6 +262,11 @@ export function PlansPanel(): JSX.Element {
               {poste === 'percage' ? 'Fichiers DSTV (.zip)' : 'Fichiers DXF de découpe (.zip)'}
             </button>
           )}
+          {!edition && (
+            <button type="button" className="plat" onClick={() => setEdition(true)} title="Retoucher la planche comme dans un logiciel de DAO">
+              Modifier la planche
+            </button>
+          )}
           <button type="button" className="plat" onClick={exporterPlanche}>
             Planche PDF
           </button>
@@ -252,15 +275,19 @@ export function PlansPanel(): JSX.Element {
           </button>
         </div>
 
-        <Visionneuse svg={svg} largeur={taille.largeur} hauteur={taille.hauteur} cle={sheet.id} />
+        {edition ? (
+          <Editeur key={generee.id} sheet={generee} retouches={parPlanche.get(generee.id)} fondClair={fondClair} onQuitter={() => setEdition(false)} />
+        ) : (
+          <Visionneuse svg={svg} largeur={taille.largeur} hauteur={taille.hauteur} cle={sheet.id} />
+        )}
 
-        <p className="note">
+        {!edition && <p className="note">
           Les cotes portent les valeurs du modèle, pas des mesures du dessin : un défaut de cadrage
           resterait un défaut de présentation, jamais une cote fausse. Le PDF est vectoriel et
           produit à l’échelle 1 en millimètres — une cote mesurée à la règle sur le tirage retombe
           sur la valeur du plan. Le DXF est en R12, lisible par tout logiciel de CAO ; ses cotes y
           sont éclatées en traits, ce format n’ayant pas d’entité de cotation.
-        </p>
+        </p>}
       </section>
     </>
   );

@@ -1,0 +1,132 @@
+import { describe, expect, it } from 'vitest';
+import { transformer } from '../../core/drawing/geometrie2d';
+import { pt, type DrawEntity } from '../../core/drawing/scene';
+import { avancer, demarrer, REPOS, type Action, type Contexte, type Etape, type Evenement } from '../editeur/commandes';
+import { lireSaisie, pointSaisi } from '../editeur/saisie';
+
+/**
+ * LIGNE DE COMMANDE DE L'ÉDITEUR — vérifiée sans écran, évènement par évènement.
+ */
+
+const CTX: Contexte = { echelle: 20, curseur: pt(0, 0), nbSelection: 0, calque: 'contour', hauteurTexte: 2.5 };
+
+/** Joue une suite d'évènements et rend l'étape finale et toutes les actions. */
+function jouer(depart: Etape, evs: readonly Evenement[], ctx: Contexte = CTX): { etape: Etape; actions: Action[]; messages: string[] } {
+  let etape = depart;
+  const actions: Action[] = [];
+  const messages: string[] = [];
+  for (const ev of evs) {
+    const r = avancer(etape, ev, ctx);
+    etape = r.etape;
+    actions.push(...r.actions);
+    if (r.message) messages.push(r.message);
+  }
+  return { etape, actions, messages };
+}
+const P = (x: number, y: number): Evenement => ({ type: 'point', p: pt(x, y) });
+const T = (texte: string): Evenement => ({ type: 'saisie', texte });
+const ENTREE: Evenement = { type: 'valider' };
+const entites = (a: Action[]): DrawEntity[] => a.flatMap((x) => (x.type === 'ajouter' ? (x.entites as DrawEntity[]) : []));
+
+describe('saisie au clavier', () => {
+  it('lit le relatif, le polaire et la distance directe, en mm réels', () => {
+    expect(lireSaisie('@500,200')).toMatchObject({ type: 'relatif', dx: 500, dy: 200 });
+    expect(lireSaisie('1000<45')).toMatchObject({ type: 'polaire', d: 1000, angle: 45 });
+    expect(lireSaisie('250')).toEqual({ type: 'nombre', v: 250 });
+    expect(lireSaisie('C')).toEqual({ type: 'mot', texte: 'C' });
+    // Au 1:20, 1 000 mm réels font 50 mm de papier.
+    expect(pointSaisi(lireSaisie('@1000,0'), pt(10, 10), pt(0, 0), 20)).toEqual(pt(60, 10));
+    expect(pointSaisi(lireSaisie('400'), pt(0, 0), pt(0, 30), 20)).toEqual(pt(0, 20));
+  });
+
+  it('refuse « @ » sans point de départ', () => {
+    expect(pointSaisi(lireSaisie('@10,10'), null, pt(0, 0), 1)).toBeNull();
+    expect(pointSaisi(lireSaisie('10,10'), null, pt(0, 0), 1)).toEqual(pt(10, 10));
+  });
+});
+
+describe('commandes de tracé', () => {
+  it('trace des lignes chaînées, et « C » ferme sur le premier point', () => {
+    const { etape, actions } = jouer(REPOS, [T('L'), P(0, 0), P(10, 0), T('@0,200'), T('C')]);
+    expect(etape).toBe(REPOS);
+    const l = entites(actions);
+    expect(l).toHaveLength(3);
+    expect(l[1]).toMatchObject({ kind: 'ligne', a: { x: 10, y: 0 }, b: { x: 10, y: 10 } });
+    expect(l[2]).toMatchObject({ a: { x: 10, y: 10 }, b: { x: 0, y: 0 } });
+  });
+
+  it('pose une polyligne d’un seul tenant à Entrée', () => {
+    const { actions } = jouer(REPOS, [T('pl'), P(0, 0), P(10, 0), P(10, 5), ENTREE]);
+    expect(entites(actions)).toEqual([{ kind: 'polyligne', points: [pt(0, 0), pt(10, 0), pt(10, 5)], fermee: false, layer: 'contour' }]);
+  });
+
+  it('prend le rayon d’un cercle en mm réels', () => {
+    const { actions } = jouer(REPOS, [T('C'), P(50, 50), T('200')]);
+    expect(entites(actions)[0]).toMatchObject({ kind: 'cercle', r: 10 });
+  });
+
+  it('trace un rectangle au coin opposé tapé', () => {
+    const { actions } = jouer(REPOS, [T('REC'), P(0, 0), T('@400,200')]);
+    expect(entites(actions)[0]).toMatchObject({ kind: 'polyligne', fermee: true, points: [pt(0, 0), pt(20, 0), pt(20, 10), pt(0, 10)] });
+  });
+
+  it('pose un texte avec ses espaces', () => {
+    const { actions } = jouer(REPOS, [T('T'), P(5, 5), T('Nota : platine galvanisée')]);
+    expect(entites(actions)[0]).toMatchObject({ kind: 'texte', texte: 'Nota : platine galvanisée', hauteur: 2.5 });
+  });
+
+  it('cote entre deux points, ligne de cote au pointeur', () => {
+    const { actions } = jouer(REPOS, [T('COT'), P(0, 0), P(30, 0), P(15, 8)]);
+    expect(actions[0]).toMatchObject({ type: 'ajouter', entites: [{ kind: 'cote', a: { x: 0, y: 0 }, b: { x: 30, y: 0 }, decalage: 8 }] });
+  });
+
+  it('dit qu’une commande est inconnue, sans rien faire', () => {
+    const { actions, messages } = jouer(REPOS, [T('XYZ')]);
+    expect(actions).toEqual([]);
+    expect(messages[0]).toMatch(/inconnue/);
+  });
+
+  it('Échap abandonne la commande en cours sans rien poser', () => {
+    const { etape, actions } = jouer(REPOS, [T('REC'), P(0, 0), { type: 'echap' }]);
+    expect(etape).toBe(REPOS);
+    expect(actions).toEqual([]);
+  });
+});
+
+describe('commandes de modification', () => {
+  const avecSel: Contexte = { ...CTX, nbSelection: 2 };
+
+  it('demande une sélection avant d’agir', () => {
+    const r = demarrer('deplacer', CTX);
+    expect(r.etape).toBe(REPOS);
+    expect(r.message).toMatch(/sélectionnez/);
+  });
+
+  it('déplace de la valeur tapée, en mm réels', () => {
+    const { actions } = jouer(REPOS, [T('M'), P(0, 0), T('@1000,-200')], avecSel);
+    const a = actions[0];
+    if (a?.type !== 'transformer') throw new Error('pas de transformation');
+    expect(a.copie).toBe(false);
+    expect(transformer({ kind: 'ligne', a: pt(0, 0), b: pt(1, 0), layer: 'contour' }, a.affine)).toMatchObject({ a: { x: 50, y: -10 } });
+  });
+
+  it('copie autant de fois qu’on clique, jusqu’à Entrée', () => {
+    const { etape, actions } = jouer(REPOS, [T('CO'), P(0, 0), P(10, 0), P(20, 0), ENTREE], avecSel);
+    expect(etape).toBe(REPOS);
+    expect(actions.filter((a) => a.type === 'transformer' && a.copie)).toHaveLength(2);
+  });
+
+  it('tourne de l’angle tapé et met à l’échelle du facteur tapé', () => {
+    const ro = jouer(REPOS, [T('RO'), P(0, 0), T('90')], avecSel).actions[0];
+    if (ro?.type !== 'transformer') throw new Error('pas de rotation');
+    const l = transformer({ kind: 'ligne', a: pt(0, 0), b: pt(10, 0), layer: 'contour' }, ro.affine) as Extract<DrawEntity, { kind: 'ligne' }>;
+    expect(l.b.y).toBeCloseTo(10);
+    const sc = jouer(REPOS, [T('SC'), P(0, 0), T('2')], avecSel).actions[0];
+    if (sc?.type !== 'transformer') throw new Error('pas d’échelle');
+    expect(transformer({ kind: 'cercle', c: pt(1, 0), r: 1, layer: 'contour' }, sc.affine)).toMatchObject({ c: { x: 2 }, r: 2 });
+  });
+
+  it('efface la sélection d’un coup', () => {
+    expect(demarrer('effacer', avecSel).actions).toEqual([{ type: 'effacer' }]);
+  });
+});

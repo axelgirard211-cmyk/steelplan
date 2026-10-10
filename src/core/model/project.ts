@@ -1,6 +1,7 @@
 import type { AtelierParams } from './atelier';
 import type { SteelGradeId } from '../catalog/types';
 import type { Vec3 } from '../math/vec3';
+import type { RetouchesDePlanche } from '../drawing/retouches';
 import type { BracingParams } from './bracing';
 import type { ConnectionParams } from './connections';
 import type { FrameParams } from './frame';
@@ -93,4 +94,9 @@ export interface ProjectParams {
   /** Barres du commerce, trait de scie, classe d'exécution : ce que sait l'atelier. */
   readonly atelier: AtelierParams;
   readonly freeMembers: readonly FreeMember[];
+  /**
+   * Retouches du dessinateur sur les planches générées, planche par planche.
+   * Elles survivent à la régénération du dossier (voir `drawing/retouches`).
+   */
+  readonly retouches: readonly RetouchesDePlanche[];
 }

@@ -2,6 +2,7 @@ import { DEFAULT_PROJECT } from '../model/defaults';
 import type { Ouverture } from '../model/ouvertures';
 import type { FreeMember, ProjectParams, Revision } from '../model/project';
 import { validateProject, type Issue } from '../model/validate';
+import { lireRetouches } from './lireRetouches';
 import { CURRENT_VERSION, FormatError, migrate } from './migrate';
 
 /** Extension et type MIME du format de projet. */
@@ -64,6 +65,8 @@ function mergeWithDefaults(def: unknown, raw: unknown, path: string): unknown {
     if (path === 'ouvertures.items') {
       return raw.map((o, i) => parseOuverture(o, `ouvertures.items[${i}]`));
     }
+    // Les retouches des planches : entités de dessin, relues sur leur propre lecteur.
+    if (path === 'retouches') return lireRetouches(raw, path);
     // Même piège, même remède : l'historique des indices est vide par défaut.
     if (path === 'meta.revisions') {
       return raw.map((r, i) => parseRevision(r, `meta.revisions[${i}]`));

@@ -44,7 +44,7 @@ describe('sérialisation du projet', () => {
 
   it('produit un JSON lisible et versionné', () => {
     const texte = serializeProject(DEFAULT_PROJECT);
-    expect(texte).toContain('\n  "version": 1');
+    expect(texte).toContain('\n  "version": 2');
     expect(JSON.parse(texte).grid.span).toBe(20000);
   });
 
@@ -303,5 +303,46 @@ describe('cohérence du cartouche et des indices', () => {
     expect(avert[0]?.level).toBe('avertissement');
     // Un écart de cartouche ne doit JAMAIS bloquer la génération du modèle.
     expect(isValid(validateProject(p))).toBe(true);
+  });
+});
+
+describe('retouches des planches dans le fichier', () => {
+  const avec: ProjectParams = {
+    ...DEFAULT_PROJECT,
+    retouches: [
+      {
+        planche: 'plan',
+        masques: ['texte|cotation|10.00,20.00|2.50|0.00|20000'],
+        ajouts: [
+          { id: 'r1', origine: '', entite: { kind: 'ligne', a: { x: 1, y: 2 }, b: { x: 3, y: 4 }, layer: 'contour' } },
+          { id: 'r2', origine: 'x', entite: { kind: 'cote', a: { x: 0, y: 0 }, b: { x: 10, y: 0 }, decalage: 5, texte: '', layer: 'cotation' } },
+          { id: 'r3', origine: '', entite: { kind: 'texte', at: { x: 5, y: 5 }, texte: 'Nota', hauteur: 2.5, ancrage: 'gauche', ligneDeBase: 'bas', rotation: 0, gras: false, layer: 'texte' } },
+        ],
+      },
+    ],
+  };
+
+  it('les relit sans perte', () => {
+    expect(deserializeProject(serializeProject(avec)).project.retouches).toEqual(avec.retouches);
+  });
+
+  it('ouvre un fichier du format 1, enregistré avant les retouches', () => {
+    // ⚠ Première migration réelle du format : un projet ancien doit s'ouvrir tel quel.
+    const ancien = JSON.parse(serializeProject(DEFAULT_PROJECT)) as Record<string, unknown>;
+    delete ancien['retouches'];
+    ancien['version'] = 1;
+    const { project } = deserializeProject(JSON.stringify(ancien));
+    expect(project.retouches).toEqual([]);
+    expect(project.grid).toEqual(DEFAULT_PROJECT.grid);
+  });
+
+  it('refuse une entité corrompue en nommant le champ fautif', () => {
+    // ⚠ Un NaN dans un tracé fait disparaître la planche entière à l'impression.
+    const brut = JSON.parse(serializeProject(avec)) as { retouches: { ajouts: { entite: { a: { x: unknown } } }[] }[] };
+    (brut.retouches[0] as { ajouts: { entite: { a: { x: unknown } } }[] }).ajouts[0]!.entite.a.x = 'douze';
+    expect(() => deserializeProject(JSON.stringify(brut))).toThrow(/retouches\[0\]\.ajouts\[0\]\.entite\.a\.x/);
+    const calque = JSON.parse(serializeProject(avec)) as { retouches: { ajouts: { entite: { layer: string } }[] }[] };
+    calque.retouches[0]!.ajouts[0]!.entite.layer = 'inconnu';
+    expect(() => deserializeProject(JSON.stringify(calque))).toThrow(FormatError);
   });
 });

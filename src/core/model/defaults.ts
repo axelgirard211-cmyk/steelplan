@@ -9,7 +9,7 @@ import type { ProjectParams } from './project';
  * égout à 6 m, bipente 10 %. Sert de point de départ et de gabarit de test.
  */
 export const DEFAULT_PROJECT: ProjectParams = {
-  version: 1,
+  version: 2,
   meta: {
     nom: 'Nouveau projet',
     client: '',
@@ -186,4 +186,5 @@ export const DEFAULT_PROJECT: ProjectParams = {
     },
   },
   freeMembers: [],
+  retouches: [],
 };
