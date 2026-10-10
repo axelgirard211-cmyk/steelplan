@@ -183,3 +183,30 @@ describe('robustesse', () => {
     expect(deux.changements, deux.changements.map((c) => `${c.poste} ${c.avant}→${c.apres}`).join(', ')).toEqual([]);
   });
 });
+
+describe('rapidité, à résultat égal', () => {
+  it('trouve par recherche locale exactement ce que trouve le balayage complet', () => {
+    // ⚠ La recherche autour du profil actuel ne vaut que si elle rend la même
+    // proposition que le balayage de tout le catalogue, en moins d'essais.
+    for (const p of [DEFAULT_PROJECT, (TEMPLATES.find((t) => t.id === 'batiment-industriel') ?? TEMPLATES[0])!.build()]) {
+      const vite = dimensionner(p);
+      const lent = dimensionner(p, { balayageComplet: true });
+      expect(vite.changements.map((c) => `${c.poste}:${c.apres}`)).toEqual(lent.changements.map((c) => `${c.poste}:${c.apres}`));
+      expect(vite.tauxMax).toBeCloseTo(lent.tauxMax, 9);
+      expect(vite.evaluations).toBeLessThan(lent.evaluations);
+    }
+  });
+
+  it('lit dans le rapport partiel les mêmes lignes que dans le rapport complet', () => {
+    const m = buildProject(DEFAULT_PROJECT);
+    const complet = runChecks(DEFAULT_PROJECT, m);
+    for (const perimetre of ['portique', 'secondaire'] as const) {
+      const partiel = runChecks(DEFAULT_PROJECT, m, perimetre);
+      expect(partiel.lines.length).toBeGreaterThan(0);
+      for (const l of partiel.lines) {
+        const c = complet.lines.find((x) => x.mark === l.mark);
+        expect(c?.ratio, `${perimetre} ${l.mark}`).toBeCloseTo(l.ratio, 9);
+      }
+    }
+  });
+});

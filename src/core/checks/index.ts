@@ -35,8 +35,22 @@ import { fusionner, pire, type CheckLine, type ChecksReport } from './types';
  * plus élevé, quelle que soit sa provenance, qui est retenu et affiché avec la
  * combinaison qui l'a produit.
  */
-export function runChecks(p: ProjectParams, model: StructuralModel): ChecksReport {
+/**
+ * Partie du rapport à établir.
+ *
+ * ⚠ RÉSERVÉ AU DIMENSIONNEMENT AUTOMATIQUE. Juger un profil de panne ne demande
+ * ni l'analyse des portiques ni les assemblages, et juger un poteau ne demande
+ * pas les vérifications des pannes : établir le rapport entier pour n'en lire
+ * qu'une ligne coûtait la moitié du temps de chaque essai. Un rapport partiel
+ * n'est jamais montré : ses listes absentes sont vides, pas vérifiées.
+ *  - `portique` : les barres des portiques analysés (poteaux, traverses, fermes) ;
+ *  - `secondaire` : pannes, lisses, potelets, contreventements, liernes.
+ */
+export type Perimetre = 'tout' | 'portique' | 'secondaire';
+
+export function runChecks(p: ProjectParams, model: StructuralModel, perimetre: Perimetre = 'tout'): ChecksReport {
   const t0 = performance.now();
+  const complet = perimetre === 'tout';
   /*
    * ⚠ Les charges climatiques passent par le SITE quand il est renseigné :
    * `modeleDeCharges` rend la neige et le vent déduits de la région et de
@@ -132,7 +146,7 @@ export function runChecks(p: ProjectParams, model: StructuralModel): ChecksRepor
     faitage: EffortsAssemblage | null;
   }[] = [];
 
-  for (const { fm, tributary, represente } of aVerifier) {
+  for (const { fm, tributary, represente } of perimetre === 'secondaire' ? [] : aVerifier) {
     const chargé = { ...fm, tributary };
     for (const comb of combs) {
       const input = chargerModele(chargé, p, q, comb);
@@ -157,6 +171,7 @@ export function runChecks(p: ProjectParams, model: StructuralModel): ChecksRepor
          */
         for (const autre of homologues(ligne.memberId, represente)) retenir({ ...ligne, mark: autre });
       }
+      if (!complet) continue;
       releverReactions(enveloppe, chargé, res, comb, represente, files);
       // Flèche de la traverse de RIVE au droit des potelets : la course de leurs oblongs.
       if (comb.kind === 'ELS' && Math.abs(fm.x - (files[0] ?? 0)) < 1) releverCourses(model, fm, res, comb, courses);
@@ -168,7 +183,7 @@ export function runChecks(p: ProjectParams, model: StructuralModel): ChecksRepor
     }
   }
 
-  const secondaire = checkSecondary(p, model, q, combs);
+  const secondaire = perimetre === 'portique' ? { lines: [], piedsPotelets: [], tractions: [], exclus: [] } : checkSecondary(p, model, q, combs);
   for (const ligne of secondaire.lines) retenir(ligne);
 
   const reactions = enveloppe.resultat();
@@ -179,15 +194,17 @@ export function runChecks(p: ProjectParams, model: StructuralModel): ChecksRepor
     lines,
     reactions,
     piedsPotelets: secondaire.piedsPotelets,
-    assemblages: [
-      ...verifierAssemblages(p, effortsAssemblages, reactions),
-      ...verifierAttachesDeContreventement(p, model, secondaire.tractions),
-      ...verifierTetesDePotelets(p, model, secondaire.piedsPotelets, courses),
-    ].sort((a, b) => b.ratio - a.ratio),
+    assemblages: complet
+      ? [
+          ...verifierAssemblages(p, effortsAssemblages, reactions),
+          ...verifierAttachesDeContreventement(p, model, secondaire.tractions),
+          ...verifierTetesDePotelets(p, model, secondaire.piedsPotelets, courses),
+        ].sort((a, b) => b.ratio - a.ratio)
+      : [],
     nonVerifiables: secondaire.exclus,
     byMark,
     combinations: combs,
-    hypotheses: hypotheses(p, model, pireSensibilite),
+    hypotheses: complet ? hypotheses(p, model, pireSensibilite) : [],
     maxRatio: lines.reduce((m, l) => Math.max(m, l.ratio), 0),
     nonVerifies: lines.filter((l) => l.ratio > 1).length,
     ms: performance.now() - t0,

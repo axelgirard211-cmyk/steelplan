@@ -1,3 +1,6 @@
+import { factoriser, substituer } from './lu';
+
+export { factoriser, resoudre, substituer } from './lu';
 /**
  * SOLVEUR DE PORTIQUE PLAN — méthode des rigidités.
  *
@@ -178,10 +181,100 @@ export function chargesEquivalentes(
 
 /* ------------------------------------------------------------------ */
 
-export function solveFrame2d(input: Frame2dInput): Frame2dResult {
+interface DonneesElement {
+  readonly k: number[][];
+  readonly T: number[][];
+  readonly L: number;
+  readonly dofs: readonly number[];
+}
+
+/** Rigidité assemblée et factorisée d'une ossature : ce qui ne dépend pas des charges. */
+interface Rigidite {
+  readonly ndof: number;
+  readonly K: readonly (readonly number[])[];
+  readonly libres: readonly number[];
+  readonly lu: Float64Array;
+  readonly piv: Int32Array;
+  readonly elements: readonly DonneesElement[];
+}
+
+/**
+ * ⚠ La rigidité ne dépend que de la géométrie, des sections et des appuis — pas
+ * des charges. Chaque combinaison la réassemblait pourtant et la refactorisait
+ * de zéro, puis l'analyse de sensibilité au second ordre recommençait encore :
+ * pour une ferme de soixante nœuds, une élimination de Gauss complète par cas,
+ * soit l'essentiel du temps de vérification. Elle est désormais factorisée une
+ * fois et gardée : chaque cas de charge n'est plus qu'une substitution.
+ */
+const CACHE: { cle: string; rigidite: Rigidite | Error }[] = [];
+const TAILLE_CACHE = 8;
+
+/** Ce qui fixe la rigidité : nœuds, sections, articulations et appuis — jamais les charges. */
+function cleDeRigidite(input: Frame2dInput): string {
+  const n = input.nodes.map((p) => `${p.y},${p.z}`).join(';');
+  const e = input.elements.map((x) => `${x.a},${x.b},${x.E},${x.A},${x.I},${x.articule ? 1 : 0}`).join(';');
+  const a = [...input.supports.entries()]
+    .sort((x, y) => x[0] - y[0])
+    .map(([i, sp]) => `${i}:${sp.uy ? 1 : 0}${sp.uz ? 1 : 0}${sp.rot ? 1 : 0}`)
+    .join(';');
+  return `${n}|${e}|${a}`;
+}
+
+function rigiditeDe(input: Frame2dInput): Rigidite {
+  const cle = cleDeRigidite(input);
+  const connu = CACHE.find((c) => c.cle === cle);
+  if (connu) {
+    if (connu.rigidite instanceof Error) throw connu.rigidite;
+    return connu.rigidite;
+  }
+  let rigidite: Rigidite | Error;
+  try {
+    rigidite = assembler(input);
+  } catch (e) {
+    rigidite = e instanceof Error ? e : new Error(String(e));
+  }
+  CACHE.unshift({ cle, rigidite });
+  if (CACHE.length > TAILLE_CACHE) CACHE.pop();
+  if (rigidite instanceof Error) throw rigidite;
+  return rigidite;
+}
+
+function assembler(input: Frame2dInput): Rigidite {
   const n = input.nodes.length;
   const ndof = 3 * n;
   const K: number[][] = Array.from({ length: ndof }, () => new Array<number>(ndof).fill(0));
+  const elements: DonneesElement[] = [];
+  for (const e of input.elements) {
+    const { L, c, s } = geometrie(input.nodes, e);
+    const k = rigiditeLocale(e.E, e.A, e.I, L, e.articule ?? false);
+    const T = passage(c, s);
+    const kg = multiplier(transposer(T), multiplier(k, T));
+    const dofs = [3 * e.a, 3 * e.a + 1, 3 * e.a + 2, 3 * e.b, 3 * e.b + 1, 3 * e.b + 2];
+    for (let i = 0; i < 6; i++) {
+      const ligne = K[dofs[i] as number] as number[];
+      const kgi = kg[i] as number[];
+      for (let j = 0; j < 6; j++) ligne[dofs[j] as number] = (ligne[dofs[j] as number] as number) + (kgi[j] as number);
+    }
+    elements.push({ k, T, L, dofs });
+  }
+
+  // Appuis : on élimine les degrés bloqués plutôt que de pénaliser, ce qui évite
+  // tout choix arbitraire de raideur de ressort.
+  const bloque = new Array<boolean>(ndof).fill(false);
+  for (const [i, sp] of input.supports) {
+    if (sp.uy) bloque[3 * i] = true;
+    if (sp.uz) bloque[3 * i + 1] = true;
+    if (sp.rot) bloque[3 * i + 2] = true;
+  }
+  const libres: number[] = [];
+  for (let i = 0; i < ndof; i++) if (!bloque[i]) libres.push(i);
+  const { lu, piv } = factoriser(libres.map((i) => libres.map((j) => (K[i] as number[])[j] as number)));
+  return { ndof, K, libres, lu, piv, elements };
+}
+
+export function solveFrame2d(input: Frame2dInput): Frame2dResult {
+  const r = rigiditeDe(input);
+  const { ndof, K, libres } = r;
   const F = new Array<number>(ndof).fill(0);
 
   // Charges nodales.
@@ -191,53 +284,27 @@ export function solveFrame2d(input: Frame2dInput): Frame2dResult {
     F[3 * i + 2] = (F[3 * i + 2] ?? 0) + m;
   }
 
-  // Assemblage.
-  const donneesElem: { k: number[][]; T: number[][]; fe: number[]; dofs: number[] }[] = [];
-  for (const e of input.elements) {
-    const { L, c, s } = geometrie(input.nodes, e);
-    const k = rigiditeLocale(e.E, e.A, e.I, L, e.articule ?? false);
-    const T = passage(c, s);
-    const kg = multiplier(transposer(T), multiplier(k, T));
+  // Charges réparties : leurs équivalents nodaux passent au second membre, en repère global.
+  const fes = input.elements.map((e, n) => {
+    const { T, L, dofs } = r.elements[n] as DonneesElement;
     const fe = chargesEquivalentes(e.qPerp, e.qAxial, L, e.articule ?? false);
-    // Les charges équivalentes passent au second membre, en repère global.
     const feGlobal = multiplierVecteur(transposer(T), fe);
-    const dofs = [3 * e.a, 3 * e.a + 1, 3 * e.a + 2, 3 * e.b, 3 * e.b + 1, 3 * e.b + 2];
-
-    for (let i = 0; i < 6; i++) {
-      const di = dofs[i] as number;
-      F[di] = (F[di] ?? 0) + (feGlobal[i] as number);
-      for (let j = 0; j < 6; j++) {
-        const dj = dofs[j] as number;
-        (K[di] as number[])[dj] = ((K[di] as number[])[dj] ?? 0) + ((kg[i] as number[])[j] as number);
-      }
-    }
-    donneesElem.push({ k, T, fe, dofs });
-  }
-
-  // Appuis : on élimine les degrés bloqués plutôt que de pénaliser, ce qui évite
-  // tout choix arbitraire de raideur de ressort.
-  const bloque = new Array<boolean>(ndof).fill(false);
-  for (const [i, s] of input.supports) {
-    if (s.uy) bloque[3 * i] = true;
-    if (s.uz) bloque[3 * i + 1] = true;
-    if (s.rot) bloque[3 * i + 2] = true;
-  }
-  const libres: number[] = [];
-  for (let i = 0; i < ndof; i++) if (!bloque[i]) libres.push(i);
+    for (let i = 0; i < 6; i++) F[dofs[i] as number] = (F[dofs[i] as number] as number) + (feGlobal[i] as number);
+    return fe;
+  });
 
   // ⚠ Une structure entièrement bloquée n'a rien à résoudre, mais ses éléments
   // portent quand même les efforts de leurs charges réparties : on ne sort pas
   // sans les calculer, sinon une poutre bi-encastrée sortirait sans moment.
   const d = new Array<number>(ndof).fill(0);
   if (libres.length > 0) {
-    const Kr = libres.map((i) => libres.map((j) => (K[i] as number[])[j] as number));
-    const Fr = libres.map((i) => F[i] as number);
-    const dr = resoudre(Kr, Fr);
+    const dr = substituer(r.lu, r.piv, libres.map((i) => F[i] as number));
     for (const [k, i] of libres.entries()) d[i] = dr[k] as number;
   }
 
   // Efforts d'extrémité, repère local.
-  const endForces: EndForces[] = donneesElem.map(({ k, T, fe, dofs }) => {
+  const endForces: EndForces[] = r.elements.map(({ k, T, dofs }, n) => {
+    const fe = fes[n] as number[];
     const dGlobal = dofs.map((i) => d[i] as number);
     const dLocal = multiplierVecteur(T, dGlobal);
     const f = multiplierVecteur(k, dLocal).map((v, i) => v - (fe[i] as number));
@@ -256,14 +323,15 @@ export function solveFrame2d(input: Frame2dInput): Frame2dResult {
   // Réactions : K·d − F sur les degrés bloqués.
   const reactions = new Map<number, readonly [number, number, number]>();
   for (const [i] of input.supports) {
-    const r: number[] = [0, 0, 0];
+    const rr: number[] = [0, 0, 0];
     for (let c = 0; c < 3; c++) {
       const dof = 3 * i + c;
+      const ligne = K[dof] as readonly number[];
       let somme = 0;
-      for (let j = 0; j < ndof; j++) somme += ((K[dof] as number[])[j] as number) * (d[j] as number);
-      r[c] = somme - (F[dof] as number);
+      for (let j = 0; j < ndof; j++) somme += (ligne[j] as number) * (d[j] as number);
+      rr[c] = somme - (F[dof] as number);
     }
-    reactions.set(i, [r[0] as number, r[1] as number, r[2] as number]);
+    reactions.set(i, [rr[0] as number, rr[1] as number, rr[2] as number]);
   }
 
   return { d, endForces, reactions };
@@ -350,64 +418,4 @@ function multiplier(a: readonly number[][], b: readonly number[][]): number[][] 
 
 function multiplierVecteur(a: readonly number[][], v: readonly number[]): number[] {
   return a.map((ligne) => ligne.reduce((s, x, j) => s + x * (v[j] as number), 0));
-}
-
-/**
- * Résolution d'un système dense par élimination de Gauss avec pivot partiel.
- *
- * Le pivot partiel n'est pas un luxe : sans lui, un portique dont les poteaux
- * sont beaucoup plus raides que les traverses produit des pivots minuscules et
- * la solution part en vrille silencieusement.
- */
-export function resoudre(A: readonly number[][], b: readonly number[]): number[] {
-  const n = b.length;
-  const m = A.map((ligne, i) => [...ligne, b[i] as number]);
-
-  // ⚠ Le critère de pivot nul doit être RELATIF à l'échelle de la matrice. Les
-  // termes de rigidité d'une charpente valent 10⁵ à 10⁹ ; comparer un pivot à
-  // 10⁻¹² absolu laisse passer les mécanismes, dont le pivot résiduel n'est nul
-  // qu'aux arrondis près — soit 10⁻⁴ ici. Le solveur rendait alors des
-  // déplacements absurdes sans rien signaler : c'est le pire comportement possible.
-  let echelle = 0;
-  for (const ligne of A) for (const v of ligne) echelle = Math.max(echelle, Math.abs(v));
-  const seuil = Math.max(1e-12, echelle * 1e-10);
-
-  for (let col = 0; col < n; col++) {
-    // Pivot : la plus grande valeur absolue de la colonne restante.
-    let meilleur = col;
-    for (let r = col + 1; r < n; r++) {
-      if (Math.abs((m[r] as number[])[col] as number) > Math.abs((m[meilleur] as number[])[col] as number)) {
-        meilleur = r;
-      }
-    }
-    if (meilleur !== col) {
-      const t = m[col] as number[];
-      m[col] = m[meilleur] as number[];
-      m[meilleur] = t;
-    }
-
-    const pivot = (m[col] as number[])[col] as number;
-    if (Math.abs(pivot) < seuil) {
-      throw new Error(
-        'Système singulier : la structure n’est pas tenue (appuis insuffisants ou mécanisme).',
-      );
-    }
-
-    for (let r = col + 1; r < n; r++) {
-      const facteur = ((m[r] as number[])[col] as number) / pivot;
-      if (facteur === 0) continue;
-      for (let c = col; c <= n; c++) {
-        (m[r] as number[])[c] =
-          ((m[r] as number[])[c] as number) - facteur * ((m[col] as number[])[c] as number);
-      }
-    }
-  }
-
-  const x = new Array<number>(n).fill(0);
-  for (let i = n - 1; i >= 0; i--) {
-    let somme = (m[i] as number[])[n] as number;
-    for (let j = i + 1; j < n; j++) somme -= ((m[i] as number[])[j] as number) * (x[j] as number);
-    x[i] = somme / ((m[i] as number[])[i] as number);
-  }
-  return x;
 }

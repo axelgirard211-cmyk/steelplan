@@ -1,4 +1,5 @@
 import { buildProject } from '../build/buildProject';
+import type { StructuralModel } from '../build/types';
 import { getProfile, type ProfileFamily } from '../catalog/index';
 import type { SteelGradeId } from '../catalog/types';
 import { cutLengths } from '../geometry/member';
@@ -106,6 +107,11 @@ export interface OptionsDimensionnement {
    * et le changement est signalé.
    */
   readonly changerDeFamille?: boolean;
+  /**
+   * Balayer tout le catalogue de la famille au lieu de chercher autour du
+   * profil actuel. Même réponse, plus lent : sert à le vérifier.
+   */
+  readonly balayageComplet?: boolean;
 }
 
 export function dimensionner(
@@ -122,7 +128,8 @@ export function dimensionner(
   const insuffisants: string[] = [];
 
   /**
-   * Taux de travail des pièces d'un poste, pour un projet donné.
+   * Taux de travail des pièces d'un poste, pour un projet donné — et le modèle
+   * construit pour l'obtenir, que l'appelant réutilise au lieu de le refaire.
    *
    * ⚠ Un poste dont les pièces EXISTENT mais dont aucune n'apparaît au rapport
    * vaut l'infini, jamais zéro. `runChecks` abandonne silencieusement une
@@ -132,13 +139,14 @@ export function dimensionner(
    * même piège que celui des pièces non vérifiées : le silence n'est pas une
    * réponse acceptable.
    */
-  const taux = (p: ProjectParams, poste: Poste): number => {
+  const evaluer = (p: ProjectParams, poste: Poste): { taux: number; model: StructuralModel } => {
     evaluations += 1;
     const model = buildProject(p);
     const concernes = new Set(model.members.filter(poste.concerne).map((m) => m.mark));
-    if (concernes.size === 0) return 0;
+    if (concernes.size === 0) return { taux: 0, model };
 
-    const rapport = runChecks(p, model);
+    // Seule la partie du rapport où se lisent les pièces du poste est établie.
+    const rapport = runChecks(p, model, poste.perimetre);
     let max = 0;
     let vues = 0;
     for (const l of rapport.lines) {
@@ -146,24 +154,44 @@ export function dimensionner(
       vues += 1;
       max = Math.max(max, l.ratio);
     }
-    return vues === concernes.size ? max : Infinity;
+    return { taux: vues === concernes.size ? max : Infinity, model };
   };
 
+  let modeleDepart: StructuralModel | null = null;
   for (const [i, poste] of postes.entries()) {
     const avant = poste.profil(projet);
     const famille = getProfile(avant).family;
+    const initial = evaluer(projet, poste);
+    modeleDepart ??= initial.model;
+    const tauxAvant = initial.taux;
     const liste = proposables(
       candidats(poste).filter((id) => !classeQuatre(id, poste.nuance(projet))),
-      longueurMax(projet, poste),
+      longueurMax(initial.model, poste),
     );
-    const tauxAvant = taux(projet, poste);
+
+    // Un profil déjà évalué ne l'est pas deux fois — à commencer par l'actuel.
+    const memo = new Map<string, number>([[avant, tauxAvant]]);
+    const taux = (p: ProjectParams): number => {
+      const id = poste.profil(p);
+      const connu = memo.get(id);
+      if (connu !== undefined) return connu;
+      const t = evaluer(p, poste).taux;
+      memo.set(id, t);
+      return t;
+    };
 
     const dans = (memeFamille: boolean): string[] =>
       liste.filter((id) => (getProfile(id).family === famille) === memeFamille);
-    let choix = chercher(projet, poste, opts.changerDeFamille ? liste : dans(true), cible, (p) => taux(p, poste));
+    const memeFamille = dans(true);
+    // Recherche LOCALE autour du profil actuel quand le taux suit la masse dans
+    // la famille ; balayage complet sinon (treillis, changement de famille).
+    let choix =
+      opts.changerDeFamille || opts.balayageComplet || !poste.monotone || !memeFamille.includes(avant)
+        ? chercher(projet, poste, opts.changerDeFamille ? liste : memeFamille, cible, taux)
+        : chercherAutour(projet, poste, memeFamille, avant, cible, taux);
     // Dernier recours : rien ne tient dans la famille. On cherche ailleurs — et
     // le changement de famille sera écrit sur la ligne.
-    if (choix === null && !opts.changerDeFamille) choix = chercher(projet, poste, dans(false), cible, (p) => taux(p, poste));
+    if (choix === null && !opts.changerDeFamille) choix = chercher(projet, poste, dans(false), cible, taux);
     if (choix === null) {
       insuffisants.push(poste.libelle);
     } else if (choix.profil !== avant) {
@@ -187,17 +215,95 @@ export function dimensionner(
     opts.onProgres?.(i + 1, postes.length, poste.libelle);
   }
 
-  const final = runChecks(projet, buildProject(projet));
+  const modeleFinal = buildProject(projet);
+  const final = runChecks(projet, modeleFinal);
   return {
     projet,
     changements,
-    masseAvant: buildProject(depart).stats.massKg,
-    masseApres: buildProject(projet).stats.massKg,
+    masseAvant: (modeleDepart ?? buildProject(depart)).stats.massKg,
+    masseApres: modeleFinal.stats.massKg,
     tauxMax: final.maxRatio,
     insuffisants,
     evaluations,
     ms: performance.now() - t0,
   };
+}
+
+/**
+ * Recherche LOCALE, pour un poste dont le taux décroît avec la masse dans sa
+ * famille : on part du profil actuel au lieu du plus léger du catalogue.
+ *
+ *  - il tient : on cherche le plus léger qui tient encore, en dessous ;
+ *  - il ne tient pas : le premier qui tient, au-dessus.
+ *
+ * Par BONDS — 1, 1, 2, 4, 8 profils — jusqu'à encadrer la réponse, puis par
+ * dichotomie dans l'encadrement : deux évaluations quand la réponse est voisine
+ * (le cas courant), quelques-unes quand elle est loin — un poteau de ferme qui
+ * passe de HEA 300 à HEA 140 en demandait neuf, un à un.
+ *
+ * Même réponse que le balayage depuis le bas, puisque le taux suit la masse.
+ * Les profils qui rendent le projet INGÉNÉRABLE sont écartés d'abord : la
+ * validation ne coûte presque rien, et ce sont eux — comptés comme « trop
+ * faibles » — qui avaient fait abandonner autrefois la dichotomie.
+ */
+function chercherAutour(
+  projet: ProjectParams,
+  poste: Poste,
+  liste: readonly string[],
+  actuel: string,
+  cible: number,
+  taux: (p: ProjectParams) => number,
+): { profil: string; taux: number } | null {
+  const valides = liste.filter((id) => id === actuel || isValid(validateProject(poste.poser(projet, id))));
+  const c = valides.indexOf(actuel);
+  const t = new Map<number, number>();
+  const tauxDe = (k: number): number => {
+    const connu = t.get(k);
+    if (connu !== undefined) return connu;
+    const v = taux(poste.poser(projet, valides[k] as string));
+    t.set(k, v);
+    return v;
+  };
+  const tient = (k: number): boolean => tauxDe(k) <= cible;
+  const PAS = [1, 1, 2, 4, 8, 16];
+  const pas = (n: number): number => PAS[Math.min(n, PAS.length - 1)] as number;
+
+  // Encadrement : `bas` ne tient pas (ou -1), `haut` tient (ou longueur).
+  let bas: number;
+  let haut: number;
+  if (tient(c)) {
+    haut = c;
+    bas = -1;
+    for (let n = 0, k = c; ; n++) {
+      k -= pas(n);
+      if (k < 0) k = 0;
+      if (tient(k)) {
+        haut = k;
+        if (k === 0) break;
+      } else {
+        bas = k;
+        break;
+      }
+    }
+  } else {
+    bas = c;
+    haut = valides.length;
+    for (let n = 0, k = c; ; n++) {
+      k = Math.min(k + pas(n), valides.length - 1);
+      if (tient(k)) {
+        haut = k;
+        break;
+      }
+      bas = k;
+      if (k === valides.length - 1) return null;
+    }
+  }
+  while (haut - bas > 1) {
+    const m = (bas + haut) >> 1;
+    if (tient(m)) haut = m;
+    else bas = m;
+  }
+  return { profil: valides[haut] as string, taux: tauxDe(haut) };
 }
 
 /**
@@ -237,9 +343,9 @@ function chercher(
 }
 
 /** Longueur de la plus longue barre commandée par ce poste (mm). */
-function longueurMax(p: ProjectParams, poste: Poste): number {
+function longueurMax(model: StructuralModel, poste: Poste): number {
   let max = 0;
-  for (const m of buildProject(p).members) {
+  for (const m of model.members) {
     if (poste.concerne(m)) max = Math.max(max, cutLengths(m).axis);
   }
   return max;

@@ -83,12 +83,22 @@ export function buildProject(p: ProjectParams): StructuralModel {
   // le premier et sur les repères des tôles et des jarrets.
   const members = assignAssemblyMarks(assignMarks(percees), plates, haunches);
 
+  /*
+   * ⚠ Statistiques calculées À LA DEMANDE. Le compte des boulons y apparie
+   * chaque trou à ses coaxiaux : plus d'un tiers du temps de génération, pour
+   * un chiffre que la 3D et les nomenclatures lisent, mais pas le
+   * dimensionnement automatique, qui génère le modèle des dizaines de fois.
+   */
+  let stats: ReturnType<typeof computeStats> | null = null;
   return {
     members,
     haunches,
     plates,
     welds: assemblages.welds,
-    stats: computeStats(members, haunches, plates, assemblages.welds),
+    get stats() {
+      stats ??= computeStats(members, haunches, plates, assemblages.welds);
+      return stats;
+    },
     spacings: {
       purlins: secondaire.purlinSpacing,
       rails: secondaire.railSpacing,
