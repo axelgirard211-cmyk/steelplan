@@ -8,6 +8,7 @@ import { Editeur } from '../editeur/Editeur';
 import { appliquerRetouches } from '../../core/drawing/retouches';
 import { useProjetEffectif, useStructuralModel } from '../../state/derived';
 import { useDossier } from '../useDossier';
+import { normaliser } from '../projet/rubriques';
 import { planchesDuPoste, POSTES, sheetsBordereau, type Poste } from '../../core/drawing/postes';
 import { archiveDstv, archiveDxfToles, lotDstvDuModele } from '../fichiersMachine';
 
@@ -81,16 +82,24 @@ export function PlansPanel(): JSX.Element {
   );
   const taille = tailleFeuille(sheet.format);
 
+  /*
+   * ⚠ Un dossier courant compte une centaine de planches : on cherchait
+   * « Assemblage TR1C » en faisant défiler la liste. Le filtre garde la
+   * numérotation et la navigation du dossier, il ne fait que masquer.
+   */
+  const [filtre, setFiltre] = useState('');
   // Regroupement par nature, dans l'ordre du dossier.
   const groupes = useMemo(() => {
+    const q = normaliser(filtre);
     const m = new Map<SheetKind, { sheet: Sheet; index: number }[]>();
     for (const [i, s] of sheets.entries()) {
+      if (q && !normaliser(`${s.titre} ${LIBELLES[s.kind]}`).includes(q)) continue;
       const l = m.get(s.kind) ?? [];
       l.push({ sheet: s, index: i });
       m.set(s.kind, l);
     }
     return m;
-  }, [sheets]);
+  }, [sheets, filtre]);
 
   const [enCours, setEnCours] = useState<string | null>(null);
 
@@ -177,6 +186,21 @@ export function PlansPanel(): JSX.Element {
             ))}
           </select>
         </label>
+        <input
+          type="search"
+          className="filtre-planches"
+          placeholder="Filtrer les planches (TR1, détail, façade…)"
+          aria-label="Filtrer les planches"
+          value={filtre}
+          onChange={(e) => setFiltre(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setFiltre('');
+            // Entrée : la première planche trouvée.
+            const premiere = [...groupes.values()][0]?.[0];
+            if (e.key === 'Enter' && premiere) setChoisie(premiere.index);
+          }}
+        />
+        {groupes.size === 0 && <p className="note">Aucune planche ne correspond.</p>}
         {[...groupes.entries()].map(([kind, l]) => (
           <div key={kind} style={{ marginBottom: 10 }}>
             <div className="titre-groupe">{LIBELLES[kind]}</div>
