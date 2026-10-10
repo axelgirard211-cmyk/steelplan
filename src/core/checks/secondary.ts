@@ -233,6 +233,7 @@ function verifier(
     combinaison: `${comb.id} — ${comb.label}`,
     nEd: nEd / 1000,
     myEd: myEd / 1e6,
+    mzEd: mzEd / 1e6,
     vEd: vEd / 1000,
     ratios,
     elancement: check.elancement,

@@ -149,6 +149,32 @@ describe('validation du projet', () => {
     expect(rubriqueDe('freeMembers[2].profile')).toBe('Barres libres');
   });
 
+  describe('bâtiment long', () => {
+    const long: ProjectParams = { ...DEFAULT_PROJECT, grid: { ...DEFAULT_PROJECT.grid, nBays: 24 } };
+    const avert = (p: ProjectParams, path: string) =>
+      validateProject(p).filter((i) => i.level === 'avertissement' && i.path === path);
+
+    it('signale qu’au-delà de 100 m un joint de dilatation est d’usage', () => {
+      expect(avert(long, 'grid.nBays')).toHaveLength(1);
+      expect(avert(DEFAULT_PROJECT, 'grid.nBays')).toHaveLength(0);
+    });
+
+    it('signale des palées aux seules extrémités, et propose la travée centrale', () => {
+      const [a] = avert(long, 'bracing.wall.bays');
+      expect(a?.message).toMatch(/travée 13/);
+      // Une palée au centre : la file se dilate librement vers les pignons.
+      const centree: ProjectParams = {
+        ...long,
+        bracing: { ...long.bracing, wall: { ...long.bracing.wall, bays: [0, 12, 23] } },
+      };
+      expect(avert(centree, 'bracing.wall.bays')).toHaveLength(0);
+    });
+
+    it('ne dit rien d’un hangar courant', () => {
+      expect(avert(DEFAULT_PROJECT, 'bracing.wall.bays')).toHaveLength(0);
+    });
+  });
+
   it('refuse deux structures principales simultanées', () => {
     const p: ProjectParams = {
       ...DEFAULT_PROJECT,

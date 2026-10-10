@@ -4,6 +4,7 @@ import {
   MOTIFS,
   type Proposition,
 } from '../../core/checks/dimensionner';
+import { FAMILY_LABELS } from '../../core/catalog/index';
 import { useProjectStore } from '../../state/store';
 import { num } from '../format';
 
@@ -24,6 +25,7 @@ export function DimensionnementFiche(): JSX.Element {
   const edit = useProjectStore((s) => s.edit);
   const [prop, setProp] = useState<Proposition | null>(null);
   const [calcul, setCalcul] = useState(false);
+  const [changerDeFamille, setChangerDeFamille] = useState(false);
 
   const lancer = (): void => {
     setCalcul(true);
@@ -31,7 +33,7 @@ export function DimensionnementFiche(): JSX.Element {
     // repeint jamais l'état « calcul en cours » et paraît figé une seconde.
     setTimeout(() => {
       try {
-        setProp(dimensionner(project));
+        setProp(dimensionner(project, { changerDeFamille }));
       } finally {
         setCalcul(false);
       }
@@ -53,6 +55,8 @@ export function DimensionnementFiche(): JSX.Element {
       d.truss.diagonalProfile = p.projet.truss.diagonalProfile;
       d.secondary.purlins.profile = p.projet.secondary.purlins.profile;
       d.secondary.rails.profile = p.projet.secondary.rails.profile;
+      // Les chevêtres suivent les lisses : même hauteur imposée.
+      d.ouvertures.profile = p.projet.ouvertures.profile;
       d.secondary.gablePosts.profile = p.projet.secondary.gablePosts.profile;
       d.bracing.roof.profile = p.projet.bracing.roof.profile;
       d.bracing.wall.profile = p.projet.bracing.wall.profile;
@@ -68,6 +72,18 @@ export function DimensionnementFiche(): JSX.Element {
         Cherche, pour chaque poste, le profil le plus léger dont tous les taux restent sous 1,00.
         Recherche gloutonne : l’ossature secondaire d’abord, les poteaux en dernier.
       </p>
+
+      <label className="etiquette" style={{ display: 'block', margin: '0 0 8px' }}>
+        <input
+          type="checkbox"
+          checked={changerDeFamille}
+          onChange={(e) => {
+            setChangerDeFamille(e.target.checked);
+            setProp(null);
+          }}
+        />{' '}
+        Autoriser un changement de famille (tube rond → tube carré, HEA → IPE…)
+      </label>
 
       <button type="button" className="plat" onClick={lancer} disabled={calcul}>
         {calcul ? 'Recherche en cours…' : 'Rechercher les profils les plus légers'}
@@ -131,7 +147,17 @@ function Resultat({
                 {c.deltaKgParM > 0 ? '+' : ''}
                 {num(c.deltaKgParM, 1)}
               </td>
-              <td>{MOTIFS[c.motif]}</td>
+              <td>
+                {MOTIFS[c.motif]}
+                {/* ⚠ Une autre famille, c'est un autre assemblage : à dire, pas à taire. */}
+                {c.familleApres !== c.familleAvant && (
+                  <div style={{ fontSize: '0.9em', color: 'var(--alerte)' }}>
+                    change de famille : {FAMILY_LABELS[c.familleAvant]} → {FAMILY_LABELS[c.familleApres]} —
+                    assemblages à reprendre
+                  </div>
+                )}
+                {c.entraine && <div className="note" style={{ fontSize: '0.9em' }}>entraîne les {c.entraine}</div>}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -141,7 +167,7 @@ function Resultat({
         <dt>Masse de l’ouvrage</dt>
         <dd>
           {num(prop.masseAvant, 0)} → <strong>{num(prop.masseApres, 0)} kg</strong> ({pct > 0 ? '+' : ''}
-          {pct.toFixed(1)} %)
+          {num(pct, 1)} %)
         </dd>
         <dt>Taux de travail maximal obtenu</dt>
         <dd className={prop.tauxMax > 1 ? 'alerte' : ''}>{num(prop.tauxMax, 2)}</dd>

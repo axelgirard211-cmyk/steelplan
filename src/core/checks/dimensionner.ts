@@ -1,5 +1,5 @@
 import { buildProject } from '../build/buildProject';
-import { getProfile } from '../catalog/index';
+import { getProfile, type ProfileFamily } from '../catalog/index';
 import type { SteelGradeId } from '../catalog/types';
 import { cutLengths } from '../geometry/member';
 import type { ProjectParams } from '../model/project';
@@ -54,6 +54,15 @@ export interface ChangementPoste {
   readonly motif: MotifChangement;
   /** Masse linéique gagnée (négative) ou ajoutée (positive), en kg/m. */
   readonly deltaKgParM: number;
+  /**
+   * Le profil proposé est d'une autre FAMILLE (tube rond → tube carré, HEA →
+   * IPE). Ce n'est pas un détail de catalogue : platines, goussets, perçages et
+   * assemblages sont à reprendre. Jamais en silence.
+   */
+  readonly familleAvant: ProfileFamily;
+  readonly familleApres: ProfileFamily;
+  /** Pièces que le changement entraîne, s'il y en a (chevêtres avec les lisses). */
+  readonly entraine: string | null;
 }
 
 export interface Proposition {
@@ -89,6 +98,14 @@ export interface OptionsDimensionnement {
   readonly cible?: number;
   /** Appelée à chaque poste terminé, pour que l'écran ne paraisse pas figé. */
   readonly onProgres?: (fait: number, total: number, libelle: string) => void;
+  /**
+   * Chercher aussi dans les autres familles du poste. Faux par défaut : la
+   * famille est un choix de conception — l'assemblage d'un tube rond n'est pas
+   * celui d'un tube carré — et un dimensionnement n'a pas à le défaire. Même
+   * faux, une famille qui n'a AUCUN profil qui tienne laisse chercher ailleurs,
+   * et le changement est signalé.
+   */
+  readonly changerDeFamille?: boolean;
 }
 
 export function dimensionner(
@@ -134,13 +151,19 @@ export function dimensionner(
 
   for (const [i, poste] of postes.entries()) {
     const avant = poste.profil(projet);
+    const famille = getProfile(avant).family;
     const liste = proposables(
       candidats(poste).filter((id) => !classeQuatre(id, poste.nuance(projet))),
       longueurMax(projet, poste),
     );
     const tauxAvant = taux(projet, poste);
 
-    const choix = chercher(projet, poste, liste, cible, (p) => taux(p, poste));
+    const dans = (memeFamille: boolean): string[] =>
+      liste.filter((id) => (getProfile(id).family === famille) === memeFamille);
+    let choix = chercher(projet, poste, opts.changerDeFamille ? liste : dans(true), cible, (p) => taux(p, poste));
+    // Dernier recours : rien ne tient dans la famille. On cherche ailleurs — et
+    // le changement de famille sera écrit sur la ligne.
+    if (choix === null && !opts.changerDeFamille) choix = chercher(projet, poste, dans(false), cible, (p) => taux(p, poste));
     if (choix === null) {
       insuffisants.push(poste.libelle);
     } else if (choix.profil !== avant) {
@@ -156,6 +179,9 @@ export function dimensionner(
         motif:
           tauxAvant > cible ? 'renfort' : gb > ga ? 'elancement' : 'allegement',
         deltaKgParM: gb - ga,
+        familleAvant: famille,
+        familleApres: getProfile(choix.profil).family,
+        entraine: poste.entraine?.(projet) ?? null,
       });
     }
     opts.onProgres?.(i + 1, postes.length, poste.libelle);

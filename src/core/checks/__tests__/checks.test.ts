@@ -469,3 +469,22 @@ describe('sensibilité du rapport aux paramètres', () => {
     expect(inf?.nEd).toBeDefined();
   });
 });
+
+describe('sollicitations portées au rapport', () => {
+  it('donne le moment d’axe faible : aucun taux de flexion sans moment affiché', () => {
+    /*
+     * ⚠ Une lisse sous G + Q n'a pas de moment fort mais fléchit sous le poids
+     * du bardage. La note affichait « My = 0 » en face d'un taux de 37 % en
+     * section : un taux que rien, dans la ligne, n'expliquait.
+     */
+    const r = runChecks(DEFAULT_PROJECT, buildProject(DEFAULT_PROJECT));
+    const secondaires = r.lines.filter((l) => l.role === 'panne' || l.role === 'lisse');
+    expect(secondaires.length).toBeGreaterThan(0);
+    for (const l of secondaires) {
+      if (l.ratios.section < 0.01) continue;
+      expect(Math.abs(l.nEd) + Math.abs(l.myEd) + Math.abs(l.mzEd), `${l.mark} ${l.combinaison}`).toBeGreaterThan(0);
+    }
+    // Et au moins une pièce secondaire fléchit réellement sur son axe faible.
+    expect(secondaires.some((l) => l.mzEd > 0)).toBe(true);
+  });
+});

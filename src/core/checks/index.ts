@@ -333,6 +333,8 @@ function lignesDuPortique(
       combinaison: `${comb.id} — ${comb.label}`,
       nEd: (nEd * a) / 1000,
       myEd: (myEd * a) / 1e6,
+      // Le portique est analysé dans son plan : pas de moment d'axe faible.
+      mzEd: 0,
       vEd: (vEd * a) / 1000,
       ratios: check.ratios,
       elancement: check.elancement,
