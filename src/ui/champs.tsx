@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   FAMILY_LABELS,
   FAMILY_ORDER,
@@ -101,13 +101,17 @@ export function ChampTexte({
   onChange,
   largeur = 220,
   placeholder,
+  precision,
 }: {
   valeur: string;
   onChange: (v: string) => void;
   largeur?: number | string;
   placeholder?: string;
+  /** Précise l'étiquette accessible quand plusieurs champs partagent une ligne. */
+  precision?: string;
 }): JSX.Element {
   const [brouillon, setBrouillon] = useState(valeur);
+  const ref = useMemo(() => (precision ? libellerAvec(precision) : libeller), [precision]);
   // Une valeur changée ailleurs (annulation, ouverture de fichier) l'emporte.
   useEffect(() => setBrouillon(valeur), [valeur]);
   const valider = (): void => {
@@ -116,7 +120,7 @@ export function ChampTexte({
   };
   return (
     <input
-      ref={libeller}
+      ref={ref}
       type="text"
       value={brouillon}
       {...(placeholder ? { placeholder } : {})}

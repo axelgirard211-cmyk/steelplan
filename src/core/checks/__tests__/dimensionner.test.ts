@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildProject } from '../../build/buildProject';
 import { DEFAULT_PROJECT } from '../../model/defaults';
+import type { ProjectParams } from '../../model/project';
 import { TEMPLATES } from '../../model/templates';
 import { isValid, validateProject } from '../../model/validate';
 import { getProfile } from '../../catalog/index';
@@ -113,6 +114,52 @@ describe('proposition sur le projet par défaut', () => {
 
   it('reste dans un temps utilisable', () => {
     expect(prop.ms, `${prop.ms.toFixed(0)} ms, ${prop.evaluations} évaluations`).toBeLessThan(60_000);
+  });
+});
+
+describe('familles et pièces liées', () => {
+  it('garde la famille de chaque poste, sauf autorisation', () => {
+    /*
+     * ⚠ Une palée en tube rond devenait un tube carré sans un mot. Ce n'est pas
+     * un profil plus léger : c'est un autre assemblage, d'autres goussets,
+     * d'autres plans d'atelier. La famille est un choix de conception.
+     */
+    const prop = dimensionner(DEFAULT_PROJECT);
+    for (const c of prop.changements) {
+      expect(c.familleApres, `${c.poste} : ${c.avant} → ${c.apres}`).toBe(c.familleAvant);
+    }
+  });
+
+  it('signale tout changement de famille quand il est autorisé', () => {
+    const prop = dimensionner(DEFAULT_PROJECT, { changerDeFamille: true });
+    expect(prop.tauxMax).toBeLessThanOrEqual(1);
+    for (const c of prop.changements) {
+      expect(c.familleApres).toBe(getProfile(c.apres).family);
+      expect(c.familleAvant).toBe(getProfile(c.avant).family);
+    }
+  });
+
+  it('entraîne les chevêtres avec les lisses : même hauteur imposée', () => {
+    /*
+     * ⚠ Chevêtres et lisses doivent avoir la même hauteur. Sans les entraîner,
+     * toute lisse plus basse rendait le projet invalide et était écartée : les
+     * lisses restaient bloquées à leur hauteur, sans explication.
+     */
+    const p: ProjectParams = {
+      ...DEFAULT_PROJECT,
+      ouvertures: {
+        ...DEFAULT_PROJECT.ouvertures,
+        enabled: true,
+        items: [{ id: 'o1', face: 'long-pan-gauche', type: 'portail', position: 7000, largeur: 4000, hauteur: 4000, allege: 0 }],
+      },
+    };
+    const prop = dimensionner(p);
+    expect(isValid(validateProject(prop.projet))).toBe(true);
+    expect(prop.projet.ouvertures.profile).toBe(prop.projet.secondary.rails.profile);
+    const lisses = prop.changements.find((c) => c.poste === 'Lisses');
+    if (lisses) expect(lisses.entraine).toMatch(/chevêtres/);
+    // Et sans ouverture, rien n'est entraîné.
+    expect(dimensionner(DEFAULT_PROJECT).changements.every((c) => c.entraine === null)).toBe(true);
   });
 });
 

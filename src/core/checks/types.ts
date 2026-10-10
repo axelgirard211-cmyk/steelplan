@@ -66,6 +66,12 @@ export interface CheckLine {
   /** Sollicitations de calcul : kN, kN·m. */
   readonly nEd: number;
   readonly myEd: number;
+  /**
+   * Moment d'axe faible. ⚠ Une lisse sous G + Q n'a pas de moment fort — pas de
+   * vent — mais le poids du bardage la fléchit sur l'axe faible : sans cette
+   * colonne, la note affichait « My = 0 » pour un taux de 37 % en section.
+   */
+  readonly mzEd: number;
   readonly vEd: number;
   readonly ratios: Ratios;
   /** Taux de travail global, maximum des cinq. */

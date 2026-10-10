@@ -210,6 +210,7 @@ export function VerificationsPanel(): JSX.Element {
               <th>Cl.</th>
               <th className="nombre">N (kN)</th>
               <th className="nombre">My (kN·m)</th>
+              <th className="nombre">Mz (kN·m)</th>
               <th className="nombre">V (kN)</th>
               <th className="nombre">Section</th>
               <th className="nombre">Cis.</th>
@@ -305,6 +306,7 @@ function Ligne({
         <td className="nombre">{l.cls}</td>
         <td className="nombre">{num(l.nEd, 0)}</td>
         <td className="nombre">{num(l.myEd, 1)}</td>
+        <td className="nombre">{num(l.mzEd, 2)}</td>
         <td className="nombre">{num(l.vEd, 0)}</td>
         <Taux v={l.ratios.section} />
         <Taux v={l.ratios.cisaillement} />
@@ -320,7 +322,7 @@ function Ligne({
       </tr>
       {ouvert ? (
         <tr className="detail">
-          <td colSpan={14}>
+          <td colSpan={16}>
             <div className="detail-verif">
               <span>Combinaison : {l.combinaison}</span>
               <span>

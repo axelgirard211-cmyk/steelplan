@@ -8,7 +8,7 @@ import {
 } from '../../core/model/freeMembers';
 import type { FreeMember } from '../../core/model/project';
 import { useProjectStore } from '../../state/store';
-import { ChampProfil } from '../champs';
+import { ChampProfil, ChampTexte } from '../champs';
 import { num } from '../format';
 
 /**
@@ -150,15 +150,15 @@ export function BarresLibresFiche(): JSX.Element {
                   </td>
                   <td className="nombre derive">{num(longueurLibre(m), 0)}</td>
                   <td>
-                    <input
-                      type="text"
-                      value={m.label}
+                    <ChampTexte
+                      valeur={m.label}
                       placeholder="ex. bracon de jarret"
-                      style={{ width: 150 }}
-                      onChange={(e) =>
+                      largeur={150}
+                      precision={`${m.id} — désignation`}
+                      onChange={(v) =>
                         edit(`${m.id} — repérage`, (d) => {
                           const b = d.freeMembers.find((x) => x.id === m.id);
-                          if (b) b.label = e.target.value;
+                          if (b) b.label = v;
                         })
                       }
                     />

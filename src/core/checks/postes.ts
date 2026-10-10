@@ -30,7 +30,19 @@ export interface Poste {
   readonly poser: (p: ProjectParams, profil: string) => ProjectParams;
   /** La pièce dépend-elle de ce poste ? */
   readonly concerne: (m: Member) => boolean;
+  /** Pièces qui SUIVENT ce poste sans être vérifiées avec lui, s'il y en a. */
+  readonly entraine?: (p: ProjectParams) => string | null;
 }
+
+/**
+ * Les chevêtres d'ouverture suivent les lisses.
+ *
+ * ⚠ Même hauteur imposée (bardage plan, attaches plaquées) : une lisse allégée
+ * d'UPE 160 en UPE 140 rendait le projet invalide, la recherche l'écartait, et
+ * les lisses restaient bloquées à leur hauteur sans que rien ne dise pourquoi.
+ */
+const chevetresSuivent = (p: ProjectParams): boolean =>
+  p.ouvertures.enabled && p.ouvertures.items.length > 0;
 
 const POTEAU: readonly ProfileFamily[] = ['HEA', 'HEB', 'HEM', 'IPE'];
 const TRAVERSE: readonly ProfileFamily[] = ['IPE', 'HEA', 'HEB'];
@@ -77,8 +89,10 @@ export function postesActifs(p: ProjectParams): Poste[] {
       poser: (x, v) => ({
         ...x,
         secondary: { ...x.secondary, rails: { ...x.secondary.rails, profile: v } },
+        ouvertures: chevetresSuivent(x) ? { ...x.ouvertures, profile: v } : x.ouvertures,
       }),
       concerne: (m) => m.role === 'lisse',
+      entraine: (x) => (chevetresSuivent(x) ? 'chevêtres d’ouverture (même hauteur que les lisses)' : null),
     });
   }
 

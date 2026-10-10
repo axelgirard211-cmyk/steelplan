@@ -7,11 +7,10 @@ import {
 } from '../../core/model/finition';
 import { useStructuralModel } from '../../state/derived';
 import { useProjectStore } from '../../state/store';
-import { libeller, libellerAvec } from '../champs';
+import { ChampTexte, libeller, libellerAvec } from '../champs';
 import { num } from '../format';
 
 const EPAISSEUR = libellerAvec('épaisseur sèche');
-const TEINTE = libellerAvec('teinte RAL');
 
 /**
  * TRAITEMENT DE SURFACE.
@@ -148,14 +147,10 @@ export function FinitionFiche(): JSX.Element {
         <dd className="derive">{designationFinition(f)}</dd>
         <dt>Consigne</dt>
         <dd>
-          <input
-            ref={libeller}
-            type="text"
-            value={f.note}
-            style={{ width: '100%' }}
-            onChange={(e) =>
-              edit('Consigne de traitement', (d) => void (d.finition.note = e.target.value))
-            }
+          <ChampTexte
+            valeur={f.note}
+            largeur="100%"
+            onChange={(v) => edit('Consigne de traitement', (d) => void (d.finition.note = v))}
           />
         </dd>
       </dl>
@@ -192,16 +187,15 @@ function Couche({ index }: { index: number }): JSX.Element {
           }}
         />{' '}
         µm{' '}
-        <input
-          ref={TEINTE}
-          type="text"
-          value={couche.ral}
+        <ChampTexte
+          valeur={couche.ral}
           placeholder="RAL"
-          style={{ width: 78 }}
-          onChange={(e) =>
+          largeur={78}
+          precision="teinte RAL"
+          onChange={(v) =>
             edit(`Teinte ${couche.nom}`, (d) => {
               const c = d.finition.couches[index];
-              if (c) c.ral = e.target.value;
+              if (c) c.ral = v;
             })
           }
         />
