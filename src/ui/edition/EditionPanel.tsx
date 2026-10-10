@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Sheet, SheetKind } from '../../core/drawing/sheet';
 import { Editeur } from '../editeur/Editeur';
 import { LIBELLES } from '../panels/PlansPanel';
+import { useNavigation } from '../../state/navigation';
 import { useDossier } from '../useDossier';
 import { Edition3d } from './Edition3d';
 import '../theme/edition.css';
@@ -25,6 +26,19 @@ export function EditionPanel(): JSX.Element {
   const [plancheId, setPlancheId] = useState<string>(() => dossier[0]?.id ?? '');
   const planche: Sheet | undefined = dossier.find((s) => s.id === plancheId) ?? dossier[0];
   const [fondClair, setFondClair] = useState(true);
+  /*
+   * Une pièce choisie en 3D demande sa planche : on passe en 2D, sur cette
+   * planche, cadrée sur ses repères. Choisir une autre planche à la main oublie
+   * la pièce.
+   */
+  const demande = useNavigation((s) => s.demande2d);
+  const [cible, setCible] = useState<{ reperes: readonly string[]; n: number } | null>(null);
+  useEffect(() => {
+    if (!demande) return;
+    setMode('2d');
+    setPlancheId(demande.planche);
+    setCible({ reperes: demande.reperes, n: demande.n });
+  }, [demande]);
 
   const groupes = useMemo(() => {
     const m = new Map<SheetKind, Sheet[]>();
@@ -58,7 +72,14 @@ export function EditionPanel(): JSX.Element {
           <>
             <label className="etiquette">
               Planche
-              <select value={planche.id} onChange={(e) => setPlancheId(e.target.value)} style={{ maxWidth: 360 }}>
+              <select
+                value={planche.id}
+                onChange={(e) => {
+                  setPlancheId(e.target.value);
+                  setCible(null);
+                }}
+                style={{ maxWidth: 360 }}
+              >
                 {groupes.map(([kind, l]) => (
                   <optgroup key={kind} label={LIBELLES[kind]}>
                     {l.map((s) => (
@@ -83,13 +104,22 @@ export function EditionPanel(): JSX.Element {
       </div>
 
       <div className="edition-corps">
-        {mode === '3d' ? (
+        {/* La 3D reste montée : en y revenant, on retrouve sa vue et sa sélection. */}
+        <div className="edition-mode" hidden={mode !== '3d'}>
           <Edition3d />
-        ) : planche ? (
-          <Editeur key={planche.id} sheet={planche} retouches={retouches.get(planche.id)} fondClair={fondClair} />
-        ) : (
-          <p className="note">Aucune planche dans le dossier.</p>
-        )}
+        </div>
+        {mode === '2d' &&
+          (planche ? (
+            <Editeur
+              key={`${planche.id}|${cible?.n ?? 0}`}
+              sheet={planche}
+              retouches={retouches.get(planche.id)}
+              fondClair={fondClair}
+              {...(cible ? { cible: cible.reperes } : {})}
+            />
+          ) : (
+            <p className="note">Aucune planche dans le dossier.</p>
+          ))}
       </div>
     </section>
   );

@@ -50,7 +50,7 @@ import {
 } from './commandes';
 import { EditeurPanneau } from './EditeurPanneau';
 import { LIBELLE_ACCROCHAGE, Marqueur, Reticule, Trait } from './Traits';
-import { auxProportions, deplacer, mmParPixel, versFeuille, vueEtendue, zoomer, type Vue } from './vue';
+import { auxProportions, deplacer, mmParPixel, versFeuille, vueEtendue, vueSur, zoomer, type Vue } from './vue';
 import '../theme/editeur.css';
 
 /**
@@ -68,7 +68,20 @@ type Glisse =
   | { readonly type: 'pan'; readonly x: number; readonly y: number }
   | { readonly type: 'fenetre'; readonly a: Pt; readonly x: number; readonly y: number; readonly maj: boolean };
 
-export function Editeur({ sheet, retouches, fondClair, onQuitter }: { sheet: Sheet; retouches: RetouchesDePlanche | undefined; fondClair: boolean; onQuitter?: () => void }): JSX.Element {
+export function Editeur({
+  sheet,
+  retouches,
+  fondClair,
+  onQuitter,
+  cible,
+}: {
+  sheet: Sheet;
+  retouches: RetouchesDePlanche | undefined;
+  fondClair: boolean;
+  onQuitter?: () => void;
+  /** Repères d'une pièce venue de la 3D : la vue s'ouvre cadrée sur eux, sélectionnés. */
+  cible?: readonly string[];
+}): JSX.Element {
   const edit = useProjectStore((s) => s.edit);
   const r = useMemo(() => retouches ?? retouchesVides(sheet.id), [retouches, sheet.id]);
   const { largeur: W, hauteur: H } = FORMATS[sheet.format];
@@ -86,13 +99,27 @@ export function Editeur({ sheet, retouches, fondClair, onQuitter }: { sheet: She
   const [taille, setTaille] = useState({ l: 800, h: 500 });
   const [vue, setVue] = useState<Vue>(() => vueEtendue(W, H, 800, 500));
   const [etape, setEtape] = useState<Etape>(REPOS);
-  const [selection, setSelection] = useState<ReadonlySet<string>>(new Set());
+  // Repères de la pièce venue de la 3D, cherchés une fois, à l'ouverture.
+  // Ceux du DESSIN d'abord : la nomenclature de la planche porte aussi le repère,
+  // et cadrer sur elle éloignerait la vue de la pièce.
+  const [cibles] = useState(() => {
+    if (!cible || cible.length === 0) return [];
+    const trouves = elements.filter((el) => el.source.kind === 'texte' && cible.includes(el.source.texte));
+    const dessin = trouves.filter((el) => el.source.layer === 'reperage');
+    return dessin.length > 0 ? dessin : trouves;
+  });
+  const cadrage = useRef(cibles.length > 0 ? emprise(cibles.flatMap((el) => el.traits)) : null);
+  const [selection, setSelection] = useState<ReadonlySet<string>>(() => new Set(cibles.map((el) => cleDeRef(el.ref))));
   const [brut, setBrut] = useState<Pt | null>(null);
   const [orthoActif, setOrtho] = useState(false);
   const [accrochageActif, setAccrochage] = useState(true);
   const [calque, setCalque] = useState<Layer>('contour');
   const [hauteurTexte, setHauteurTexte] = useState(2.5);
-  const [journal, setJournal] = useState<readonly string[]>([]);
+  const [journal, setJournal] = useState<readonly string[]>(() =>
+    cible && cible.length > 0
+      ? [cibles.length > 0 ? `${cible.join(', ')} : ${cibles.length} repère(s) sur cette planche, sélectionnés` : `${cible.join(', ')} : aucun repère trouvé sur cette planche`]
+      : [],
+  );
   const [saisie, setSaisie] = useState('');
   const [fenetre, setFenetre] = useState<{ a: Pt; b: Pt } | null>(null);
   const glisse = useRef<Glisse | null>(null);
@@ -110,7 +137,12 @@ export function Editeur({ sheet, retouches, fondClair, onQuitter }: { sheet: She
       const l = el.clientWidth;
       const h = el.clientHeight;
       setTaille({ l, h });
-      setVue((v) => (premier ? vueEtendue(W, H, l, h) : auxProportions(v, l, h)));
+      // ⚠ La vue d'ouverture se calcule ICI, pas dans une fonction de mise à
+      // jour : celle-ci s'exécute au rendu, quand `premier` est déjà faux, et la
+      // feuille s'ouvrait alors cadrée pour un écran supposé de 800 × 500.
+      const c = cadrage.current;
+      if (premier) setVue(c ? vueSur(c, H, l, h) : vueEtendue(W, H, l, h));
+      else setVue((v) => auxProportions(v, l, h));
       premier = false;
     });
     ro.observe(el);

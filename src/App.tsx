@@ -9,6 +9,7 @@ import { AideRaccourcis } from './ui/AideRaccourcis';
 import { BarreDeFichier } from './ui/BarreDeFichier';
 import { BandeauModele, BarriereErreur } from './ui/GardeFou';
 import { trouverRaccourci } from './ui/raccourcis';
+import { useNavigation, type Onglet } from './state/navigation';
 
 /*
  * ⚠ La vue 3D est chargée À LA DEMANDE. Elle embarque tout le moteur de rendu —
@@ -24,7 +25,6 @@ const EditionPanel = lazy(() =>
   import('./ui/edition/EditionPanel').then((m) => ({ default: m.EditionPanel })),
 );
 
-type Onglet = 'projet' | 'vue3d' | 'plans' | 'edition' | 'nomenclatures' | 'verifications' | 'catalogue';
 
 /** Onglet visé par chaque raccourci de navigation. */
 const ONGLET_PAR_RACCOURCI: Readonly<Record<string, Onglet>> = {
@@ -68,7 +68,9 @@ function memoriserTheme(t: Theme): void {
 }
 
 export function App(): JSX.Element {
-  const [onglet, setOnglet] = useState<Onglet>('projet');
+  // L'onglet est partagé : une pièce cliquée en 3D peut ouvrir sa planche en 2D.
+  const onglet = useNavigation((s) => s.onglet);
+  const setOnglet = useNavigation((s) => s.setOnglet);
   const [theme, setTheme] = useState<Theme>(themeMemorise);
   const [aide, setAide] = useState(false);
   const [demandeGabarits, setDemandeGabarits] = useState(0);

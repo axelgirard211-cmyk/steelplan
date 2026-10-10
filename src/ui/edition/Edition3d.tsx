@@ -9,6 +9,8 @@ import { useProjectStore } from '../../state/store';
 import { ChampNombre, ChampNuance, ChampProfil } from '../champs';
 import { mm, num } from '../format';
 import { FichePiece3d } from './FichePiece3d';
+import { VoirEn2d } from './VoirEn2d';
+import { LIBELLE_TOLE } from '../../core/build/types';
 
 /**
  * ÉDITION DU MODÈLE EN 3D.
@@ -127,6 +129,9 @@ export function Edition3d(): JSX.Element {
 
   const membres = useMemo(() => new Map(model.members.map((m) => [m.id, m])), [model]);
   const choisi = selection ? membres.get(selection) : undefined;
+  // Tôles et jarrets se sélectionnent aussi : on les lit, et on ouvre leurs planches.
+  const tole = selection && !choisi ? model.plates.find((p) => p.id === selection) : undefined;
+  const jarret = selection && !choisi && !tole ? model.haunches.find((h) => h.id === selection) : undefined;
   const ajoutees = project.freeMembers.length;
 
   const champ = (k: keyof typeof saisie): JSX.Element => (
@@ -214,6 +219,26 @@ export function Edition3d(): JSX.Element {
         {outil === 'selection' &&
           (choisi ? (
             <FichePiece3d m={choisi} model={model} onSupprimee={() => setSelection(null)} />
+          ) : tole || jarret ? (
+            <div className="fiche">
+              <h3>
+                {tole ? `${tole.mark} — ${LIBELLE_TOLE[tole.kind]}` : `${jarret?.mark} — jarret`}
+              </h3>
+              <dl className="paires">
+                <dt>Position</dt>
+                <dd>{tole ? tole.position : 'sous la traverse, au genou'}</dd>
+                {tole && (
+                  <>
+                    <dt>Épaisseur</dt>
+                    <dd>{tole.thickness} mm</dd>
+                  </>
+                )}
+              </dl>
+              <p className="note" style={{ margin: '8px 0 0' }}>
+                Pièce d’assemblage : elle se règle dans l’onglet Projet, rubrique Assemblages.
+              </p>
+              <VoirEn2d debit={tole?.mark ?? jarret?.mark ?? ''} assemblage="" />
+            </div>
           ) : (
             <div className="fiche">
               <h3>Sélection</h3>
