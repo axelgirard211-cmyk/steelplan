@@ -46,6 +46,8 @@ export const RACCOURCIS: readonly Raccourci[] = [
   { id: 'onglet-verifications', touche: '5', libelle: 'Onglet Vérifications', groupe: 'Navigation' },
   { id: 'onglet-catalogue', touche: '6', libelle: 'Onglet Catalogue', groupe: 'Navigation' },
   { id: 'onglet-edition', touche: '7', libelle: 'Onglet Édition 3D / 2D', groupe: 'Navigation' },
+  // Traité par le sommaire de l'onglet Projet, qui détient le champ de recherche.
+  { id: 'recherche', touche: '/', libelle: 'Rechercher un paramètre (onglet Projet)', groupe: 'Navigation' },
   { id: 'aide', touche: '?', maj: true, libelle: 'Afficher cette aide', groupe: 'Navigation', dansLesChamps: true },
   { id: 'fermer', touche: 'Escape', libelle: 'Fermer le panneau ou la sélection', groupe: 'Navigation', dansLesChamps: true },
 

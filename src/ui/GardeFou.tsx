@@ -1,6 +1,8 @@
 import { Component, type ReactNode } from 'react';
 import { useEtatModele } from '../state/derived';
 import { selectCanUndo, useProjectStore } from '../state/store';
+import { useNavigation } from '../state/navigation';
+import { RUBRIQUES } from './projet/rubriques';
 
 /**
  * BANDEAU — les vues montrent-elles bien ce qui a été saisi ?
@@ -15,14 +17,26 @@ export function BandeauModele(): JSX.Element | null {
   const etat = useEtatModele();
   const undo = useProjectStore((s) => s.undo);
   const peutAnnuler = useProjectStore(selectCanUndo);
+  const allerA = useNavigation((s) => s.allerA);
   if (etat.aJour) return null;
   return (
     <div className="bandeau-modele" role="alert">
       <strong>Saisie invalide — les vues montrent le dernier état valide.</strong>
       <ul>
-        {etat.raisons.map((r) => (
-          <li key={r}>{r}</li>
-        ))}
+        {etat.raisons.map((r) => {
+          // « Rubrique — message » : la rubrique mène à la fiche où corriger.
+          // ⚠ Par le titre entier : « Trame — paramètres » contient lui-même le tiret.
+          const titre = RUBRIQUES.find((x) => r.startsWith(`${x.titre} — `))?.titre;
+          if (!titre) return <li key={r}>{r}</li>;
+          return (
+            <li key={r}>
+              <button type="button" className="lien-bandeau" onClick={() => allerA(titre)}>
+                {titre} →
+              </button>{' '}
+              {r.slice(titre.length + 3)}
+            </li>
+          );
+        })}
       </ul>
       {/*
         * ⚠ Le bouton n'est offert que s'il y a quelque chose à annuler. Après la

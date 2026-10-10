@@ -1,0 +1,201 @@
+/* ---- Onglet Projet : sommaire, recherche, aperçu 3D ---- */
+
+.sommaire {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 210px;
+}
+
+.sommaire .recherche {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.sommaire .trouves {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--bord);
+  border-radius: 6px;
+  background: var(--fond-alt);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.sommaire .trouves li.note {
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
+.sommaire .trouves button {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  color: var(--texte);
+  padding: 5px 9px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.sommaire .trouves button:hover {
+  background: var(--accent-doux);
+}
+
+.sommaire .trouves .compte {
+  font-size: 10.5px;
+  color: var(--texte-doux);
+}
+
+.pastille-compte {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  color: #fff;
+}
+
+.pastille-compte.erreur {
+  background: var(--alerte, #c62828);
+}
+
+.pastille-compte.avertissement {
+  background: #c98a00;
+}
+
+.bascule-apercu {
+  margin-top: auto;
+  padding: 8px 4px 2px;
+  border-top: 1px solid var(--bord);
+  font-size: 12.5px;
+}
+
+/* Les ancres ne collent pas au bord en haut de page après un saut. */
+.ancre-rubrique {
+  scroll-margin-top: 12px;
+  min-width: 0;
+}
+
+/* Une rubrique ou un champ atteint depuis le sommaire s'éclaire un instant. */
+.eclair,
+.eclair > .fiche {
+  animation: eclair 1.5s ease-out;
+}
+
+@keyframes eclair {
+  0%,
+  35% {
+    box-shadow: 0 0 0 3px var(--accent);
+    border-radius: 8px;
+  }
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+
+button.lien {
+  display: block;
+  border: none;
+  background: none;
+  padding: 0;
+  margin-bottom: 2px;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+button.lien:hover {
+  text-decoration: underline;
+}
+
+.apercu3d {
+  width: 34%;
+  min-width: 300px;
+  max-width: 640px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-left: 1px solid var(--bord);
+  background: var(--fond-panneau);
+}
+
+.apercu3d-outils {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.apercu3d-outils button.plat {
+  padding: 3px 9px;
+  font-size: 12px;
+}
+
+.apercu3d-outils .compte {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--texte-doux);
+}
+
+.apercu3d-canevas {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--fond-panneau), var(--fond-alt));
+}
+
+.apercu3d-canevas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.avertissement-apercu {
+  margin: 0;
+  font-size: 12px;
+}
+
+/* Fenêtre étroite : les fiches ont besoin de la largeur, l'aperçu s'efface. */
+@media (max-width: 960px) {
+  .apercu3d {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .sommaire {
+    width: auto;
+  }
+}
+
+/* Bandeau « saisie invalide » : la rubrique est un lien vers sa fiche. */
+.lien-bandeau {
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ancre-rubrique.en-erreur > .fiche {
+  border-color: var(--alerte, #c62828);
+  box-shadow: inset 3px 0 0 var(--alerte, #c62828);
+}
