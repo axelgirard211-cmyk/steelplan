@@ -55,3 +55,27 @@ export function deplacer(v: Vue, dxPx: number, dyPx: number, l: number): Vue {
 
 /** Millimètres de feuille par pixel d'écran. */
 export const mmParPixel = (v: Vue, l: number): number => v.w / Math.max(1, l);
+
+/**
+ * Vue cadrée sur une zone de la feuille (mm papier, Y vers le haut), avec de la
+ * marge autour, et jamais plus serrée que `mini` mm : un repère seul ne doit pas
+ * remplir l'écran au point qu'on ne voie plus la pièce qu'il désigne.
+ */
+export function vueSur(
+  b: { readonly min: { x: number; y: number }; readonly max: { x: number; y: number } },
+  hauteurFeuille: number,
+  l: number,
+  hc: number,
+  marge = 1.6,
+  // Un tiers de feuille A3 : assez pour voir la pièce autour de son repère.
+  mini = 140,
+): Vue {
+  const r = hc / Math.max(1, l);
+  const cx = (b.min.x + b.max.x) / 2;
+  const cy = hauteurFeuille - (b.min.y + b.max.y) / 2;
+  let w = Math.max(mini, (b.max.x - b.min.x) * marge);
+  let h = Math.max(mini * r, (b.max.y - b.min.y) * marge);
+  if (h < w * r) h = w * r;
+  else w = h / r;
+  return { x: cx - w / 2, y: cy - h / 2, w, h };
+}

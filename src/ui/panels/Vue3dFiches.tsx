@@ -13,6 +13,7 @@ import { RATIO_LABELS } from '../../core/checks/types';
 import { ratioColor, ROLE_LABELS } from '../../render3d/colorMaps';
 import { useChecksReport } from '../../state/derived';
 import { cm4, kg, mm, num } from '../format';
+import { VoirEn2d } from '../edition/VoirEn2d';
 
 /**
  * FICHES DE LA PIÈCE SÉLECTIONNÉE en vue 3D : barre, tôle ou jarret.
@@ -124,6 +125,7 @@ export function FicheBarre({ m }: { m: Member }): JSX.Element {
           {mm(m.end.x)} / {mm(m.end.y)} / {mm(m.end.z)}
         </dd>
       </dl>
+      <VoirEn2d debit={m.mark} assemblage={m.assemblage} />
     </div>
   );
 }
@@ -213,6 +215,7 @@ export function FicheTole({ pl }: { pl: Plate }): JSX.Element {
           </table>
         </>
       )}
+      <VoirEn2d debit={pl.mark} assemblage="" />
     </div>
   );
 }
@@ -241,6 +244,7 @@ export function FicheJarret({ h }: { h: Haunch }): JSX.Element {
         <dt>Masse</dt>
         <dd className="derive">{kg(haunchMassKg(h))} kg</dd>
       </dl>
+      <VoirEn2d debit={h.mark} assemblage="" />
     </div>
   );
 }

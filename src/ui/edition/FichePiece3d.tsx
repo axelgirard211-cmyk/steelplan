@@ -9,6 +9,7 @@ import { ROLE_LABELS } from '../../render3d/colorMaps';
 import { useProjectStore } from '../../state/store';
 import { ChampNombre, ChampNuance, ChampProfil, ChampTexte } from '../champs';
 import { mm, num } from '../format';
+import { VoirEn2d } from './VoirEn2d';
 
 /**
  * FICHE DE LA PIÈCE SÉLECTIONNÉE, dans la page d'édition 3D.
@@ -32,7 +33,7 @@ function appliquerProjet(d: ProjectParams, avant: ProjectParams, suivant: Projec
 export function FichePiece3d({ m, model, onSupprimee }: { m: Member; model: StructuralModel; onSupprimee: () => void }): JSX.Element {
   const project = useProjectStore((s) => s.project);
   const libre = m.role === 'libre' ? project.freeMembers.find((f) => `LIBRE-${f.id}` === m.id) : undefined;
-  if (libre) return <FicheBarreAjoutee b={libre} onSupprimee={onSupprimee} />;
+  if (libre) return <FicheBarreAjoutee b={libre} m={m} onSupprimee={onSupprimee} />;
 
   const poste = postesActifs(project).find((p) => p.concerne(m));
   const nombre = poste ? model.members.filter(poste.concerne).length : 0;
@@ -74,11 +75,12 @@ export function FichePiece3d({ m, model, onSupprimee }: { m: Member; model: Stru
           : 'Pièce dérivée d’une autre (attache, échantignolle, lierne…) : elle se règle dans l’onglet Projet.'}{' '}
         Pour retirer des pièces générées, changez les paramètres du projet (travées contreventées, potelets, lisses…).
       </p>
+      <VoirEn2d debit={m.mark} assemblage={m.assemblage} />
     </div>
   );
 }
 
-function FicheBarreAjoutee({ b, onSupprimee }: { b: FreeMember; onSupprimee: () => void }): JSX.Element {
+function FicheBarreAjoutee({ b, m, onSupprimee }: { b: FreeMember; m: Member; onSupprimee: () => void }): JSX.Element {
   const project = useProjectStore((s) => s.project);
   const edit = useProjectStore((s) => s.edit);
   type Modifiable = { -readonly [K in keyof FreeMember]: FreeMember[K] };
@@ -157,6 +159,7 @@ function FicheBarreAjoutee({ b, onSupprimee }: { b: FreeMember; onSupprimee: () 
           Supprimer
         </button>
       </div>
+      <VoirEn2d debit={m.mark} assemblage={m.assemblage} />
     </div>
   );
 }
