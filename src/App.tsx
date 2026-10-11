@@ -10,6 +10,20 @@ import { BarreDeFichier } from './ui/BarreDeFichier';
 import { BandeauModele, BarriereErreur } from './ui/GardeFou';
 import { trouverRaccourci } from './ui/raccourcis';
 import { useNavigation, type Onglet } from './state/navigation';
+import { useEtatDuProjet, type EtatDuProjet } from './ui/useEtatDuProjet';
+import { num } from './ui/format';
+import {
+  IconeAnnuler,
+  IconeCube,
+  IconeEdition,
+  IconeListe,
+  IconePlans,
+  IconeProfil,
+  IconeProjet,
+  IconeRetablir,
+  IconeVerification,
+  Marque,
+} from './ui/icones';
 
 /*
  * ⚠ La vue 3D est chargée À LA DEMANDE. Elle embarque tout le moteur de rendu —
@@ -25,6 +39,52 @@ const EditionPanel = lazy(() =>
   import('./ui/edition/EditionPanel').then((m) => ({ default: m.EditionPanel })),
 );
 
+
+/**
+ * Les onglets, dans l'ORDRE DU TRAVAIL : concevoir, voir, vérifier, dessiner,
+ * fabriquer — puis les outils, à part. Une barre qui suit le travail se lit
+ * comme un mode d'emploi.
+ */
+const ONGLETS: readonly { readonly id: Onglet; readonly libelle: string; readonly icone: () => JSX.Element; readonly outil?: boolean }[] = [
+  { id: 'projet', libelle: 'Projet', icone: IconeProjet },
+  { id: 'vue3d', libelle: 'Vue 3D', icone: IconeCube },
+  { id: 'verifications', libelle: 'Vérifications', icone: IconeVerification },
+  { id: 'plans', libelle: 'Plans', icone: IconePlans },
+  { id: 'nomenclatures', libelle: 'Nomenclatures', icone: IconeListe },
+  { id: 'edition', libelle: 'Édition 3D / 2D', icone: IconeEdition, outil: true },
+  { id: 'catalogue', libelle: 'Catalogue de profils', icone: IconeProfil, outil: true },
+];
+
+/** L'état du projet, porté par l'onglet où il se lit en détail. */
+function Pastille({ onglet, etat }: { onglet: Onglet; etat: EtatDuProjet | null }): JSX.Element | null {
+  if (!etat) return null;
+  if (onglet === 'projet' && etat.erreurs > 0) {
+    return (
+      <span className="pastille-onglet erreur" title={`${etat.erreurs} erreur(s) de saisie`}>
+        {etat.erreurs}
+      </span>
+    );
+  }
+  if (onglet === 'verifications') {
+    return etat.enDefaut > 0 ? (
+      <span className="pastille-onglet erreur" title={`${etat.enDefaut} repère(s) ou assemblage(s) au-delà de 1,00`}>
+        {etat.enDefaut} à reprendre
+      </span>
+    ) : (
+      <span className="pastille-onglet ok" title="Taux de travail maximal, barres et assemblages">
+        {num(etat.tauxMax, 2)}
+      </span>
+    );
+  }
+  if (onglet === 'nomenclatures') {
+    return (
+      <span className="pastille-onglet neutre" title={`${num(etat.prixHT, 0)} € HT au chiffrage`}>
+        {num(etat.masseKg / 1000, 1)} t
+      </span>
+    );
+  }
+  return null;
+}
 
 /** Onglet visé par chaque raccourci de navigation. */
 const ONGLET_PAR_RACCOURCI: Readonly<Record<string, Onglet>> = {
@@ -80,6 +140,9 @@ export function App(): JSX.Element {
   const canUndo = useProjectStore(selectCanUndo);
   const canRedo = useProjectStore(selectCanRedo);
   const nbEditions = useProjectStore((s) => s.past.length);
+  const meta = useProjectStore((s) => s.project.meta);
+  const allerA = useNavigation((s) => s.allerA);
+  const etat = useEtatDuProjet();
 
   useEffect(() => {
     const el = document.documentElement;
@@ -150,7 +213,15 @@ export function App(): JSX.Element {
   return (
     <div className="app">
       <header className="entete">
-        <h1>SteelPlan</h1>
+        <div className="marque">
+          <Marque />
+          <h1>SteelPlan</h1>
+        </div>
+        {/* Le projet ouvert, toujours en vue : son nom mène au cartouche. */}
+        <button type="button" className="projet-courant" onClick={() => allerA('Cartouche et indices')} title="Nom, client, indice — cartouche des plans">
+          <span className="nom">{meta.nom || 'Projet sans nom'}</span>
+          {meta.indice && <span className="indice">ind. {meta.indice}</span>}
+        </button>
         <BarreDeFichier
           demandeGabarits={demandeGabarits}
           onGabaritsTraites={() => setDemandeGabarits(0)}
@@ -162,17 +233,17 @@ export function App(): JSX.Element {
           * sur une seconde ligne, séparés des boutons Annuler et Rétablir.
           */}
         <div className="entete-droite">
-          <span className="phase">{nbEditions} édition(s)</span>
-          <button type="button" className="plat" onClick={undo} disabled={!canUndo} title="Ctrl+Z">
-            Annuler
+          <button type="button" className="plat avec-icone" onClick={undo} disabled={!canUndo} title={`Annuler — Ctrl+Z (${nbEditions} modification${nbEditions > 1 ? 's' : ''})`}>
+            <IconeAnnuler /> Annuler
           </button>
-          <button type="button" className="plat" onClick={redo} disabled={!canRedo} title="Ctrl+Maj+Z">
-            Rétablir
+          <button type="button" className="plat avec-icone" onClick={redo} disabled={!canRedo} title="Rétablir — Ctrl+Maj+Z">
+            <IconeRetablir /> Rétablir
           </button>
           <select
             value={theme}
             onChange={(e) => setTheme(e.target.value as Theme)}
             title="Thème"
+            aria-label="Thème"
           >
             <option value="auto">Thème système</option>
             <option value="clair">Clair</option>
@@ -180,7 +251,7 @@ export function App(): JSX.Element {
           </select>
           <button
             type="button"
-            className="plat"
+            className="plat rond"
             onClick={() => setAide(true)}
             title="Maj+? — raccourcis clavier"
             aria-label="Raccourcis clavier"
@@ -191,42 +262,21 @@ export function App(): JSX.Element {
       </header>
 
       <nav className="onglets" role="tablist">
-        <button type="button" role="tab" aria-selected={onglet === 'projet'} onClick={() => setOnglet('projet')}>
-          Projet
-        </button>
-        <button type="button" role="tab" aria-selected={onglet === 'vue3d'} onClick={() => setOnglet('vue3d')}>
-          Vue 3D
-        </button>
-        <button type="button" role="tab" aria-selected={onglet === 'plans'} onClick={() => setOnglet('plans')}>
-          Plans
-        </button>
-        <button type="button" role="tab" aria-selected={onglet === 'edition'} onClick={() => setOnglet('edition')}>
-          Édition 3D / 2D
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={onglet === 'nomenclatures'}
-          onClick={() => setOnglet('nomenclatures')}
-        >
-          Nomenclatures
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={onglet === 'verifications'}
-          onClick={() => setOnglet('verifications')}
-        >
-          Vérifications
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={onglet === 'catalogue'}
-          onClick={() => setOnglet('catalogue')}
-        >
-          Catalogue de profils
-        </button>
+        {ONGLETS.map((o, i) => (
+          <button
+            key={o.id}
+            type="button"
+            role="tab"
+            className={o.outil && !ONGLETS[i - 1]?.outil ? 'debut-outils' : undefined}
+            aria-selected={onglet === o.id}
+            onClick={() => setOnglet(o.id)}
+            title={`${o.libelle} — touche ${i + 1}`}
+          >
+            <o.icone />
+            <span>{o.libelle}</span>
+            <Pastille onglet={o.id} etat={etat} />
+          </button>
+        ))}
       </nav>
 
       <BandeauModele />

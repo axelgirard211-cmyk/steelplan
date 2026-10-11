@@ -25,6 +25,21 @@ describe('rubriques de l’onglet Projet', () => {
     }
   });
 
+  it('montrent l’essentiel d’abord : ce qui décrit un bâtiment courant', () => {
+    /*
+     * L'affichage « essentiel » doit suffire à décrire un hangar : sa trame, sa
+     * toiture, son portique, son ossature, ses ouvertures, son site. Le reste se
+     * règle fin — et garde ses valeurs quand il est masqué.
+     */
+    const essentiel = RUBRIQUES.filter((r) => !r.avancee).map((r) => r.court);
+    for (const r of ['Trame', 'Toiture', 'Portique', 'Pannes et lisses', 'Ouvertures', 'Site, neige et vent', 'Contrôle du modèle']) {
+      expect(essentiel).toContain(r);
+    }
+    expect(RUBRIQUES.filter((r) => r.avancee).length).toBeGreaterThan(5);
+    // Le contrôle du modèle, qui liste les anomalies, ne se masque jamais.
+    expect(rubriqueParTitre('Contrôle du modèle').avancee).toBeFalsy();
+  });
+
   it('ramènent un paramètre sans rubrique au contrôle du modèle', () => {
     expect(rubriqueParTitre('Projet').id).toBe('rubrique-controle');
   });

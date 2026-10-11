@@ -39,13 +39,14 @@ export const RACCOURCIS: readonly Raccourci[] = [
   { id: 'undo', touche: 'z', ctrl: true, libelle: 'Annuler', groupe: 'Édition', dansLesChamps: true },
   { id: 'redo', touche: 'z', ctrl: true, maj: true, libelle: 'Rétablir', groupe: 'Édition', dansLesChamps: true },
 
+  // Dans l'ordre des onglets, qui est celui du travail : concevoir, vérifier, dessiner, fabriquer.
   { id: 'onglet-projet', touche: '1', libelle: 'Onglet Projet', groupe: 'Navigation' },
   { id: 'onglet-vue3d', touche: '2', libelle: 'Onglet Vue 3D', groupe: 'Navigation' },
-  { id: 'onglet-plans', touche: '3', libelle: 'Onglet Plans', groupe: 'Navigation' },
-  { id: 'onglet-nomenclatures', touche: '4', libelle: 'Onglet Nomenclatures', groupe: 'Navigation' },
-  { id: 'onglet-verifications', touche: '5', libelle: 'Onglet Vérifications', groupe: 'Navigation' },
-  { id: 'onglet-catalogue', touche: '6', libelle: 'Onglet Catalogue', groupe: 'Navigation' },
-  { id: 'onglet-edition', touche: '7', libelle: 'Onglet Édition 3D / 2D', groupe: 'Navigation' },
+  { id: 'onglet-verifications', touche: '3', libelle: 'Onglet Vérifications', groupe: 'Navigation' },
+  { id: 'onglet-plans', touche: '4', libelle: 'Onglet Plans', groupe: 'Navigation' },
+  { id: 'onglet-nomenclatures', touche: '5', libelle: 'Onglet Nomenclatures', groupe: 'Navigation' },
+  { id: 'onglet-edition', touche: '6', libelle: 'Onglet Édition 3D / 2D', groupe: 'Navigation' },
+  { id: 'onglet-catalogue', touche: '7', libelle: 'Onglet Catalogue', groupe: 'Navigation' },
   // Traité par le sommaire de l'onglet Projet, qui détient le champ de recherche.
   { id: 'recherche', touche: '/', libelle: 'Rechercher un paramètre (onglet Projet)', groupe: 'Navigation' },
   { id: 'aide', touche: '?', maj: true, libelle: 'Afficher cette aide', groupe: 'Navigation', dansLesChamps: true },

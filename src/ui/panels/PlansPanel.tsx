@@ -262,7 +262,7 @@ export function PlansPanel(): JSX.Element {
           <span className="separateur" />
           <button
             type="button"
-            className="plat"
+            className="primaire"
             onClick={exporterDossier}
             disabled={enCours !== null}
           >

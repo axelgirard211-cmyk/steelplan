@@ -156,7 +156,7 @@ export function BarreDeFichier({
       </button>
       <button
         type="button"
-        className="plat"
+        className="primaire"
         onClick={() => void faireEnregistrer(false)}
         title="Ctrl+S"
       >
@@ -208,6 +208,7 @@ export function BarreDeFichier({
           </span>
           <button
             type="button"
+            className="primaire"
             onClick={() => {
               loadProject(aRestaurer.project);
               setARestaurer(null);

@@ -208,6 +208,7 @@ export function Edition3d(): JSX.Element {
             </dl>
             <button
               type="button"
+              className="primaire"
               style={{ marginTop: 8 }}
               onClick={() => creer({ x: saisie.ax, y: saisie.ay, z: saisie.az }, { x: saisie.bx, y: saisie.by, z: saisie.bz })}
             >

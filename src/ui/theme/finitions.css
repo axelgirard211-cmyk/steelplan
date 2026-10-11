@@ -1,0 +1,455 @@
+/*
+ * FINITIONS — l'apparence, posée par-dessus la structure de global.css.
+ *
+ * Une seule règle d'or : la lisibilité des chiffres d'abord. Les ombres, les
+ * arrondis et les couleurs ne servent qu'à dire ce qui se clique, ce qui est
+ * calculé, ce qui est en défaut — jamais à décorer.
+ */
+
+:root {
+  --rayon: 10px;
+  --rayon-petit: 7px;
+  --ombre: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+  --ombre-haute: 0 4px 12px rgba(16, 24, 40, 0.1);
+  --accent-fort: #174b86;
+  --sur-accent: #ffffff;
+  --ok-fond: #e6f4ea;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='clair']) {
+    --ombre: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --ombre-haute: 0 6px 18px rgba(0, 0, 0, 0.45);
+    --accent-fort: #8fc0f5;
+    --sur-accent: #0d1a2b;
+    --ok-fond: #183326;
+  }
+}
+
+:root[data-theme='sombre'] {
+  --ombre: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --ombre-haute: 0 6px 18px rgba(0, 0, 0, 0.45);
+  --accent-fort: #8fc0f5;
+  --sur-accent: #0d1a2b;
+  --ok-fond: #183326;
+}
+
+body {
+  font-feature-settings: 'tnum' 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- En-tête ---- */
+
+.entete {
+  padding: 8px 16px;
+  gap: 8px 12px;
+}
+
+.entete .marque {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.entete h1 {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.projet-courant {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  max-width: 280px;
+  padding: 5px 11px;
+  border: 1px solid var(--bord);
+  border-radius: 999px;
+  background: var(--fond-alt);
+  color: var(--texte);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.projet-courant .nom {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.projet-courant .indice {
+  color: var(--texte-doux);
+  font-size: 11.5px;
+}
+
+.projet-courant:hover {
+  border-color: var(--accent);
+}
+
+button.avec-icone {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+button.rond {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+/* ---- Onglets : l'ordre du travail, l'état du projet ---- */
+
+.onglets {
+  gap: 2px;
+  padding: 0 10px;
+}
+
+.onglets button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 13px 9px;
+  border-bottom-width: 2.5px;
+  border-radius: 6px 6px 0 0;
+  transition:
+    color 0.12s,
+    background 0.12s;
+}
+
+.onglets button:hover {
+  background: var(--fond-alt);
+}
+
+.onglets button .icone {
+  opacity: 0.75;
+}
+
+.onglets button[aria-selected='true'] .icone {
+  opacity: 1;
+}
+
+/* Les outils à part, poussés à droite : on y va pour une tâche précise. */
+.onglets button.debut-outils {
+  margin-left: auto;
+}
+
+.pastille-onglet {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.pastille-onglet.ok {
+  background: var(--ok-fond);
+  color: var(--ok);
+}
+
+.pastille-onglet.erreur {
+  background: var(--erreur-fond);
+  color: var(--erreur);
+}
+
+.pastille-onglet.neutre {
+  background: var(--fond-alt);
+  color: var(--texte-doux);
+}
+
+/* ---- Boutons ---- */
+
+button.plat {
+  border-radius: var(--rayon-petit);
+  padding: 6px 12px;
+  border-color: var(--bord);
+  box-shadow: var(--ombre);
+  transition:
+    border-color 0.12s,
+    color 0.12s,
+    background 0.12s;
+}
+
+/*
+ * L'action PRINCIPALE d'un écran se reconnaît sans lire : pleine, à la
+ * couleur d'accent. Elle est désignée une à une — une règle « tout bouton sans
+ * classe » repeignait aussi les étapes du parcours, devenues illisibles.
+ */
+button.primaire {
+  background: var(--accent);
+  color: var(--sur-accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--rayon-petit);
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--ombre);
+}
+
+button.primaire:hover:not(:disabled) {
+  background: var(--accent-fort);
+  border-color: var(--accent-fort);
+}
+
+button.primaire:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+input[type='search'],
+input[type='text'],
+input[type='number'],
+select {
+  border-radius: var(--rayon-petit);
+  border-color: var(--bord);
+}
+
+input[type='number'] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Fiches ---- */
+
+.grille-fiches {
+  gap: 16px;
+}
+
+.fiche {
+  border-radius: var(--rayon);
+  padding: 14px 16px;
+  box-shadow: var(--ombre);
+}
+
+.fiche h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 12.5px;
+  color: var(--texte);
+}
+
+/* Un trait d'accent devant chaque titre : les fiches se repèrent en faisant défiler. */
+.fiche h3::before {
+  content: '';
+  width: 3px;
+  height: 13px;
+  border-radius: 2px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+dl.paires {
+  gap: 6px 12px;
+}
+
+/* ---- Sommaire : essentiel ou complet ---- */
+
+.bascule-affichage {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  margin: 10px 0 6px;
+  padding: 3px;
+  border-radius: var(--rayon-petit);
+  background: var(--fond-alt);
+}
+
+.bascule-affichage button {
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--texte-doux);
+  padding: 5px 0;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.bascule-affichage button[aria-checked='true'] {
+  background: var(--fond-panneau);
+  color: var(--texte);
+  font-weight: 600;
+  box-shadow: var(--ombre);
+}
+
+.lien-recherche {
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.tout-afficher {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  padding: 12px;
+  border-style: dashed;
+  box-shadow: none;
+  color: var(--texte-doux);
+  text-align: center;
+}
+
+.laterale {
+  padding: 10px;
+}
+
+.familles button {
+  padding: 7px 10px;
+  border-radius: var(--rayon-petit);
+}
+
+/* ---- Défilement discret ---- */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bord-fort) transparent;
+}
+
+/* ---- Verdict des vérifications ---- */
+
+.verdict {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 14px 18px;
+  border-radius: var(--rayon);
+  border: 1px solid var(--bord);
+  border-left-width: 5px;
+  background: var(--fond-panneau);
+  box-shadow: var(--ombre);
+}
+
+.verdict.ok {
+  border-left-color: var(--ok);
+}
+
+.verdict.ko {
+  border-left-color: var(--erreur);
+}
+
+.verdict-titre {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.verdict.ok .verdict-titre {
+  color: var(--ok);
+}
+
+.verdict.ko .verdict-titre {
+  color: var(--erreur);
+}
+
+.verdict-detail {
+  margin-top: 2px;
+  color: var(--texte-doux);
+  font-size: 13px;
+}
+
+/* Le panneau des vérifications respire comme les autres : il collait au bord. */
+.panneau.large {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 18px 28px;
+}
+
+/* ---- Parcours du projet ---- */
+
+.parcours {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  counter-reset: etape;
+}
+
+.parcours button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--bord);
+  border-radius: var(--rayon);
+  background: var(--fond-panneau);
+  color: var(--texte);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--ombre);
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s;
+}
+
+.parcours button:hover {
+  border-color: var(--accent);
+  box-shadow: var(--ombre-haute);
+}
+
+.parcours .numero {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--fond-alt);
+  color: var(--texte-doux);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.parcours .ok .numero {
+  background: var(--ok-fond);
+  color: var(--ok);
+}
+
+.parcours .ko .numero {
+  background: var(--erreur-fond);
+  color: var(--erreur);
+}
+
+.parcours .texte {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.parcours .titre {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.parcours .detail {
+  color: var(--texte-doux);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.parcours .ko .detail {
+  color: var(--erreur);
+}

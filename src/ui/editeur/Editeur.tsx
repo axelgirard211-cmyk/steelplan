@@ -386,7 +386,7 @@ export function Editeur({
           Tout voir
         </button>
         {onQuitter && (
-          <button type="button" onClick={onQuitter}>
+          <button type="button" className="primaire" onClick={onQuitter}>
             Terminer l’édition
           </button>
         )}
