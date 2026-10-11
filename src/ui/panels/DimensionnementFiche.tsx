@@ -108,7 +108,7 @@ export function DimensionnementFiche(): JSX.Element {
         Régler aussi les assemblages (platines, tiges d’ancrage, goussets, boulons, oblongs)
       </label>
 
-      <button type="button" className="plat" onClick={lancer} disabled={calcul}>
+      <button type="button" className="primaire" onClick={lancer} disabled={calcul}>
         {calcul ? 'Recherche en cours…' : 'Rechercher les profils les plus légers'}
       </button>
       {calcul && (
@@ -240,7 +240,7 @@ function Resultat({
       )}
 
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-        <button type="button" onClick={onAppliquer}>
+        <button type="button" className="primaire" onClick={onAppliquer}>
           Appliquer la proposition
         </button>
         <button type="button" className="plat" onClick={onAnnuler}>

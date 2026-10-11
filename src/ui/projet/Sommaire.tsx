@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useAffichage } from '../../state/affichage';
 import { normaliser, RUBRIQUES } from './rubriques';
 
 /**
@@ -39,12 +40,18 @@ export function Sommaire({
   apercu,
   setApercu,
   onAller,
+  visible,
 }: {
   comptes: ReadonlyMap<string, CompteRubrique>;
   apercu: boolean;
   setApercu: (v: boolean) => void;
   onAller: (id: string) => void;
+  /** La rubrique est-elle affichée dans le mode courant ? */
+  visible: (titre: string) => boolean;
 }): JSX.Element {
+  const complet = useAffichage((s) => s.complet);
+  const basculer = useAffichage((s) => s.basculer);
+  const masquees = RUBRIQUES.filter((r) => !visible(r.titre)).length;
   const [requete, setRequete] = useState('');
   const [trouves, setTrouves] = useState<readonly Trouve[]>([]);
   const champ = useRef<HTMLInputElement>(null);
@@ -118,9 +125,23 @@ export function Sommaire({
         </ul>
       )}
 
+      {/* Essentiel ou tout : le choix se voit et se défait d'un clic. */}
+      <div className="bascule-affichage" role="radiogroup" aria-label="Rubriques affichées">
+        <button type="button" role="radio" aria-checked={!complet} onClick={() => basculer(false)}>
+          Essentiel
+        </button>
+        <button type="button" role="radio" aria-checked={complet} onClick={() => basculer(true)}>
+          Complet
+        </button>
+      </div>
+      {requete.trim().length >= 2 && trouves.length === 0 && masquees > 0 && (
+        <button type="button" className="plat lien-recherche" onClick={() => basculer(true)}>
+          Chercher aussi dans les {masquees} rubriques avancées
+        </button>
+      )}
       <div className="titre-groupe">Rubriques</div>
       <ul className="familles">
-        {RUBRIQUES.map((r) => {
+        {RUBRIQUES.filter((r) => visible(r.titre)).map((r) => {
           const c = comptes.get(r.titre);
           return (
             <li key={r.id}>

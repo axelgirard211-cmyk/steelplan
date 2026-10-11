@@ -128,6 +128,11 @@ export function useStructuralModel(): StructuralModel {
  * modèle valide reviendrait à coter un bâtiment de portée nulle sur la géométrie
  * d'un bâtiment de 20 m : ni l'un ni l'autre.
  */
+/** Le projet effectif, hors composant : pour un calcul différé. */
+export function projetEffectif(p: ProjectParams): ProjectParams {
+  return effectif(p).projet;
+}
+
 export function useProjetEffectif(): ProjectParams {
   return effectif(useProjectStore((s) => s.project)).projet;
 }

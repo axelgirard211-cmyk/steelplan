@@ -179,7 +179,7 @@ export function BarresLibresFiche(): JSX.Element {
       )}
 
       <div className="ligne-actions">
-        <button type="button" onClick={ajouter}>
+        <button type="button" className="primaire" onClick={ajouter}>
           Ajouter une barre
         </button>
         <label className="etiquette">

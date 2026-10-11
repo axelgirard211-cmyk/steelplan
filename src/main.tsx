@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App, themeMemorise } from './App';
 import './ui/theme/global.css';
+import './ui/theme/finitions.css';
 
 /*
  * Le thème retenu est posé AVANT le premier rendu. Appliqué seulement par

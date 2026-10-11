@@ -25,7 +25,9 @@ import { SiteFiche } from './SiteFiche';
 import { StructureFiche } from './StructureFiche';
 import { useProjectStore } from '../../state/store';
 import { useNavigation } from '../../state/navigation';
+import { useAffichage } from '../../state/affichage';
 import { eclairer, Sommaire, type CompteRubrique } from '../projet/Sommaire';
+import { Parcours } from '../projet/Parcours';
 import { rubriqueParTitre } from '../projet/rubriques';
 import '../theme/projet.css';
 import { ChampLongueur, ChampNombre, marquerLesAides } from '../champs';
@@ -60,9 +62,26 @@ export function ProjetPanel(): JSX.Element {
     return m;
   }, [issues]);
 
+  const complet = useAffichage((s) => s.complet);
+  const basculer = useAffichage((s) => s.basculer);
+  /** La rubrique s'affiche-t-elle ? L'essentiel, tout, et toujours celle qui porte une anomalie. */
+  const visible = (titre: string): boolean => {
+    const c = comptes.get(titre);
+    return complet || !rubriqueParTitre(titre).avancee || (c !== undefined && c.erreurs + c.avertissements > 0);
+  };
+
   const aller = (id: string): void => {
     const el = document.getElementById(id);
-    if (el) eclairer(el, 'start');
+    if (el) {
+      eclairer(el, 'start');
+      return;
+    }
+    // Une rubrique avancée masquée : on ouvre tout, puis on s'y rend.
+    basculer(true);
+    window.setTimeout(() => {
+      const apres = document.getElementById(id);
+      if (apres) eclairer(apres, 'start');
+    }, 60);
   };
 
   // Une erreur cliquée ailleurs (bandeau, autre onglet) mène ici, à sa rubrique.
@@ -87,16 +106,18 @@ export function ProjetPanel(): JSX.Element {
   };
 
   // Une fiche qui porte une erreur se voit de loin, même en faisant défiler.
-  const ancre = (titre: string, contenu: JSX.Element): JSX.Element => (
-    <div id={rubriqueParTitre(titre).id} className={(comptes.get(titre)?.erreurs ?? 0) > 0 ? 'ancre-rubrique en-erreur' : 'ancre-rubrique'}>
-      {contenu}
-    </div>
-  );
+  const ancre = (titre: string, contenu: JSX.Element): JSX.Element | null =>
+    visible(titre) ? (
+      <div id={rubriqueParTitre(titre).id} className={(comptes.get(titre)?.erreurs ?? 0) > 0 ? 'ancre-rubrique en-erreur' : 'ancre-rubrique'}>
+        {contenu}
+      </div>
+    ) : null;
 
   return (
     <>
-      <Sommaire comptes={comptes} apercu={apercu} setApercu={basculerApercu} onAller={aller} />
+      <Sommaire comptes={comptes} apercu={apercu} setApercu={basculerApercu} onAller={aller} visible={visible} />
       <section className="principal projet-fiches">
+        <Parcours />
         <div className="grille-fiches">
           {ancre('Trame — paramètres', <TrameFiche />)}
           {ancre('Trame — grandeurs déduites', <TrameDeduite />)}
@@ -141,6 +162,12 @@ export function ProjetPanel(): JSX.Element {
         {ancre('Barres libres', <BarresLibresFiche />)}
         {ancre('Cartouche et indices', <CartoucheFiche />)}
         {ancre('Fichier projet', <FicheFichier />)}
+        {!complet && (
+          <button type="button" className="plat tout-afficher" onClick={() => basculer(true)}>
+            Afficher les réglages avancés — contreventements, assemblages, charges et flèches, traitement, atelier,
+            chiffrage, barres libres
+          </button>
+        )}
       </section>
       {apercu && assezLarge && (
         <Suspense fallback={<aside className="apercu3d"><p className="chargement">Chargement de l’aperçu 3D…</p></aside>}>

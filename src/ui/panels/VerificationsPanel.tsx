@@ -5,6 +5,7 @@ import { AssemblagesVerif } from './AssemblagesVerif';
 import { DimensionnementFiche } from './DimensionnementFiche';
 import { useChecksReport } from '../../state/derived';
 import { useProjectStore } from '../../state/store';
+import { useNavigation } from '../../state/navigation';
 import { chargesClimatiques } from '../../core/climat/index';
 import { num } from '../format';
 
@@ -17,172 +18,47 @@ import { num } from '../format';
  */
 export function VerificationsPanel(): JSX.Element {
   const rapport = useChecksReport();
-  const loads = useProjectStore((s) => s.project.loads);
-  const site = useProjectStore((s) => s.project.site);
   const project = useProjectStore((s) => s.project);
-  const edit = useProjectStore((s) => s.edit);
+  const allerA = useNavigation((s) => s.allerA);
   // Site en Eurocode : neige et vent viennent de lui, les champs saisis sont ignorés.
-  const climat = site.mode === 'eurocode' ? chargesClimatiques(project).valeurs : null;
+  const climat = project.site.mode === 'eurocode' ? chargesClimatiques(project).valeurs : null;
   const [detail, setDetail] = useState<string | null>(null);
 
   const conforme = rapport.nonVerifies === 0;
+  const tauxAssemblages = Math.max(0, ...rapport.assemblages.map((a) => a.ratio));
+  const assemblagesKo = rapport.assemblages.filter((a) => a.ratio > 1).length;
+  const aReprendre = rapport.nonVerifies + assemblagesKo;
+  const l = project.loads.loads;
+  const f = project.loads.deflection;
 
   return (
     <section className="panneau large">
+      {/*
+        * ⚠ Le VERDICT d'abord. La page s'ouvrait sur des champs de charges — les
+        * mêmes que ceux du projet — et la réponse à la seule question qu'on vient
+        * poser ici, « ça tient ? », attendait trois fiches plus bas.
+        */}
+      <div className={`verdict ${aReprendre === 0 ? 'ok' : 'ko'}`} role="status">
+        <div>
+          <div className="verdict-titre">
+            {aReprendre === 0 ? 'Bâtiment vérifié' : `${aReprendre} élément${aReprendre > 1 ? 's' : ''} à reprendre`}
+          </div>
+          <div className="verdict-detail">
+            Barres : taux maximal {num(rapport.maxRatio, 2)}
+            {rapport.nonVerifies > 0 ? ` — ${rapport.nonVerifies} au-delà de 1,00` : ''} · Assemblages :{' '}
+            {num(tauxAssemblages, 2)}
+            {assemblagesKo > 0 ? ` — ${assemblagesKo} au-delà de 1,00` : ''} · {rapport.combinations.length} combinaisons
+          </div>
+        </div>
+        {aReprendre > 0 && (
+          <button type="button" className="primaire" onClick={() => document.getElementById('dimensionnement')?.scrollIntoView({ behavior: 'smooth' })}>
+            Dimensionner automatiquement
+          </button>
+        )}
+      </div>
       <p className="avertissement fort">{AVERTISSEMENT}</p>
 
       <div className="grille-fiches">
-        <div className="fiche">
-          <h3>Charges</h3>
-          <dl className="paires">
-            <ChampCharge
-              label="Permanent couverture"
-              unite="kN/m²"
-              value={loads.loads.permanent}
-              onChange={(v) => edit('Charge permanente', (d) => void (d.loads.loads.permanent = v))}
-            />
-            <dt>Poids propre de l’ossature</dt>
-            <dd>
-              <label className="etiquette">
-                <input
-                  type="checkbox"
-                  checked={loads.loads.includeSelfWeight}
-                  onChange={(e) =>
-                    edit(
-                      'Poids propre',
-                      (d) => void (d.loads.loads.includeSelfWeight = e.target.checked),
-                    )
-                  }
-                />{' '}
-                calculé et ajouté
-              </label>
-            </dd>
-            <ChampCharge
-              label="Exploitation (entretien)"
-              unite="kN/m²"
-              value={loads.loads.exploitation}
-              onChange={(v) => edit('Exploitation', (d) => void (d.loads.loads.exploitation = v))}
-            />
-            {climat ? (
-              <ChargeDuSite label="Neige (projection horizontale)" valeur={climat.neige} />
-            ) : (
-              <ChampCharge
-                label="Neige (projection horizontale)"
-                unite="kN/m²"
-                value={loads.loads.neige}
-                onChange={(v) => edit('Neige', (d) => void (d.loads.loads.neige = v))}
-              />
-            )}
-            {climat ? (
-              <ChargeDuSite label="Neige accidentelle" valeur={climat.neigeAccidentelle} />
-            ) : (
-              <ChampCharge
-                label="Neige accidentelle"
-                unite="kN/m²"
-                value={loads.loads.neigeAccidentelle}
-                onChange={(v) => edit('Neige accidentelle', (d) => void (d.loads.loads.neigeAccidentelle = v))}
-              />
-            )}
-            {climat ? (
-              <ChargeDuSite label="Vent — pression façade" valeur={climat.ventPression} />
-            ) : (
-              <ChampCharge
-                label="Vent — pression façade"
-                unite="kN/m²"
-                value={loads.loads.ventPression}
-                onChange={(v) => edit('Pression de vent', (d) => void (d.loads.loads.ventPression = v))}
-              />
-            )}
-            {climat ? (
-              <ChargeDuSite label="Vent — dépression toiture" valeur={climat.ventDepression} />
-            ) : (
-              <ChampCharge
-                label="Vent — dépression toiture"
-                unite="kN/m²"
-                value={loads.loads.ventDepression}
-                onChange={(v) => edit('Dépression de vent', (d) => void (d.loads.loads.ventDepression = v))}
-              />
-            )}
-          </dl>
-        </div>
-
-        <div className="fiche">
-          <h3>Limites de flèche</h3>
-          <dl className="paires">
-            <ChampCharge
-              label="Traverses  L/"
-              unite=""
-              value={loads.deflection.rafter}
-              pas={10}
-              onChange={(v) => edit('Flèche traverses', (d) => void (d.loads.deflection.rafter = v))}
-            />
-            <ChampCharge
-              label="Pannes  L/"
-              unite=""
-              value={loads.deflection.purlin}
-              pas={10}
-              onChange={(v) => edit('Flèche pannes', (d) => void (d.loads.deflection.purlin = v))}
-            />
-            <ChampCharge
-              label="Lisses  L/"
-              unite=""
-              value={loads.deflection.rail}
-              pas={10}
-              onChange={(v) => edit('Flèche lisses', (d) => void (d.loads.deflection.rail = v))}
-            />
-            <ChampCharge
-              label="Tête de poteau  H/"
-              unite=""
-              value={loads.deflection.columnDrift}
-              pas={10}
-              onChange={(v) => edit('Déplacement en tête', (d) => void (d.loads.deflection.columnDrift = v))}
-            />
-          </dl>
-        </div>
-
-        <div className="fiche">
-          <h3>Coefficients</h3>
-          <dl className="paires">
-            <ChampCharge
-              label="γG"
-              unite=""
-              pas={0.05}
-              value={loads.factors.gammaG}
-              onChange={(v) => edit('γG', (d) => void (d.loads.factors.gammaG = v))}
-            />
-            <ChampCharge
-              label="γQ"
-              unite=""
-              pas={0.05}
-              value={loads.factors.gammaQ}
-              onChange={(v) => edit('γQ', (d) => void (d.loads.factors.gammaQ = v))}
-            />
-            <ChampCharge
-              label="ψ0 neige"
-              unite=""
-              pas={0.05}
-              value={loads.factors.psi0Neige}
-              onChange={(v) => edit('ψ0 neige', (d) => void (d.loads.factors.psi0Neige = v))}
-            />
-            <ChampCharge
-              label="ψ0 vent"
-              unite=""
-              pas={0.05}
-              value={loads.factors.psi0Vent}
-              onChange={(v) => edit('ψ0 vent', (d) => void (d.loads.factors.psi0Vent = v))}
-            />
-            <ChampCharge
-              label="ψ0 exploitation"
-              unite=""
-              pas={0.05}
-              value={loads.factors.psi0Exploitation}
-            onChange={(v) =>
-                edit('ψ0 exploitation', (d) => void (d.loads.factors.psi0Exploitation = v))
-              }
-            />
-          </dl>
-        </div>
-
         <div className="fiche">
           <h3>Synthèse</h3>
           <dl className="paires">
@@ -214,9 +90,46 @@ export function VerificationsPanel(): JSX.Element {
             <dd>{num(rapport.ms, 0)} ms</dd>
           </dl>
         </div>
+
+        {/*
+          * Les hypothèses en RÉSUMÉ : elles se règlent dans le projet, une seule
+          * fois. Deux jeux de champs pour les mêmes charges, c'était deux endroits
+          * où se demander lequel comptait.
+          */}
+        <div className="fiche">
+          <h3>Hypothèses</h3>
+          <dl className="paires">
+            <dt>Permanent couverture</dt>
+            <dd>{num(l.permanent, 2)} kN/m²</dd>
+            <dt>Exploitation</dt>
+            <dd>{num(l.exploitation, 2)} kN/m²</dd>
+            <dt>Neige</dt>
+            <dd className={climat ? 'derive' : ''}>{num(climat?.neige ?? l.neige, 2)} kN/m²{climat ? ' — du site' : ''}</dd>
+            <dt>Vent</dt>
+            <dd className={climat ? 'derive' : ''}>{climat ? 'par zones — du site' : `${num(l.ventPression, 2)} / ${num(l.ventDepression, 2)} kN/m²`}</dd>
+            <dt>Flèches</dt>
+            <dd>
+              L/{f.rafter} · H/{f.columnDrift}
+            </dd>
+            <dt>Coefficients</dt>
+            <dd>
+              γG {num(project.loads.factors.gammaG, 2)} · γQ {num(project.loads.factors.gammaQ, 2)}
+            </dd>
+          </dl>
+          <div className="barre-outils" style={{ marginTop: 10, marginBottom: 0 }}>
+            <button type="button" className="plat" onClick={() => allerA('Charges et critères')}>
+              Modifier les charges
+            </button>
+            <button type="button" className="plat" onClick={() => allerA('Site et charges climatiques')}>
+              Site
+            </button>
+          </div>
+        </div>
       </div>
 
-      <DimensionnementFiche />
+      <div id="dimensionnement">
+        <DimensionnementFiche />
+      </div>
 
       <AssemblagesVerif />
 
@@ -383,51 +296,3 @@ function Taux({ v }: { v: number }): JSX.Element {
  * une paire dt/dd d'une liste de définitions. Réinventer une mise en page pour
  * ce panneau seul le ferait détonner du reste de l'application.
  */
-function ChampCharge({
-  label,
-  unite,
-  value,
-  onChange,
-  pas = 0.05,
-}: {
-  label: string;
-  unite: string;
-  value: number;
-  onChange: (v: number) => void;
-  pas?: number;
-}): JSX.Element {
-  return (
-    <>
-      <dt>{label}</dt>
-      <dd>
-        <input
-          type="number"
-          step={pas}
-          min={0}
-          value={value}
-          style={{ width: 82, textAlign: 'right' }}
-          // La molette au-dessus d'un champ focalisé modifierait la valeur sans
-          // que l'utilisateur l'ait demandé : on relâche le focus.
-          onWheel={(e) => e.currentTarget.blur()}
-          onChange={(e) => {
-            const v = Number(e.target.value);
-            if (Number.isFinite(v) && v >= 0) onChange(v);
-          }}
-        />
-        {unite ? <span className="unite"> {unite}</span> : null}
-      </dd>
-    </>
-  );
-}
-
-/** Charge climatique déduite du site : affichée, pas saisie — elle se règle dans la fiche du site. */
-function ChargeDuSite({ label, valeur }: { label: string; valeur: number }): JSX.Element {
-  return (
-    <>
-      <dt>{label}</dt>
-      <dd className="derive" title="Déduite de la région, de l’altitude et du terrain : elle se règle dans « Site et charges climatiques ».">
-        {num(valeur, 2)} kN/m² — du site
-      </dd>
-    </>
-  );
-}
