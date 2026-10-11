@@ -136,10 +136,16 @@ function buildFreeMembers(p: ProjectParams): Member[] {
 /* Masse et surface des jarrets : leur forme n'a qu'une définition. */
 export { haunchMassKg, haunchPaintM2 } from './jarret';
 
-/** Masse d'une tôle (kg) : aire du contour × épaisseur, trous déduits. */
+/**
+ * Masse d'une tôle (kg) : aire du contour × épaisseur, trous déduits.
+ *
+ * ⚠ Un oblong n'est pas un trou rond : il retire en plus le rectangle entre ses
+ * deux demi-cercles. Compté rond, un gousset de tête de potelet pesait 12 % de
+ * trop — c'est la relecture de la maquette IFC par web-ifc qui l'a montré.
+ */
 export function plateMassKg(pl: Plate): number {
   const aire = Math.abs(polygonArea(pl.outline));
-  const vides = pl.holes.reduce((s, h) => s + (Math.PI * h.d * h.d) / 4, 0);
+  const vides = pl.holes.reduce((s, h) => s + (Math.PI * h.d * h.d) / 4 + (h.oblong ? h.d * Math.max(0, h.oblong.longueur - h.d) : 0), 0);
   return Math.max(0, aire - vides) * pl.thickness * RHO_ACIER;
 }
 

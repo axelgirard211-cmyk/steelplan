@@ -34,6 +34,7 @@ export function Vue3dPanel(): JSX.Element {
   const [modeMesure, setModeMesure] = useState(false);
   const [grille, setGrille] = useState(true);
   const [aretes, setAretes] = useState(true);
+  const [percagesIfc, setPercagesIfc] = useState(false);
 
   // --- Création / destruction de la scène ---
   useEffect(() => {
@@ -202,11 +203,17 @@ export function Vue3dPanel(): JSX.Element {
         <button
           type="button"
           className="plat"
-          onClick={() => exporterIfc(projet, model)}
+          onClick={() => exporterIfc(projet, model, percagesIfc)}
           title="Maquette IFC4 de la charpente — barres, tôles, boulons, assemblages et repères — pour la synthèse BIM"
         >
           Exporter en IFC
         </button>
+        <label
+          className="etiquette"
+          title="Évide les barres de leurs perçages. Inutile à la synthèse, et certains lecteurs IFC les soustraient mal : la fabrication a les fichiers DSTV."
+        >
+          <input type="checkbox" checked={percagesIfc} onChange={(e) => setPercagesIfc(e.target.checked)} /> avec perçages
+        </label>
       </div>
 
       <div className="barre-outils">
@@ -345,8 +352,8 @@ function CoupeDynamique({
  * Télécharge la maquette IFC du modèle AFFICHÉ — celui que montre la vue, tiré
  * du dernier projet valide.
  */
-function exporterIfc(projet: Parameters<typeof maquetteIfc>[0], model: Parameters<typeof maquetteIfc>[1]): void {
-  const m = maquetteIfc(projet, model);
+function exporterIfc(projet: Parameters<typeof maquetteIfc>[0], model: Parameters<typeof maquetteIfc>[1], percages: boolean): void {
+  const m = maquetteIfc(projet, model, { percages });
   const url = URL.createObjectURL(new Blob([m.contenu], { type: 'application/x-step' }));
   const a = document.createElement('a');
   a.href = url;

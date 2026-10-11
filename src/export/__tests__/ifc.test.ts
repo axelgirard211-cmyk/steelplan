@@ -168,10 +168,20 @@ describe('contenu de la maquette', () => {
     expect(R.compte.boulons).toBe(listerBoulons(M.members, M.plates).length);
   });
 
-  it('évide chaque perçage et chaque grugeage dans sa barre', () => {
-    const attendu = percagesDesBarres(M.members).length + M.members.reduce((s, m) => s + m.notches.length, 0);
-    expect(parType(E, 'IFCOPENINGELEMENT').length).toBe(attendu);
-    expect(parType(E, 'IFCRELVOIDSELEMENT').length).toBe(attendu);
+  it('n’évide les barres que sur demande, d’une ouverture par barre portant tous ses trous', () => {
+    expect(parType(E, 'IFCOPENINGELEMENT')).toEqual([]);
+    const e = lireStep(maquetteIfc(P, M, { horodatage: QUAND, percages: true }).contenu);
+    const percees = new Set([...percagesDesBarres(M.members).map((t) => t.piece), ...M.members.filter((m) => m.notches.length > 0).map((m) => m.id)]);
+    expect(parType(e, 'IFCOPENINGELEMENT').length).toBe(percees.size);
+    expect(parType(e, 'IFCRELVOIDSELEMENT').length).toBe(percees.size);
+    // Tous les cylindres de perçage sont là, répartis dans les ouvertures.
+    let solides = 0;
+    for (const [, x] of parType(e, 'IFCOPENINGELEMENT')) {
+      const forme = e.get(ref(x.attrs[6])) as Lu;
+      const rep = e.get(refs([forme.attrs[2] ?? null])[0] as number) as Lu;
+      solides += refs([rep.attrs[3] ?? null]).length;
+    }
+    expect(solides).toBe(percagesDesBarres(M.members).length + M.members.reduce((s, m) => s + m.notches.length, 0));
   });
 
   it('range chaque élément une fois et une seule : dans le niveau ou dans son assemblage', () => {
@@ -183,7 +193,9 @@ describe('contenu de la maquette', () => {
     for (const [, x] of parType(E, 'IFCRELAGGREGATES')) if (E.get(ref(x.attrs[4]))?.nom === 'IFCELEMENTASSEMBLY') ranger(x.attrs[5]);
     const elements = [...E].filter(([, x]) => ELEMENTS.has(x.nom));
     expect(elements.filter(([i]) => ranges.get(i) !== 1).map(([, x]) => `${x.nom} ${String(x.attrs[2])}`)).toEqual([]);
-    expect(parType(E, 'IFCOPENINGELEMENT').some(([i]) => ranges.has(i))).toBe(false);
+    const avecTrous = lireStep(maquetteIfc(P, M, { horodatage: QUAND, percages: true }).contenu);
+    const rangesTrous = new Set(parType(avecTrous, 'IFCRELCONTAINEDINSPATIALSTRUCTURE').flatMap(([, x]) => refs([x.attrs[4] ?? null])));
+    expect(parType(avecTrous, 'IFCOPENINGELEMENT').some(([i]) => rangesTrous.has(i))).toBe(false);
   });
 
   it('réunit chaque tôle soudée dans l’assemblage de sa pièce principale', () => {
@@ -263,7 +275,8 @@ describe('géométrie', () => {
     /*
      * Les sommets du maillage de la vue 3D, ramenés dans le repère de la barre,
      * doivent tous tenir dans l'extrusion, du bon côté de chaque plan de
-     * recoupe — et la toucher : ni pièce tronquée, ni pièce trop longue.
+     * recoupe — et la toucher : ni pièce tronquée, ni pièce trop longue. Une
+     * extrusion recoupée déborde de 10 mm : c'est le plan qui fait l'about.
      */
     // Le treillis porte les cornières en MIROIR : leur contour doit être retourné.
     const barres = [M, ...TEMPLATES.map((t) => buildProject(t.build()))].flatMap((x) => x.members);
@@ -292,9 +305,11 @@ describe('géométrie', () => {
           ecarts[k] = Math.max(ecarts[k] as number, d);
         }
       }
-      expect(zMin, m.id).toBeGreaterThan(s.z0 - 0.05);
-      expect(zMax, m.id).toBeLessThan(s.z0 + s.depth + 0.05);
-      expect(Math.min(zMin - s.z0, s.z0 + s.depth - zMax), m.id).toBeLessThan(0.05);
+      // Au ras des abouts d'équerre ; au-delà des abouts biais, que recoupe le plan.
+      const debords = [zMin - s.z0, s.z0 + s.depth - zMax];
+      for (const d of debords) expect(d, m.id).toBeGreaterThan(-0.05);
+      for (const d of debords) expect(d, m.id).toBeLessThan(10.05);
+      expect(debords.filter((d) => d < 0.05).length, m.id).toBeGreaterThanOrEqual(2 - s.plans.length);
       // Côté conservé : derrière chaque plan, et au contact.
       for (const d of ecarts) expect(Math.abs(d), m.id).toBeLessThan(0.05);
       // Même emprise de section : une cornière retournée du mauvais côté s'y voit.
