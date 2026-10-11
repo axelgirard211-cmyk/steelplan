@@ -5,6 +5,7 @@ import { AssemblagesVerif } from './AssemblagesVerif';
 import { DimensionnementFiche } from './DimensionnementFiche';
 import { useChecksReport } from '../../state/derived';
 import { useProjectStore } from '../../state/store';
+import { chargesClimatiques } from '../../core/climat/index';
 import { num } from '../format';
 
 /**
@@ -17,7 +18,11 @@ import { num } from '../format';
 export function VerificationsPanel(): JSX.Element {
   const rapport = useChecksReport();
   const loads = useProjectStore((s) => s.project.loads);
+  const site = useProjectStore((s) => s.project.site);
+  const project = useProjectStore((s) => s.project);
   const edit = useProjectStore((s) => s.edit);
+  // Site en Eurocode : neige et vent viennent de lui, les champs saisis sont ignorés.
+  const climat = site.mode === 'eurocode' ? chargesClimatiques(project).valeurs : null;
   const [detail, setDetail] = useState<string | null>(null);
 
   const conforme = rapport.nonVerifies === 0;
@@ -58,30 +63,46 @@ export function VerificationsPanel(): JSX.Element {
               value={loads.loads.exploitation}
               onChange={(v) => edit('Exploitation', (d) => void (d.loads.loads.exploitation = v))}
             />
-            <ChampCharge
-              label="Neige (projection horizontale)"
-              unite="kN/m²"
-              value={loads.loads.neige}
-              onChange={(v) => edit('Neige', (d) => void (d.loads.loads.neige = v))}
-            />
-            <ChampCharge
-              label="Neige accidentelle"
-              unite="kN/m²"
-              value={loads.loads.neigeAccidentelle}
-              onChange={(v) => edit('Neige accidentelle', (d) => void (d.loads.loads.neigeAccidentelle = v))}
-            />
-            <ChampCharge
-              label="Vent — pression façade"
-              unite="kN/m²"
-              value={loads.loads.ventPression}
-              onChange={(v) => edit('Pression de vent', (d) => void (d.loads.loads.ventPression = v))}
-            />
-            <ChampCharge
-              label="Vent — dépression toiture"
-              unite="kN/m²"
-              value={loads.loads.ventDepression}
-              onChange={(v) => edit('Dépression de vent', (d) => void (d.loads.loads.ventDepression = v))}
-            />
+            {climat ? (
+              <ChargeDuSite label="Neige (projection horizontale)" valeur={climat.neige} />
+            ) : (
+              <ChampCharge
+                label="Neige (projection horizontale)"
+                unite="kN/m²"
+                value={loads.loads.neige}
+                onChange={(v) => edit('Neige', (d) => void (d.loads.loads.neige = v))}
+              />
+            )}
+            {climat ? (
+              <ChargeDuSite label="Neige accidentelle" valeur={climat.neigeAccidentelle} />
+            ) : (
+              <ChampCharge
+                label="Neige accidentelle"
+                unite="kN/m²"
+                value={loads.loads.neigeAccidentelle}
+                onChange={(v) => edit('Neige accidentelle', (d) => void (d.loads.loads.neigeAccidentelle = v))}
+              />
+            )}
+            {climat ? (
+              <ChargeDuSite label="Vent — pression façade" valeur={climat.ventPression} />
+            ) : (
+              <ChampCharge
+                label="Vent — pression façade"
+                unite="kN/m²"
+                value={loads.loads.ventPression}
+                onChange={(v) => edit('Pression de vent', (d) => void (d.loads.loads.ventPression = v))}
+              />
+            )}
+            {climat ? (
+              <ChargeDuSite label="Vent — dépression toiture" valeur={climat.ventDepression} />
+            ) : (
+              <ChampCharge
+                label="Vent — dépression toiture"
+                unite="kN/m²"
+                value={loads.loads.ventDepression}
+                onChange={(v) => edit('Dépression de vent', (d) => void (d.loads.loads.ventDepression = v))}
+              />
+            )}
           </dl>
         </div>
 
@@ -394,6 +415,18 @@ function ChampCharge({
           }}
         />
         {unite ? <span className="unite"> {unite}</span> : null}
+      </dd>
+    </>
+  );
+}
+
+/** Charge climatique déduite du site : affichée, pas saisie — elle se règle dans la fiche du site. */
+function ChargeDuSite({ label, valeur }: { label: string; valeur: number }): JSX.Element {
+  return (
+    <>
+      <dt>{label}</dt>
+      <dd className="derive" title="Déduite de la région, de l’altitude et du terrain : elle se règle dans « Site et charges climatiques ».">
+        {num(valeur, 2)} kN/m² — du site
       </dd>
     </>
   );

@@ -57,18 +57,28 @@ describe('réglage des assemblages', () => {
     expect(rien.evaluations).toBe(1);
   });
 
-  it('nomme l’assemblage qu’aucun réglage ne corrige, avec la voie à suivre', () => {
+  it('prend le bras de levier du jarret au genou, et le cordon de semelle passe', () => {
     /*
-     * Le cordon de semelle du genou : sa gorge suit l'épaisseur de la semelle de
-     * la traverse, aucun réglage de platine ne l'augmente. Le dire vaut mieux
-     * que d'épaissir la platine pour rien.
+     * ⚠ Le genou du projet par défaut, en site Eurocode, sortait à 1,10 sur son
+     * cordon de semelle : l'effort était pris sur la hauteur de la traverse
+     * seule, quand le jarret double presque le bras de levier.
      */
     const p = eurocode(DEFAULT_PROJECT);
     const genou = runChecks(p, buildProject(p)).assemblages.find((a) => a.id === 'genou');
-    expect(genou?.ratio).toBeGreaterThan(1);
-    expect(genou?.gouverne).toMatch(/^cordon/);
-    const i = dimensionnerAssemblages(p).insolubles.find((x) => x.assemblage === genou?.libelle);
-    expect(i?.conseil).toMatch(/pleine pénétration/);
+    expect(genou?.ratio).toBeLessThan(1);
+    const semelle = genou?.verifs.find((v) => v.nom.startsWith('cordon de semelle'));
+    const sansJarret: ProjectParams = { ...p, frame: { ...p.frame, haunch: { ...p.frame.haunch, enabled: false } } };
+    const nu = runChecks(sansJarret, buildProject(sansJarret)).assemblages.find((a) => a.id === 'genou');
+    expect(nu?.verifs.find((v) => v.nom.startsWith('cordon de semelle'))?.ratio).toBeGreaterThan((semelle?.ratio ?? 0) * 1.5);
+  });
+
+  it('nomme l’assemblage qu’aucun réglage ne corrige, avec la voie à suivre', () => {
+    // Une neige de 20 kN/m² : aucun réglage de platine ne tient le moment du genou.
+    const p: ProjectParams = { ...DEFAULT_PROJECT, loads: { ...DEFAULT_PROJECT.loads, loads: { ...DEFAULT_PROJECT.loads.loads, neige: 20 } } };
+    const r2 = dimensionnerAssemblages(p);
+    const i = r2.insolubles.find((x) => x.assemblage.includes('genou'));
+    expect(i?.ratio).toBeGreaterThan(1);
+    expect(i?.conseil.length).toBeGreaterThan(10);
   });
 
   it('se demande au dimensionnement automatique', () => {

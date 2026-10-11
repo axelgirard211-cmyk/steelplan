@@ -184,7 +184,9 @@ describe('invariant — chaque tôle soudée l’est sur la bonne pièce', () =>
         } else {
           // Le plat d'about d'un tube est soudé sur les deux lèvres de sa fente :
           // deux cordons, chacun entre le tube et le plat.
-          const attendus = pl.kind === 'plat-tube' ? 2 : 1;
+          // La platine d'about d'une barre en I : ses deux semelles et son âme.
+          const about = pl.kind === 'platine-about' && /-PL[AFC]$/.test(pl.id);
+          const attendus = pl.kind === 'plat-tube' ? 2 : about ? 3 : 1;
           // Le cordon est déposé sur le porteur, ou sur une tôle déjà soudée sur
           // lui : le gousset de tête du potelet de faîtage, sous la platine.
           const surLePorteur = (id: string): boolean =>

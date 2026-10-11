@@ -44,7 +44,7 @@ describe('sérialisation du projet', () => {
 
   it('produit un JSON lisible et versionné', () => {
     const texte = serializeProject(DEFAULT_PROJECT);
-    expect(texte).toContain('\n  "version": 3');
+    expect(texte).toContain('\n  "version": 4');
     expect(JSON.parse(texte).grid.span).toBe(20000);
   });
 

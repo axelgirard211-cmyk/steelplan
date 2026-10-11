@@ -93,6 +93,7 @@ const ENTREES: readonly Entree[] = [
   { cle: 'Déplacement en tête', texte: 'Déplacement horizontal admis en tête de poteau, en fraction de la hauteur (H/…).' },
   { cle: 'γG / γQ', texte: 'Coefficients partiels des actions à l’ELU (EN 1990) : 1,35 sur les permanentes, 1,5 sur les variables.' },
   { cle: 'ψ0 neige / vent / exploitation', texte: 'Coefficients de combinaison (EN 1990) : la part d’une action variable retenue quand elle accompagne l’action principale.' },
+  { cle: 'soudure des semelles', fiche: 'Assemblages', texte: 'Cordons d’angle des deux côtés de chaque semelle, gorge 0,7 × la plus mince des deux tôles ; ou soudure bout à bout à pleine pénétration, qui résiste comme la semelle elle-même. L’âme reste soudée par cordons d’angle.' },
   // Chiffrage
   { cle: 'Boulon posé', fiche: 'Chiffrage', texte: 'Prix moyen d’un boulon fourni et posé, rondelles et écrou compris, toutes tailles confondues.' },
   { cle: 'Heure d’atelier', fiche: 'Chiffrage', texte: 'Coût horaire chargé de l’atelier, débit et perçage compris. Il valorise le temps par pièce et la soudure.' },

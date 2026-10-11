@@ -1,5 +1,7 @@
+import { chargesClimatiques } from '../../core/climat/index';
 import { useProjectStore } from '../../state/store';
 import { Bascule, ChampNombre } from '../champs';
+import { num } from '../format';
 
 /**
  * CHARGES, LIMITES DE FLÈCHE ET COEFFICIENTS.
@@ -15,6 +17,9 @@ export function ChargesFiche(): JSX.Element {
   const l = project.loads.loads;
   const f = project.loads.deflection;
   const k = project.loads.factors;
+  // ⚠ Site en Eurocode : neige et vent viennent de lui. Laisser les champs
+  // saisissables faisait croire qu'on les réglait — le calcul les ignorait.
+  const climat = project.site.mode === 'eurocode' ? chargesClimatiques(project).valeurs : null;
 
   const charge = (
     libelle: string,
@@ -23,15 +28,21 @@ export function ChargesFiche(): JSX.Element {
   ): JSX.Element => (
     <>
       <dt>{libelle}</dt>
-      <dd>
-        <ChampNombre
-          valeur={valeur}
-          pas={0.05}
-          min={0}
-          unite="kN/m²"
-          onChange={(v) => edit(libelle, (d) => void (d.loads.loads[cle] = v))}
-        />
-      </dd>
+      {climat && (cle === 'neige' || cle === 'neigeAccidentelle' || cle === 'ventPression' || cle === 'ventDepression') ? (
+        <dd className="derive" title="Déduite de la région, de l’altitude et du terrain : elle se règle dans « Site et charges climatiques ».">
+          {num(climat[cle], 2)} kN/m² — du site
+        </dd>
+      ) : (
+        <dd>
+          <ChampNombre
+            valeur={valeur}
+            pas={0.05}
+            min={0}
+            unite="kN/m²"
+            onChange={(v) => edit(libelle, (d) => void (d.loads.loads[cle] = v))}
+          />
+        </dd>
+      )}
     </>
   );
 

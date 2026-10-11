@@ -65,7 +65,7 @@ const EP_GOUSSET = [6, 8, 10, 12, 15, 20, 25];
 const TIGES = [16, 20, 24, 27, 30];
 
 /** Leviers d'une platine d'about : rangées, diamètre, classe, épaisseur. */
-function leviersPlatine(cle: 'rafterToColumn' | 'ridge', ou: string): Record<'rangees' | 'diametre' | 'classe' | 'epaisseur', Levier> {
+function leviersPlatine(cle: 'rafterToColumn' | 'ridge', ou: string): Record<'rangees' | 'diametre' | 'classe' | 'epaisseur' | 'soudure', Levier> {
   const ep = (p: ProjectParams): EndPlateParams => p.connections[cle];
   const poser = (p: ProjectParams, e: EndPlateParams): ProjectParams => ({ ...p, connections: { ...p.connections, [cle]: e } });
   return {
@@ -86,6 +86,11 @@ function leviersPlatine(cle: 'rafterToColumn' | 'ridge', ou: string): Record<'ra
       nom: `classe des boulons — ${ou}`,
       valeur: (p) => ep(p).bolt.cls,
       suivant: (p) => (ep(p).bolt.cls === '8.8' ? poser(p, { ...ep(p), bolt: { ...ep(p).bolt, cls: '10.9' } }) : null),
+    },
+    soudure: {
+      nom: `soudure des semelles — ${ou}`,
+      valeur: (p) => (ep(p).soudureSemelles === 'pleine-penetration' ? 'pleine pénétration' : 'cordons d’angle'),
+      suivant: (p) => (ep(p).soudureSemelles === 'angle' ? poser(p, { ...ep(p), soudureSemelles: 'pleine-penetration' }) : null),
     },
     epaisseur: {
       nom: `épaisseur de platine — ${ou}`,
@@ -178,7 +183,10 @@ function leviersPour(a: AssemblageCheck, p: ProjectParams, model: StructuralMode
     const l = leviersPlatine(a.id === 'genou' ? 'rafterToColumn' : 'ridge', a.id === 'genou' ? 'genou' : 'faîtage');
     if (g.startsWith('moment')) return [l.rangees, l.diametre, l.classe, l.epaisseur];
     if (g.includes('platine d’about')) return [l.epaisseur, l.diametre];
-    if (g.startsWith('cordon')) return [];
+    // La gorge suit la plus mince des deux tôles : la platine si elle l'est, sinon
+    // la semelle — que seule la pleine pénétration dépasse.
+    if (g.startsWith('cordon de semelle')) return [l.epaisseur, l.soudure];
+    if (g.startsWith('cordon') || g.startsWith('soudure')) return [];
     return [l.diametre, l.classe, l.rangees];
   }
   if (a.id === 'pied') {
@@ -197,8 +205,8 @@ function leviersPour(a: AssemblageCheck, p: ProjectParams, model: StructuralMode
 
 /** La voie à suivre quand aucun réglage ne suffit. */
 function conseil(a: AssemblageCheck): string {
-  if (a.gouverne.startsWith('cordon')) {
-    return 'cordon limité par l’épaisseur de la pièce soudée : profil plus fort, ou soudure à pleine pénétration à définir';
+  if (a.gouverne.startsWith('cordon') || a.gouverne.startsWith('soudure')) {
+    return 'soudure limitée par l’épaisseur de la pièce soudée : profil plus fort, ou jarret plus haut';
   }
   if (a.id.startsWith('tete-')) return 'raidir la traverse de pignon ou revoir l’attache de tête';
   if (a.id === 'pied') return 'massif et ancrage à concevoir avec le bureau d’études béton';

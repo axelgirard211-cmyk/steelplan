@@ -1,9 +1,10 @@
-import { getProfile } from '../../catalog/index';
+import { getGrade, getProfile } from '../../catalog/index';
 import type { SteelGradeId } from '../../catalog/types';
 import { grilleDePlatine } from '../../geometry/holes';
-import { gorgeUsuelle } from '../../geometry/weld';
+import { cordonsDePlatine, gorgeUsuelle } from '../../geometry/weld';
 import { minEdgeDistance, type EndPlateParams } from '../../model/connections';
 import { designationBoulon, fbRd, ftRd, fvRd, interactionVT } from '../boulons';
+import { GAMMA_M0 } from '../section';
 import { tauxCordon } from '../soudures';
 import { longueurEfficace, troncon } from './troncon';
 import { assembler, verif, type AssemblageCheck, type VerifAssemblage } from './types';
@@ -149,21 +150,36 @@ export function verifierPlatineAbout(
    * La semelle tendue transmet M/h à la platine par ses cordons ; l'âme
    * transmet le tranchant par les siens.
    */
-  const hSemelles = Math.max(1, barre.h - (barre.shape === 'I' ? barre.tf : 0));
+  /*
+   * ⚠ Le bras de levier est la hauteur de l'ASSEMBLAGE, jarret compris : la
+   * semelle tendue de la traverse et la semelle comprimée du jarret. Le prendre
+   * sur la seule traverse doublait presque l'effort de semelle d'un genou à
+   * jarret — et condamnait son cordon à 1,10 quand il travaillait à 0,55.
+   */
+  const hSemelles = Math.max(1, c.hauteurAssemblage - (barre.shape === 'I' ? barre.tf : 0));
   const effortSemelle = Math.abs(e.m) / hSemelles;
-  const gorgeSemelle = gorgeUsuelle(ep.thickness, barre.shape === 'I' ? barre.tf : barre.h);
+  const enI = barre.shape === 'I' || barre.shape === 'U';
+  // La règle même du modèle : ce qui est vérifié est ce qui part au plan d'atelier.
+  const cordons = cordonsDePlatine(ep.thickness, enI ? barre.tf : barre.h, tw, ep.soudureSemelles ?? 'angle');
+  if (cordons.semelle.type === 'bout-a-bout') {
+    // Pleine pénétration : la soudure résiste comme la semelle elle-même.
+    const nRd = (barre.b * (enI ? barre.tf : barre.h) * getGrade(c.nuance).fy) / GAMMA_M0;
+    verifs.push(verif('soudure de semelle à pleine pénétration', effortSemelle / 1000, nRd / 1000, 'kN'));
+  } else {
+    verifs.push(
+      verif(
+        `cordon de semelle a${cordons.semelle.gorge}`,
+        tauxCordon(effortSemelle, 2 * barre.b, cordons.semelle.gorge, c.nuance),
+        1,
+        '—',
+      ),
+    );
+  }
   verifs.push(
     verif(
-      `cordon de semelle a${gorgeSemelle}`,
-      tauxCordon(effortSemelle, 2 * barre.b, gorgeSemelle, c.nuance),
-      1,
-      '—',
-    ),
-  );
-  verifs.push(
-    verif(
-      `cordon d’âme a${gorge}`,
-      tauxCordon(Math.abs(e.v), 2 * hSemelles, gorge, c.nuance),
+      `cordon d’âme a${cordons.ame.gorge}`,
+      // Le long de l'âme de la traverse seule : le jarret a ses propres cordons.
+      tauxCordon(Math.abs(e.v), 2 * Math.max(1, barre.h - 2 * (enI ? barre.tf : 0)), cordons.ame.gorge, c.nuance),
       1,
       '—',
     ),

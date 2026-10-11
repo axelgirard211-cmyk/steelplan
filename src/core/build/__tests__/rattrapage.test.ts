@@ -147,19 +147,32 @@ describe('soudures', () => {
     expect(gorgeUsuelle(2, 20)).toBe(3); // plancher d'atelier
   });
 
-  it('soude chaque tôle d’about sur sa pièce, sur le pourtour', () => {
-    // Les platines — d'about, de pied — terminent une pièce : on les soude sur le
-    // pourtour de son profil. Goussets et plats de contreventement ont leurs
-    // propres cordons, vérifiés à part.
+  it('soude chaque tôle d’about sur sa pièce : semelles et âme, ou pourtour', () => {
+    // Les platines — d'about, de pied — terminent une pièce. Une platine de pied
+    // se soude sur le pourtour du poteau ; une platine d'about de traverse sur
+    // ses semelles et son âme, chacune à sa gorge. Goussets et plats de
+    // contreventement ont leurs propres cordons, vérifiés à part.
     const platines = M.plates.filter((pl) => pl.porteur !== null && pl.kind.startsWith('platine'));
-    const cordonsDeToles = M.welds.filter((w) => platines.some((pl) => pl.id === w.between[1] && pl.porteur === w.between[0]));
-    expect(cordonsDeToles.length).toBe(platines.length);
-    for (const w of cordonsDeToles) {
-      expect(w.throat).toBeGreaterThanOrEqual(3);
-      expect(w.length).toBeGreaterThan(0);
-      // UN brin sur le pourtour : le périmètre compte déjà les deux faces.
-      expect(w.type).toBe('angle');
-      expect(w.pourtour).toBe(true);
+    const cordonsDe = (id: string) => M.welds.filter((w) => w.between[1] === id && platines.some((pl) => pl.id === id && pl.porteur === w.between[0]));
+    for (const pl of platines) {
+      const c = cordonsDe(pl.id);
+      for (const w of c) {
+        expect(w.throat).toBeGreaterThanOrEqual(3);
+        expect(w.length).toBeGreaterThan(0);
+      }
+      if (/-PL[AFC]$/.test(pl.id)) {
+        const profil = getProfile(M.members.find((m) => m.id === pl.porteur)?.profileId ?? '');
+        if (profil.shape !== 'I') throw new Error(`${pl.id} : traverse en I attendue`);
+        expect(c.map((w) => w.id.slice(-2)).sort(), pl.id).toEqual(['SA', 'SI', 'SS']);
+        // Semelles à la gorge de la semelle, âme à celle de l'âme — jamais l'une pour l'autre.
+        expect(c.find((w) => w.id.endsWith('SS'))?.throat).toBe(gorgeUsuelle(pl.thickness, profil.tf));
+        expect(c.find((w) => w.id.endsWith('SA'))?.throat).toBe(gorgeUsuelle(pl.thickness, profil.tw));
+      } else {
+        // UN brin sur le pourtour : le périmètre compte déjà les deux faces.
+        expect(c, pl.id).toHaveLength(1);
+        expect(c[0]?.type).toBe('angle');
+        expect(c[0]?.pourtour).toBe(true);
+      }
     }
   });
 

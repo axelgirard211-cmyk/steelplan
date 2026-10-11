@@ -4,6 +4,8 @@
  * et les trous de la pièce qu'elle assemble ne puissent jamais diverger.
  */
 
+import type { SoudureSemelles } from '../geometry/weld';
+
 /** Diamètres de boulons normalisés (mm). */
 export const BOLT_DIAMETERS = [12, 14, 16, 20, 22, 24, 27, 30] as const;
 export type BoltDiameter = (typeof BOLT_DIAMETERS)[number];
@@ -63,6 +65,12 @@ export interface EndPlateParams {
   readonly gauge: number;
   /** Débord de la platine au-delà de la semelle (mm). */
   readonly overhang: number;
+  /**
+   * Soudure des semelles de la barre sur la platine : cordons d'angle, ou bout
+   * à bout à pleine pénétration quand la gorge que permet la semelle ne suffit
+   * pas à transmettre l'effort.
+   */
+  readonly soudureSemelles: SoudureSemelles;
 }
 
 /**
