@@ -37,6 +37,16 @@ import { en, entier, FichierStep, type, type Ref, type Valeur } from './step';
 export interface OptionsIfc {
   /** Date de l'export ; maintenant par défaut. Fixée, le fichier est reproductible. */
   readonly horodatage?: Date;
+  /**
+   * Évider les barres de leurs perçages et grugeages. FAUX par défaut.
+   *
+   * ⚠ La synthèse n'en a pas besoin, et tous les lecteurs ne savent pas les
+   * soustraire : relue par web-ifc, la maquette est juste pièce par pièce sans
+   * eux, mais certaines combinaisons de trous y font échouer la soustraction —
+   * un poteau ressort avec cinq fois son volume. La fabrication a ses fichiers
+   * DSTV, qui portent chaque trou.
+   */
+  readonly percages?: boolean;
 }
 
 export interface MaquetteIfc {
@@ -208,22 +218,29 @@ export function maquetteIfc(p: ProjectParams, model: StructuralModel, options: O
     if (l) l.push(t);
     else percages.set(t.piece, [t]);
   }
+  /*
+   * ⚠ UNE ouverture par barre, qui porte tous ses perçages et grugeages, et non
+   * une par trou. Relue par web-ifc, une ouverture par trou faisait échouer la
+   * soustraction sur certaines combinaisons — un poteau ressortait avec cinq
+   * fois son volume — et le fichier comptait 1 500 ouvertures de plus.
+   */
   let ouvertures = 0;
-  const ouvrir = (barre: Ref, placementBarre: Ref, cle: string, nom: string, c: Corps): void => {
+  const evider = (barre: Ref, placementBarre: Ref, m: Member, corps: readonly Corps[], nom: string): void => {
+    if (corps.length === 0) return;
     const ouverture = f.ajouter(
       'IFCOPENINGELEMENT',
-      gid(`ouverture:${cle}`),
+      gid(`ouverture:${m.id}`),
       oh,
       nom,
       null,
       null,
-      g.placementLocal(placementBarre, c.repere),
-      forme(c),
+      g.placementLocal(placementBarre, null),
+      forme({ repere: corps[0]?.repere as Repere, solides: corps.flatMap((c) => c.solides), type: 'SweptSolid' }),
       null,
       en('OPENING'),
     );
-    f.ajouter('IFCRELVOIDSELEMENT', gid(`vide:${cle}`), oh, null, null, barre, ouverture);
-    ouvertures += 1;
+    f.ajouter('IFCRELVOIDSELEMENT', gid(`vide:${m.id}`), oh, null, null, barre, ouverture);
+    ouvertures += corps.length;
   };
 
   for (const m of model.members) {
@@ -259,11 +276,12 @@ export function maquetteIfc(p: ProjectParams, model: StructuralModel, options: O
       ['LoadBearing', type('IFCBOOLEAN', true)],
     ], ref);
 
-    for (const [i, t] of (percages.get(m.id) ?? []).entries()) {
-      ouvrir(ref, placement, `${m.id}:percage:${i}`, `Perçage Ø${Math.round(t.d)}`, corpsDePercage(g, m, t));
-    }
-    for (const [i, n] of m.notches.entries()) {
-      ouvrir(ref, placement, `${m.id}:grugeage:${i}`, 'Grugeage', corpsDeGrugeage(g, m, n));
+    const trous = percages.get(m.id) ?? [];
+    const nom = [trous.length > 0 ? `${trous.length} perçage${trous.length > 1 ? 's' : ''}` : '', m.notches.length > 0 ? `${m.notches.length} grugeage${m.notches.length > 1 ? 's' : ''}` : '']
+      .filter(Boolean)
+      .join(', ');
+    if (options.percages) {
+      evider(ref, placement, m, [...trous.map((t) => corpsDePercage(g, m, t)), ...m.notches.map((n) => corpsDeGrugeage(g, m, n))], nom);
     }
   }
 

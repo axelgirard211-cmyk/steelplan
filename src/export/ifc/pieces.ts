@@ -28,6 +28,18 @@ export interface Corps {
   readonly type: 'SweptSolid' | 'Clipping';
 }
 
+/**
+ * Débords de la matière retirée, en mm.
+ *
+ * ⚠ Un cylindre de perçage qui ne dépasse la paroi que d'1 mm, une extrusion
+ * arrêtée pile sur la fibre que touche le plan de coupe : c'est exact, et c'est
+ * précisément ce que les moteurs booléens des lecteurs traitent mal. Relue par
+ * web-ifc, une panne à quatre trous en sortait avec vingt-sept fois son volume.
+ * On fait déborder franchement ce qui sera retiré.
+ */
+const DEBORD_PERCAGE = 5;
+const DEBORD_COUPE = 10;
+
 /** Polygone remis dans le sens trigonométrique, celui qu'attend un contour extérieur. */
 function trigo(p: readonly Pt2[]): Pt2[] {
   return polygonArea(p) < 0 ? [...p].reverse() : [...p];
@@ -57,21 +69,19 @@ export function corpsDeBarre(g: Geometrie, m: Member): Corps {
   const fibres = (plan: Member['cutStart']): number[] => sec.outer.map((p) => fibreAbscissa(f, m.start, plan, p));
   const debut = fibres(m.cutStart);
   const fin = fibres(m.cutEnd);
-  const s0 = Math.min(...debut);
-  const s1 = Math.max(...fin);
+  // Une coupe d'équerre est déjà la face de l'extrusion : rien à recouper.
+  const biais = (a: readonly number[]): boolean => Math.max(...a) - Math.min(...a) > 0.01;
+  const coupes = [biais(debut) ? m.cutStart : null, biais(fin) ? m.cutEnd : null];
+  // Une coupe biaise se fait sur une extrusion qui déborde, jamais au ras de sa face.
+  const s0 = Math.min(...debut) - (coupes[0] ? DEBORD_COUPE : 0);
+  const s1 = Math.max(...fin) + (coupes[1] ? DEBORD_COUPE : 0);
 
   const r = repereDeBarre(m);
   let solide = g.extrusion(forme, s0, s1 - s0);
-  let recoupe = false;
-  // Une coupe d'équerre est déjà la face de l'extrusion : rien à recouper.
-  for (const [abscisses, plan] of [
-    [debut, m.cutStart],
-    [fin, m.cutEnd],
-  ] as const) {
-    if (Math.max(...abscisses) - Math.min(...abscisses) <= 0.01) continue;
-    solide = g.recouper(solide, versLocal(r, plan.point), directionLocale(r, plan.normal));
-    recoupe = true;
+  for (const plan of coupes) {
+    if (plan) solide = g.recouper(solide, versLocal(r, plan.point), directionLocale(r, plan.normal));
   }
+  const recoupe = coupes.some((c) => c !== null);
   return { repere: r, solides: [solide], type: recoupe ? 'Clipping' : 'SweptSolid' };
 }
 
@@ -118,8 +128,16 @@ export function corpsDeTole(g: Geometrie, pl: Plate): Corps {
   const u = normalize(pl.u);
   const w = normalize(sub(pl.v, scale(u, dot(pl.v, u))));
   const r: Repere = { o: pl.origin, x: u, z: cross(u, w) };
-  const cle = `tole:${pl.mark || pl.id}:${pl.thickness}:${pl.outline.length}:${pl.holes.length}`;
-  const forme = g.profil(cle, null, trigo(pl.outline), pl.holes.map((h) => contourDeTrou(h, 16)));
+  /*
+   * ⚠ Partagé par FORME, pas par repère : deux tôles d'un même repère peuvent
+   * être posées retournées, et leur contour est alors l'image miroir l'une de
+   * l'autre dans leur repère. Partagé par repère, le gousset de gauche prenait
+   * le contour de celui de droite — même volume, mais six cents millimètres plus
+   * loin.
+   */
+  const vides = pl.holes.map((h) => contourDeTrou(h, 16));
+  const cle = `tole:${[pl.outline, ...vides].map((c) => c.map((p) => `${Math.round(p.y * 100)},${Math.round(p.z * 100)}`).join(';')).join('|')}`;
+  const forme = g.profil(cle, null, trigo(pl.outline), vides);
   return { repere: r, solides: [g.extrusion(forme, -pl.thickness / 2, pl.thickness)], type: 'SweptSolid' };
 }
 
@@ -127,14 +145,17 @@ export function corpsDeTole(g: Geometrie, pl: Plate): Corps {
 /* Perçages et grugeages : des ouvertures dans la barre                 */
 /* ------------------------------------------------------------------ */
 
-/** Perçage de barre : un cylindre à peine plus long que la paroi, dans le repère de la barre. */
+/** Repère de la barre elle-même, pour les solides qu'on y pose directement. */
+const IDENTITE: Repere = { o: v3(0, 0, 0), x: v3(1, 0, 0), z: v3(0, 0, 1) };
+
+/** Perçage de barre : un cylindre qui déborde la paroi, posé dans le repère de la barre. */
 export function corpsDePercage(g: Geometrie, m: Member, t: PercageDeBarre): Corps {
   const rb = repereDeBarre(m);
   const a = normalize(directionLocale(rb, t.axe));
-  const h = t.epaisseur + 2;
+  const h = t.epaisseur + 2 * DEBORD_PERCAGE;
   const base = sub(versLocal(rb, t.centre), scale(a, h / 2));
   const r: Repere = { o: base, x: perpendiculaire(a), z: a };
-  return { repere: r, solides: [g.extrusion(g.cercle(t.d / 2), 0, h)], type: 'SweptSolid' };
+  return { repere: IDENTITE, solides: [g.extrusionDans(g.cercle(t.d / 2), r, h)], type: 'SweptSolid' };
 }
 
 /**
@@ -165,8 +186,7 @@ export function corpsDeGrugeage(g: Geometrie, m: Member, n: Notch): Corps {
         : cote === 'bas'
           ? g.rectangle(y0 - 2 + d / 2, zm, d, H)
           : g.rectangle(y1 + 2 - d / 2, zm, d, H);
-  const r: Repere = { o: v3(0, 0, 0), x: v3(1, 0, 0), z: v3(0, 0, 1) };
-  return { repere: r, solides: [g.extrusion(rect, n.s0, n.s1 - n.s0)], type: 'SweptSolid' };
+  return { repere: IDENTITE, solides: [g.extrusion(rect, n.s0, n.s1 - n.s0)], type: 'SweptSolid' };
 }
 
 /* ------------------------------------------------------------------ */
