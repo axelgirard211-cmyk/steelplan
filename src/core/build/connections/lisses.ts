@@ -84,9 +84,11 @@ export function attachesDeLisses(
         // L'axe de perçage est la normale à la face de contact : l'axe z de la
         // lisse, qui est selon y ou z dans le repère de l'appui.
         const through: 'y' | 'z' = Math.abs(dot(f.az, fs.az)) > 0.9 ? 'z' : 'y';
-        trousAppui.push(
-          hole(dot(d, fs.ax), { y: dot(d, fs.ay), z: dot(d, fs.az) }, bolt, through, through === 'z' ? 'semelle-sup' : 'aile', li.id),
-        );
+        const at = { y: dot(d, fs.ay), z: dot(d, fs.az) };
+        // La semelle percée est celle du côté de la lisse : celle du dessous
+        // quand la lisse s'attache sous l'axe — l'étiquette suivait la règle
+        // « toujours dessus » et mentait pour un poteau sur deux.
+        trousAppui.push(hole(dot(d, fs.ax), at, bolt, through, through === 'z' ? (at.z >= 0 ? 'semelle-sup' : 'semelle-inf') : 'aile', li.id));
       }
       ajouter(li.id, trousLisse);
       ajouter(support.id, trousAppui);

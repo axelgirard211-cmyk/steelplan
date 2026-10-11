@@ -10,6 +10,7 @@ import { runChecks } from './index';
 import { classer } from './section';
 import { fyDe } from './element';
 import { candidats, postesActifs, type Poste } from './postes';
+import { dimensionnerAssemblages, type PropositionAssemblages } from './dimensionnerAssemblages';
 
 /**
  * DIMENSIONNEMENT AUTOMATIQUE : le profil le plus léger qui tient.
@@ -78,6 +79,8 @@ export interface Proposition {
   /** Nombre de modèles construits et vérifiés — le coût réel de la recherche. */
   readonly evaluations: number;
   readonly ms: number;
+  /** Réglages d'assemblage, quand ils ont été demandés. */
+  readonly assemblages: PropositionAssemblages | null;
 }
 
 /**
@@ -112,6 +115,11 @@ export interface OptionsDimensionnement {
    * profil actuel. Même réponse, plus lent : sert à le vérifier.
    */
   readonly balayageComplet?: boolean;
+  /**
+   * Régler aussi les assemblages, une fois les profils trouvés : platines,
+   * tiges, goussets, boulons, oblongs. Ils dépendent des profils, pas l'inverse.
+   */
+  readonly assemblages?: boolean;
 }
 
 export function dimensionner(
@@ -216,9 +224,18 @@ export function dimensionner(
     opts.onProgres?.(i + 1, postes.length, poste.libelle);
   }
 
+  let assemblages: PropositionAssemblages | null = null;
+  if (opts.assemblages) {
+    opts.onProgres?.(postes.length, postes.length, 'Assemblages');
+    assemblages = dimensionnerAssemblages(projet, cible);
+    projet = assemblages.projet;
+    evaluations += assemblages.evaluations;
+  }
+
   const modeleFinal = buildProject(projet);
   const final = runChecks(projet, modeleFinal);
   return {
+    assemblages,
     projet,
     changements,
     masseAvant: (modeleDepart ?? buildProject(depart)).stats.massKg,

@@ -173,6 +173,19 @@ describe('invariant — aucun perçage ne débouche dans le vide', () => {
     expect([...new Set(fautes)], [...new Set(fautes)].join('\n')).toHaveLength(0);
   });
 
+  it('nomme la semelle réellement percée', () => {
+    // L'étiquette passe au plan de débit et à la traçabilité : « semelle-sup »
+    // sur un trou percé dessous envoie le pointeur chercher le trou ailleurs.
+    for (const [nom, m] of modeles) {
+      for (const b of m.members) {
+        for (const h of b.holes) {
+          if (h.part === 'semelle-sup') expect(h.at.z, `${nom} / ${b.id} / ${h.from}`).toBeGreaterThan(0);
+          if (h.part === 'semelle-inf') expect(h.at.z, `${nom} / ${b.id} / ${h.from}`).toBeLessThan(0);
+        }
+      }
+    }
+  });
+
   it('espace suffisamment deux perçages d’une même file', () => {
     const fautes: string[] = [];
     for (const [nom, m] of modeles) {
