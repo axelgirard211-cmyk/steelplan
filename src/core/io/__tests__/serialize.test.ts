@@ -44,7 +44,7 @@ describe('sérialisation du projet', () => {
 
   it('produit un JSON lisible et versionné', () => {
     const texte = serializeProject(DEFAULT_PROJECT);
-    expect(texte).toContain('\n  "version": 2');
+    expect(texte).toContain('\n  "version": 3');
     expect(JSON.parse(texte).grid.span).toBe(20000);
   });
 
@@ -334,6 +334,18 @@ describe('retouches des planches dans le fichier', () => {
     const { project } = deserializeProject(JSON.stringify(ancien));
     expect(project.retouches).toEqual([]);
     expect(project.grid).toEqual(DEFAULT_PROJECT.grid);
+  });
+
+  it('ouvre un fichier du format 2, enregistré avant la grille de prix', () => {
+    const ancien = JSON.parse(serializeProject(DEFAULT_PROJECT)) as Record<string, unknown>;
+    delete ancien['prix'];
+    ancien['version'] = 2;
+    expect(deserializeProject(JSON.stringify(ancien)).project.prix).toEqual(DEFAULT_PROJECT.prix);
+  });
+
+  it('relit la grille de prix du projet sans perte', () => {
+    const p = { ...DEFAULT_PROJECT, prix: { ...DEFAULT_PROJECT.prix, montage: 450, marge: 8, acier: { ...DEFAULT_PROJECT.prix.acier, S355: 1.4 } } };
+    expect(deserializeProject(serializeProject(p)).project.prix).toEqual(p.prix);
   });
 
   it('refuse une entité corrompue en nommant le champ fautif', () => {

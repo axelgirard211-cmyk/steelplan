@@ -41,6 +41,7 @@ const RUBRIQUES: Partial<Record<keyof ProjectParams, string>> = {
   loads: 'Charges et critères',
   finition: 'Traitement de surface',
   atelier: 'Atelier',
+  prix: 'Chiffrage',
   freeMembers: 'Barres libres',
 };
 
@@ -88,6 +89,28 @@ export function validateProject(p: ProjectParams): Issue[] {
   }
   if (at.barreLaminee < 6000) {
     warn('atelier.barreLaminee', `Barres de ${at.barreLaminee} mm : les laminés se livrent couramment en 12 m.`);
+  }
+
+  /* --- Chiffrage --------------------------------------------------- */
+  // ⚠ Des avertissements seulement : un prix faux fausse le chiffre, jamais le
+  // bâtiment, et ne doit pas suspendre les plans.
+  const px = p.prix;
+  const prixNegatifs: [string, number, string][] = [
+    ...Object.entries(px.acier).map(([n, v]): [string, number, string] => [`acier.${n}`, v, `acier ${n}`]),
+    ['boulon', px.boulon, 'boulon posé'],
+    ['heureAtelier', px.heureAtelier, 'heure d’atelier'],
+    ['heureParPiece', px.heureParPiece, 'temps par pièce'],
+    ['peinture', px.peinture, 'peinture'],
+    ['galvanisation', px.galvanisation, 'galvanisation'],
+    ['transport', px.transport, 'transport'],
+    ['montage', px.montage, 'montage'],
+  ];
+  for (const [cle, v, libelle] of prixNegatifs) {
+    if (!(v >= 0)) warn(`prix.${cle}`, `Prix négatif dans la grille (${libelle}) : le chiffrage est faux.`);
+  }
+  if (!(px.cadenceSoudure > 0)) warn('prix.cadenceSoudure', 'La cadence de soudure doit être positive, en mètres de cordon par heure.');
+  for (const [cle, libelle] of [['fraisGeneraux', 'frais généraux'], ['aleas', 'aléas'], ['marge', 'marge']] as const) {
+    if (!(px[cle] >= 0 && px[cle] <= 100)) warn(`prix.${cle}`, `Taux de ${libelle} hors de 0 à 100 % : à vérifier.`);
   }
 
   /* --- Trame ------------------------------------------------------- */

@@ -171,3 +171,33 @@ describe('valorisation', () => {
     expect(bidon.total).toBeGreaterThan(0);
   });
 });
+
+describe('chiffrage complet : chantier, frais et marge', () => {
+  const bom = buildBom(P, M);
+  const base = valoriser(bom, P.finition);
+
+  it('dit ce que la grille par défaut ne chiffre pas', () => {
+    expect(base.nonChiffres).toEqual(['transport', 'montage', 'frais généraux', 'aléas', 'marge']);
+    expect(base.deboursSec).toBeCloseTo(base.total, 6);
+  });
+
+  it('chiffre transport et montage à la tonne, frais et aléas sur le déboursé, la marge sur le revient', () => {
+    const g = { ...GRILLE_PAR_DEFAUT, transport: 60, montage: 500, fraisGeneraux: 10, aleas: 5, marge: 8 };
+    const v = valoriser(bom, P.finition, g);
+    const ligne = (poste: string) => v.lignes.find((l) => l.poste === poste);
+    expect(ligne('Transport')?.montant).toBeCloseTo((bom.totals.massTotal / 1000) * 60, 6);
+    expect(ligne('Montage et levage')?.montant).toBeCloseTo((base.masseKg / 1000) * 500, 6);
+    expect(v.deboursSec).toBeCloseTo(base.total + (ligne('Transport')?.montant ?? 0) + (ligne('Montage et levage')?.montant ?? 0), 6);
+    expect(ligne('Frais généraux')?.montant).toBeCloseTo(v.deboursSec * 0.1, 6);
+    expect(ligne('Aléas')?.montant).toBeCloseTo(v.deboursSec * 0.05, 6);
+    expect(ligne('Marge')?.montant).toBeCloseTo(v.deboursSec * 1.15 * 0.08, 6);
+    expect(v.total).toBeCloseTo(v.deboursSec * 1.15 * 1.08, 6);
+    expect(v.nonChiffres).toEqual([]);
+  });
+
+  it('suit le prix de l’acier saisi pour chaque nuance', () => {
+    const plusCher = valoriser(bom, P.finition, { ...GRILLE_PAR_DEFAUT, acier: { ...GRILLE_PAR_DEFAUT.acier, S235: 2.15 } });
+    const masseS235 = base.lignes.find((l) => l.poste === 'Acier S235')?.quantite ?? 0;
+    expect(plusCher.total - base.total).toBeCloseTo(masseS235, 6);
+  });
+});

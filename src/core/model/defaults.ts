@@ -1,4 +1,5 @@
 import { FINITION_PAR_DEFAUT } from './finition';
+import { GRILLE_PAR_DEFAUT } from './prix';
 import { ATELIER_PAR_DEFAUT } from './atelier';
 import { OUVERTURES_PAR_DEFAUT } from './ouvertures';
 import { SITE_PAR_DEFAUT } from './site';
@@ -9,7 +10,7 @@ import type { ProjectParams } from './project';
  * égout à 6 m, bipente 10 %. Sert de point de départ et de gabarit de test.
  */
 export const DEFAULT_PROJECT: ProjectParams = {
-  version: 2,
+  version: 3,
   meta: {
     nom: 'Nouveau projet',
     client: '',
@@ -159,6 +160,7 @@ export const DEFAULT_PROJECT: ProjectParams = {
     purlinCleat: { enabled: true, profile: 'L 100x100x10', length: 120 },
   },
   finition: FINITION_PAR_DEFAUT,
+  prix: GRILLE_PAR_DEFAUT,
   atelier: ATELIER_PAR_DEFAUT,
   site: SITE_PAR_DEFAUT,
   loads: {

@@ -16,6 +16,7 @@ import { CartoucheFiche } from './CartoucheFiche';
 import { ChargesFiche } from './ChargesFiche';
 import { ContreventementFiche } from './ContreventementFiche';
 import { FinitionFiche } from './FinitionFiche';
+import { ChiffrageFiche } from './ChiffrageFiche';
 import { AtelierFiche } from './AtelierFiche';
 import { PortiqueFiche } from './PortiqueFiche';
 import { OuverturesFiche } from './OuverturesFiche';
@@ -109,6 +110,7 @@ export function ProjetPanel(): JSX.Element {
           {ancre('Charges et critères', <ChargesFiche />)}
           {ancre('Traitement de surface', <FinitionFiche />)}
           {ancre('Atelier', <AtelierFiche />)}
+          {ancre('Chiffrage', <ChiffrageFiche />)}
 
           {ancre(
             'Contrôle du modèle',

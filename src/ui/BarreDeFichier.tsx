@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FormatError } from '../core/io/serialize';
 import { creerAutosave, oublierAuto, relireAuto, type Autosave } from '../core/io/storage';
+import { avecGrilleEntreprise } from '../core/io/grilleEntreprise';
 import type { Template } from '../core/model/templates';
 import { useProjectStore } from '../state/store';
 import { GabaritsDialog } from './GabaritsDialog';
@@ -117,7 +118,8 @@ export function BarreDeFichier({
 
   const appliquerGabarit = useCallback(
     (t: Template): void => {
-      loadProject(t.build());
+      // Un nouveau projet part avec les prix de l'entreprise, s'ils sont mémorisés.
+      loadProject(avecGrilleEntreprise(t.build()));
       oublierFichierCourant();
       setEnregistreA(null);
       setGabarits(false);
@@ -175,7 +177,7 @@ export function BarreDeFichier({
         <Assistant
           travauxEnCours={nbEditions}
           onCreer={(p) => {
-            loadProject(p);
+            loadProject(avecGrilleEntreprise(p));
             oublierFichierCourant();
             setEnregistreA(null);
             setARestaurer(null);
