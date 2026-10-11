@@ -47,6 +47,34 @@ export function gorgeUsuelle(epaisseurA: number, epaisseurB: number): number {
   return Math.max(3, Math.round(0.7 * mini));
 }
 
+/** Soudure des semelles d'une barre sur sa platine d'about. */
+export type SoudureSemelles = 'angle' | 'pleine-penetration';
+
+export interface CordonsDePlatine {
+  readonly semelle: { readonly type: WeldType; readonly gorge: number };
+  readonly ame: { readonly type: WeldType; readonly gorge: number };
+}
+
+/**
+ * Cordons d'une barre en I ou en U sur sa platine d'about : SEMELLES et ÂME,
+ * chacune à sa gorge.
+ *
+ * ⚠ La règle UNIQUE du modèle et du calcul. Le modèle posait un seul cordon de
+ * pourtour à la gorge de l'âme (a6 sur un IPE 360) quand la vérification
+ * créditait les semelles d'un cordon à la gorge de la semelle (a9) : le plan
+ * d'atelier demandait moins que ce que le calcul avait supposé. Et un a9 tout
+ * autour aurait brûlé une âme de 8 mm.
+ *
+ * À pleine pénétration, la semelle est soudée bout à bout sur toute son
+ * épaisseur : sa résistance est celle de la semelle (EN 1993-1-8 § 4.7.1).
+ */
+export function cordonsDePlatine(tp: number, tf: number, tw: number, soudure: SoudureSemelles): CordonsDePlatine {
+  return {
+    semelle: soudure === 'pleine-penetration' ? { type: 'bout-a-bout', gorge: Math.round(tf) } : { type: 'angle-double', gorge: gorgeUsuelle(tp, tf) },
+    ame: { type: 'angle-double', gorge: gorgeUsuelle(tp, tw) },
+  };
+}
+
 /**
  * ⚠ `between[0]` est TOUJOURS la pièce PORTEUSE, `between[1]` la pièce soudée
  * sur elle. C'est ce qui permet de dire, d'un cordon, quelle pièce part de

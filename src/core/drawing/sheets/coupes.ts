@@ -303,7 +303,11 @@ export function dessinerCoupe(s: DrawScene, e: ElementFabrication, c: Coupe, zon
 
   /* --- Soudure au joint, repère de la pièce --- */
   const id = c.objet.kind === 'tole' ? c.objet.pl.id : c.objet.m.id;
-  const w = e.soudures.find((x) => x.between[1] === id);
+  // Une platine d'about porte DEUX cordons — semelles et âme, à des gorges
+  // différentes : un symbole chacun, empilés. Un seul aurait laissé l'âme au
+  // jugement du soudeur.
+  const cordons = [...new Map(e.soudures.filter((x) => x.between[1] === id).map((x) => [`${x.type}|${x.throat}`, x])).values()];
+  const w = cordons[0];
   /*
    * Bulle À DROITE de la pièce, à mi-hauteur, et symbole de soudure AU-DESSUS :
    * les cotes occupent le dessous et la gauche. Posés au point le plus éloigné
@@ -324,7 +328,7 @@ export function dessinerCoupe(s: DrawScene, e: ElementFabrication, c: Coupe, zon
       : contour.reduce((a, q) => (Math.hypot(q.x - o.x, q.y - o.y) < Math.hypot(a.x - o.x, a.y - o.y) ? q : a), contour[0] as Pt);
     const haut = Math.max(yMaxC, ...ext.map((q) => q.y)) + 4;
     const coude = pt(Math.min(zone.max.x - 28, Math.max(joint.x, o.x) + 8), Math.min(zone.max.y - MARGE_H - 1, Math.max(haut, bulle.y + 7)));
-    symboleSoudure(s, joint, coude, w);
+    for (const [k, x] of cordons.entries()) symboleSoudure(s, joint, pt(coude.x, coude.y - 7 * k), x);
   }
 
   s.texte(pt((zone.min.x + zone.max.x) / 2, zone.max.y - 4), `${opts.titre ?? titreDeCoupe(c)} — ${c.repere}${c.idem.length > 0 ? ` (idem ${c.idem.join(', ')})` : c.abscisses.length > 1 ? ` (×${c.abscisses.length})` : ''} — 1:${d}`, {

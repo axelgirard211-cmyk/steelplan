@@ -9,7 +9,8 @@ import {
   type BoltSpec,
 } from '../../core/model/connections';
 import { useProjectStore } from '../../state/store';
-import { Bascule, ChampNombre, ChampProfil, libellerAvec } from '../champs';
+import { Bascule, ChampChoix, ChampNombre, ChampProfil, libellerAvec } from '../champs';
+import type { SoudureSemelles } from '../../core/geometry/weld';
 
 const DIAMETRE = libellerAvec('diamètre');
 const CLASSE = libellerAvec('classe');
@@ -277,6 +278,17 @@ function Platine({ titre, cle }: { titre: string; cle: 'rafterToColumn' | 'ridge
           min={8}
           unite="mm"
           onChange={(v) => edit(`Épaisseur ${titre}`, (d) => void (d.connections[cle].thickness = v))}
+        />
+      </dd>
+      <dt>— soudure des semelles</dt>
+      <dd>
+        <ChampChoix<SoudureSemelles>
+          valeur={e.soudureSemelles}
+          options={[
+            ['angle', 'cordons d’angle'],
+            ['pleine-penetration', 'pleine pénétration'],
+          ]}
+          onChange={(v) => edit(`Soudure ${titre}`, (d) => void (d.connections[cle].soudureSemelles = v))}
         />
       </dd>
       <ChoixBoulon

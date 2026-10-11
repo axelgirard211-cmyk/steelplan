@@ -10,7 +10,7 @@ import type { ProjectParams } from './project';
  * égout à 6 m, bipente 10 %. Sert de point de départ et de gabarit de test.
  */
 export const DEFAULT_PROJECT: ProjectParams = {
-  version: 3,
+  version: 4,
   meta: {
     nom: 'Nouveau projet',
     client: '',
@@ -121,6 +121,7 @@ export const DEFAULT_PROJECT: ProjectParams = {
       edgeDistance: 45,
       gauge: 100,
       overhang: 40,
+      soudureSemelles: 'angle',
     },
     ridge: {
       thickness: 20,
@@ -130,6 +131,7 @@ export const DEFAULT_PROJECT: ProjectParams = {
       edgeDistance: 45,
       gauge: 100,
       overhang: 40,
+      soudureSemelles: 'angle',
     },
     columnBase: {
       thickness: 25,

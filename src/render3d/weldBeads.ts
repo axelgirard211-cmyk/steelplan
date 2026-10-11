@@ -38,6 +38,7 @@ export function weldBeadGeometry(model: StructuralModel, seg = 6): THREE.BufferG
   const positions: number[] = [];
   const normals: number[] = [];
   const rendus: string[] = [];
+  const platinesCernees = new Set<string>();
 
   for (const w of model.welds) {
     if (w.throat <= 0) continue;
@@ -100,7 +101,10 @@ export function weldBeadGeometry(model: StructuralModel, seg = 6): THREE.BufferG
       continue;
     }
     if (barre && tole) {
-      poserCordon(positions, normals, barre, tole.origin, w.throat, seg);
+      // Une platine d'about porte ses cordons de semelles et d'âme : un seul
+      // tour de profil les montre, à la gorge du premier — celui des semelles.
+      if (!platinesCernees.has(tole.id)) poserCordon(positions, normals, barre, tole.origin, w.throat, seg);
+      platinesCernees.add(tole.id);
       rendus.push(w.id);
       continue;
     }

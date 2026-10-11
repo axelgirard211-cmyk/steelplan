@@ -2,7 +2,7 @@ import { getProfile } from '../catalog/index';
 import type { Hole } from '../geometry/holes';
 import type { Member } from '../geometry/member';
 import type { ProjectParams } from '../model/project';
-import { gorgeUsuelle, weld, type Weld } from '../geometry/weld';
+import { cordonsDePlatine, gorgeUsuelle, weld, type Weld } from '../geometry/weld';
 import { add, cross, dot, length, scale, sub, type Vec3 } from '../math/vec3';
 import { fibreAbscissa, memberFrame } from '../geometry/member';
 import { epaisseurParoi } from './bolts';
@@ -94,7 +94,7 @@ export function buildConnections(
   // Les cordons se déduisent des pièces posées et de leurs porteurs : ils ne
   // sont pas saisis séparément.
   const welds = [
-    ...souduresDesToles(plates, parId),
+    ...souduresDesToles(p, plates, parId),
     ...souduresDesJarrets(haunches, porteursJarrets, parId, plates),
     ...souduresDesAttaches(members, porteurs, parId),
   ];
@@ -120,7 +120,7 @@ function paroiMini(profil: ReturnType<typeof getProfile>): number {
  * boulonnerie. L'ancienne cascade retombait sur h/10 pour tout ce qui n'était
  * pas un I ou un U : 6 mm pour un tube de 4.
  */
-function souduresDesToles(plates: readonly Plate[], parId: ReadonlyMap<string, Member>): Weld[] {
+function souduresDesToles(p: ProjectParams, plates: readonly Plate[], parId: ReadonlyMap<string, Member>): Weld[] {
   const out: Weld[] = [];
   for (const pl of plates) {
     const piece = pl.porteur ? parId.get(pl.porteur) : undefined;
@@ -147,6 +147,23 @@ function souduresDesToles(plates: readonly Plate[], parId: ReadonlyMap<string, M
           `plat d’attache soudé sur ${profil.id}`,
         ),
       );
+      continue;
+    }
+    // Platine d'about d'une traverse ou d'une console en I : semelles et âme,
+    // chacune à sa gorge — la règle même du calcul (voir `cordonsDePlatine`).
+    const about = pl.kind === 'platine-about' && /-PL[AFC]$/.test(pl.id) && (profil.shape === 'I' || profil.shape === 'U');
+    if (about) {
+      const ep = pl.id.endsWith('-PLF') ? p.connections.ridge : p.connections.rafterToColumn;
+      const c = cordonsDePlatine(pl.thickness, profil.tf, profil.tw, pl.id.endsWith('-PLC') ? 'angle' : ep.soudureSemelles);
+      const nature = c.semelle.type === 'bout-a-bout' ? 'à pleine pénétration' : 'cordons d’angle';
+      for (const [suffixe, quoi] of [
+        ['SS', 'semelle supérieure'],
+        ['SI', 'semelle inférieure'],
+      ] as const) {
+        out.push(weld(`${pl.id}-${suffixe}`, c.semelle.type, c.semelle.gorge, profil.b, [piece.id, pl.id], pl.origin, `${quoi} de ${profil.id} sur sa platine — ${nature}`));
+      }
+      const hAme = Math.max(0, profil.h - 2 * profil.tf - 2 * (profil.r ?? 0));
+      out.push(weld(`${pl.id}-SA`, c.ame.type, c.ame.gorge, hAme, [piece.id, pl.id], pl.origin, `âme de ${profil.id} sur sa platine`));
       continue;
     }
     out.push(
