@@ -25,6 +25,7 @@ export const RUBRIQUES: readonly Rubrique[] = [
   { id: 'rubrique-charges', titre: 'Charges et critères', court: 'Charges et flèches' },
   { id: 'rubrique-finition', titre: 'Traitement de surface', court: 'Traitement de surface' },
   { id: 'rubrique-atelier', titre: 'Atelier', court: 'Atelier' },
+  { id: 'rubrique-chiffrage', titre: 'Chiffrage', court: 'Chiffrage' },
   { id: 'rubrique-controle', titre: 'Contrôle du modèle', court: 'Contrôle du modèle' },
   { id: 'rubrique-barres-libres', titre: 'Barres libres', court: 'Barres libres' },
   { id: 'rubrique-cartouche', titre: 'Cartouche et indices', court: 'Cartouche et indices' },

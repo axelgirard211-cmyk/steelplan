@@ -13,6 +13,8 @@ import { colisage, masseALivrer } from '../../core/bom/colisage';
 import { valoriser } from '../../core/bom/valorisation';
 import { archiveDstv, archiveDxfToles, lotDstvDuModele } from '../fichiersMachine';
 import { useProjetEffectif, useStructuralModel } from '../../state/derived';
+import { useProjectStore } from '../../state/store';
+import { ChiffrageFiche } from './ChiffrageFiche';
 import { kg, mm, num } from '../format';
 
 type Onglet =
@@ -46,7 +48,10 @@ export function NomenclaturesPanel(): JSX.Element {
   const model = useStructuralModel();
   const bom = useMemo(() => buildBom(project, model), [project, model]);
   const col = useMemo(() => colisage(model), [model]);
-  const val = useMemo(() => valoriser(bom, project.finition), [bom, project.finition]);
+  // Les prix de la saisie, même quand le modèle affiché est le dernier valide :
+  // une grille corrigée doit se voir tout de suite.
+  const prix = useProjectStore((s) => s.project.prix);
+  const val = useMemo(() => valoriser(bom, project.finition, prix), [bom, project.finition, prix]);
   const [onglet, setOnglet] = useState<Onglet>('debit');
 
   const compte: Record<Onglet, number> = {
@@ -249,24 +254,35 @@ export function NomenclaturesPanel(): JSX.Element {
           <>
             <Table
               entetes={['Poste', 'Quantité', 'Unité', 'Prix unitaire', 'Montant']}
-              lignes={val.lignes.map((l) => [
-                l.poste,
-                num(l.quantite, l.unite === 'kg' ? 0 : 1),
-                l.unite,
-                `${num(l.prixUnitaire, 2)} €`,
-                `${num(l.montant, 0)} €`,
+              lignes={val.lignes.flatMap((l, i) => [
+                // Le déboursé sec s'affiche avant le premier pourcentage, qui le prend pour base.
+                ...(l.taux && !val.lignes[i - 1]?.taux ? [['Déboursé sec', '', '', '', `${num(val.deboursSec, 0)} €`]] : []),
+                [
+                  l.poste,
+                  num(l.quantite, l.unite === 'kg' || l.taux ? 0 : 1),
+                  l.unite,
+                  l.taux ? `${num(l.prixUnitaire, 1)} %` : `${num(l.prixUnitaire, 2)} €`,
+                  `${num(l.montant, 0)} €`,
+                ],
               ])}
-              total={['Total', '', '', '', `${num(val.total, 0)} €`]}
+              total={['Total HT', '', '', '', `${num(val.total, 0)} €`]}
             />
             <p className="note">
               Soit <strong>{num(val.parKg, 2)} €/kg</strong> sur {kg(val.masseKg)} kg d’acier.
             </p>
-            <p className="note alerte">
-              <strong>Ce n’est pas un devis.</strong> Ni frais de chantier, ni transport, ni
-              levage, ni marge, ni aléas : c’est un coût de fourniture et de main-d’œuvre
-              d’atelier, bon pour un ordre de grandeur en esquisse. La grille de prix est
-              indicative et doit être remplacée par celle de l’entreprise avant tout engagement.
-            </p>
+            {val.nonChiffres.length > 0 ? (
+              <p className="note alerte">
+                <strong>Ce n’est pas un devis.</strong> Non chiffrés : {val.nonChiffres.join(', ')}. Renseignez-les
+                dans la grille ci-dessous pour obtenir un prix de vente ; les prix par défaut sont indicatifs et
+                doivent être remplacés par ceux de l’entreprise avant tout engagement.
+              </p>
+            ) : (
+              <p className="note">
+                Prix de vente établi avec la grille du projet : fourniture, atelier, traitement, transport, montage,
+                frais généraux, aléas et marge. À contrôler avant tout engagement.
+              </p>
+            )}
+            <ChiffrageFiche />
           </>
         )}
 

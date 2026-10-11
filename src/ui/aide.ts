@@ -93,6 +93,16 @@ const ENTREES: readonly Entree[] = [
   { cle: 'Déplacement en tête', texte: 'Déplacement horizontal admis en tête de poteau, en fraction de la hauteur (H/…).' },
   { cle: 'γG / γQ', texte: 'Coefficients partiels des actions à l’ELU (EN 1990) : 1,35 sur les permanentes, 1,5 sur les variables.' },
   { cle: 'ψ0 neige / vent / exploitation', texte: 'Coefficients de combinaison (EN 1990) : la part d’une action variable retenue quand elle accompagne l’action principale.' },
+  // Chiffrage
+  { cle: 'Boulon posé', fiche: 'Chiffrage', texte: 'Prix moyen d’un boulon fourni et posé, rondelles et écrou compris, toutes tailles confondues.' },
+  { cle: 'Heure d’atelier', fiche: 'Chiffrage', texte: 'Coût horaire chargé de l’atelier, débit et perçage compris. Il valorise le temps par pièce et la soudure.' },
+  { cle: 'Temps par pièce', fiche: 'Chiffrage', texte: 'Manutention, réglage et contrôle de chaque pièce débitée, en heures : même une panne sans soudure en consomme.' },
+  { cle: 'Cadence de soudure', fiche: 'Chiffrage', texte: 'Mètres de cordon déposés par heure d’atelier ; le temps de soudure en découle.' },
+  { cle: 'Transport', fiche: 'Chiffrage', texte: 'Par tonne livrée, boulonnerie comprise. À zéro, le transport reste hors du total et le chiffrage le signale.' },
+  { cle: 'Montage et levage', fiche: 'Chiffrage', texte: 'Par tonne d’acier montée, grue et nacelles comprises. À zéro, le montage reste hors du total.' },
+  { cle: 'Frais généraux', fiche: 'Chiffrage', texte: 'Pourcentage du déboursé sec : structure, bureau d’études, assurances.' },
+  { cle: 'Aléas', fiche: 'Chiffrage', texte: 'Pourcentage du déboursé sec réservé aux imprévus de fabrication et de chantier.' },
+  { cle: 'Marge', fiche: 'Chiffrage', texte: 'Pourcentage du prix de revient — déboursé sec, frais généraux et aléas compris.' },
   // Traitement de surface
   { cle: 'Préparation', texte: 'Degré de propreté de l’acier avant peinture (ISO 8501-1). Sa 2½ : grenaillage très soigné, l’exigence courante.' },
   { cle: 'Corrosivité', texte: 'Catégorie d’ambiance (ISO 12944-2) : C1 intérieur sec, C3 urbain, C4 industriel ou côtier, C5 très agressif. Elle fixe le système de peinture.' },

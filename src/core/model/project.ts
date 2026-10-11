@@ -7,6 +7,7 @@ import type { ConnectionParams } from './connections';
 import type { FrameParams } from './frame';
 import type { GridParams } from './grid';
 import type { FinitionParams } from './finition';
+import type { GrillePrix } from './prix';
 import type { LoadModel } from './loads';
 import type { OuvertureParams } from './ouvertures';
 import type { SecondaryParams } from './secondary';
@@ -93,6 +94,8 @@ export interface ProjectParams {
   readonly finition: FinitionParams;
   /** Barres du commerce, trait de scie, classe d'exécution : ce que sait l'atelier. */
   readonly atelier: AtelierParams;
+  /** Grille de prix du chiffrage, enregistrée avec le projet. */
+  readonly prix: GrillePrix;
   readonly freeMembers: readonly FreeMember[];
   /**
    * Retouches du dessinateur sur les planches générées, planche par planche.

@@ -195,30 +195,23 @@ export function colisageToCsv(c: Colisage): string {
 
 /** Chiffrage : une ligne par poste, plus le total et le ratio au kilo. */
 export function chiffrageToCsv(v: Valorisation): string {
-  const lignes: string[][] = v.lignes.map((l) => [
-    l.poste,
-    nb(l.quantite, 1),
-    l.unite,
-    nb(l.prixUnitaire, 2),
-    nb(l.montant, 2),
-  ]);
-  lignes.push(['TOTAL', '', '', '', nb(v.total, 2)]);
+  const lignes: string[][] = [];
+  for (const [i, l] of v.lignes.entries()) {
+    if (l.taux && !v.lignes[i - 1]?.taux) lignes.push(['Déboursé sec', '', '', '', nb(v.deboursSec, 2)]);
+    lignes.push([l.poste, nb(l.quantite, l.taux ? 2 : 1), l.unite, l.taux ? `${nb(l.prixUnitaire, 2)} %` : nb(l.prixUnitaire, 2), nb(l.montant, 2)]);
+  }
+  lignes.push(['TOTAL HT', '', '', '', nb(v.total, 2)]);
   lignes.push(['Ratio', nb(v.masseKg, 1), 'kg', '', nb(v.parKg, 3)]);
   /*
    * ⚠ L'avertissement voyage AVEC le chiffre. Un tableau de prix détaché de sa
    * réserve devient un devis dans la boîte mail de celui qui le reçoit.
    */
-  lignes.push([
-    'Ni frais de chantier, ni transport, ni levage, ni marge : coût de fourniture et ' +
-      'd’atelier, ordre de grandeur d’esquisse. Grille de prix indicative.',
-    '',
-    '',
-    '',
-    '',
-  ]);
+  if (v.nonChiffres.length > 0) {
+    lignes.push([`Non chiffrés : ${v.nonChiffres.join(', ')}. Ce n’est pas un devis.`, '', '', '', '']);
+  }
   return (
     BOM_UTF8 +
-    tableau(['Poste', 'Quantité', 'Unité', 'Prix unitaire (€)', 'Montant (€)'], lignes) +
+    tableau(['Poste', 'Quantité', 'Unité', 'Prix unitaire', 'Montant (€)'], lignes) +
     '\r\n'
   );
 }

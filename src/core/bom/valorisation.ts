@@ -1,5 +1,6 @@
 import type { Bom } from './index';
 import type { FinitionParams } from '../model/finition';
+import { GRILLE_PAR_DEFAUT, type GrillePrix } from '../model/prix';
 
 /**
  * VALORISATION — ce que l'ouvrage coûte.
@@ -10,55 +11,31 @@ import type { FinitionParams } from '../model/finition';
  * sur un tableur à côté — et le tableur ne se met pas à jour quand la portée
  * change.
  *
- * Le résultat n'est PAS un devis : il ne contient ni frais de chantier, ni
- * transport, ni marge, ni aléas. C'est un coût de fourniture et de main-d'œuvre
- * d'atelier, à quoi sert un ordre de grandeur en phase d'esquisse.
+ * Le résultat n'est PAS un devis tant que la grille n'est pas celle de
+ * l'entreprise : transport, montage, frais généraux, aléas et marge n'y entrent
+ * que s'ils sont renseignés, et ce qui manque est nommé (`nonChiffres`).
  */
 
-export interface GrillePrix {
-  /** Prix de l'acier au kilo, par nuance (€/kg). */
-  readonly acier: Readonly<Record<string, number>>;
-  /** Coût horaire d'atelier, débit et perçage compris (€/h). */
-  readonly heureAtelier: number;
-  /** Cadence de soudure (m de cordon par heure). */
-  readonly cadenceSoudure: number;
-  /** Temps de préparation par pièce débitée (h). */
-  readonly heureParPiece: number;
-  /** Traitement de surface (€/m²). */
-  readonly peinture: number;
-  readonly galvanisation: number;
-  /** Boulonnerie, prix moyen par boulon posé (€). */
-  readonly boulon: number;
-}
-
-/**
- * Grille par défaut, ordres de grandeur français 2026.
- *
- * ⚠ Ce sont des ordres de grandeur, PAS des prix de marché. Ils bougent d'un
- * fournisseur à l'autre et d'un mois à l'autre ; la grille est là pour être
- * remplacée par celle de l'entreprise, pas pour être crue.
- */
-export const GRILLE_PAR_DEFAUT: GrillePrix = {
-  acier: { S235: 1.15, S275: 1.2, S355: 1.25, S420: 1.45, S460: 1.55 },
-  heureAtelier: 55,
-  cadenceSoudure: 6,
-  heureParPiece: 0.25,
-  peinture: 14,
-  galvanisation: 22,
-  boulon: 2.4,
-};
+export { GRILLE_PAR_DEFAUT, type GrillePrix } from '../model/prix';
 
 export interface LigneValorisation {
   readonly poste: string;
   readonly quantite: number;
   readonly unite: string;
+  /** Prix unitaire (€), ou taux (%) pour une ligne `taux`. */
   readonly prixUnitaire: number;
   readonly montant: number;
+  /** Ligne en pourcentage : la quantité est une base en €, le prix un taux en %. */
+  readonly taux?: boolean;
 }
 
 export interface Valorisation {
   readonly lignes: readonly LigneValorisation[];
+  /** Fourniture, atelier, traitement, boulonnerie, transport et montage. */
+  readonly deboursSec: number;
   readonly total: number;
+  /** Postes à zéro dans la grille, donc absents du total — à dire avec le chiffre. */
+  readonly nonChiffres: readonly string[];
   /** Coût ramené au kilo d'acier : le ratio que tout le métier emploie. */
   readonly parKg: number;
   readonly masseKg: number;
@@ -121,6 +98,32 @@ export function valoriser(
   const nbBoulons = bom.totals.boltCount;
   ajouter('Boulonnerie posée', nbBoulons, 'boulon', grille.boulon);
 
+  /*
+   * Chantier : à la tonne, sur ce que le camion emporte — boulonnerie comprise —
+   * pour le transport, sur l'acier monté pour le montage.
+   */
+  const nonChiffres: string[] = [];
+  const tonnes = bom.totals.massTotal / 1000;
+  if (grille.transport > 0) ajouter('Transport', tonnes, 't', grille.transport);
+  else nonChiffres.push('transport');
+  if (grille.montage > 0) ajouter('Montage et levage', masseKg / 1000, 't', grille.montage);
+  else nonChiffres.push('montage');
+
+  const deboursSec = lignes.reduce((s, l) => s + l.montant, 0);
+  /*
+   * ⚠ Frais généraux et aléas sur le DÉBOURSÉ SEC, la marge sur le PRIX DE
+   * REVIENT qui les comprend : prendre la marge sur le seul déboursé la
+   * sous-estime d'autant que les frais sont lourds.
+   */
+  const pourcent = (poste: string, base: number, taux: number, absent: string): void => {
+    if (taux > 0) lignes.push({ poste, quantite: base, unite: '€', prixUnitaire: taux, montant: (base * taux) / 100, taux: true });
+    else nonChiffres.push(absent);
+  };
+  pourcent('Frais généraux', deboursSec, grille.fraisGeneraux, 'frais généraux');
+  pourcent('Aléas', deboursSec, grille.aleas, 'aléas');
+  const revient = lignes.reduce((s, l) => s + l.montant, 0);
+  pourcent('Marge', revient, grille.marge, 'marge');
+
   const total = lignes.reduce((s, l) => s + l.montant, 0);
-  return { lignes, total, parKg: masseKg > 0 ? total / masseKg : 0, masseKg };
+  return { lignes, deboursSec, total, nonChiffres, parKg: masseKg > 0 ? total / masseKg : 0, masseKg };
 }

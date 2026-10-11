@@ -6,7 +6,7 @@
  * une fonction de migration ; on ne modifie JAMAIS une migration déjà publiée.
  */
 
-export const CURRENT_VERSION = 2;
+export const CURRENT_VERSION = 3;
 
 /** Une migration transforme un projet de la version `n` vers `n + 1`. */
 type Migration = (raw: Record<string, unknown>) => Record<string, unknown>;
@@ -21,6 +21,12 @@ type Migration = (raw: Record<string, unknown>) => Record<string, unknown>;
  */
 const MIGRATIONS: Readonly<Record<number, Migration>> = {
   1: (raw) => ({ ...raw, retouches: [] }),
+  /*
+   * ⚠ 2 → 3 : arrivée de la grille de prix. Un fichier ancien reçoit la grille
+   * par défaut à la relecture ; la version change pour qu'une version antérieure
+   * refuse le fichier plutôt que de perdre en silence les prix de l'entreprise.
+   */
+  2: (raw) => raw,
 };
 
 export class FormatError extends Error {
