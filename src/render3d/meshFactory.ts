@@ -52,8 +52,7 @@ export function memberGeometry(m: Member, seg = 8): THREE.BufferGeometry {
   const inverse = m.mirrored;
 
   // --- Faces latérales : un bandeau de quadrilatères par anneau ---
-  for (const [i, anneau] of anneaux.entries()) {
-    const exterieur = (i === 0) !== inverse;
+  for (const anneau of anneaux) {
     const n2 = normalesDeContour(anneau);
 
     for (let k = 0; k < anneau.length; k++) {
@@ -69,8 +68,15 @@ export function memberGeometry(m: Member, seg = 8): THREE.BufferGeometry {
       const na = en3d(f, n2[k]?.[1] as Pt2);
       const nb = en3d(f, n2[j]?.[0] as Pt2);
 
-      // Le sens de parcours des vides est déjà inversé : la normale sort du métal.
-      if (exterieur) pushQuadN(positions, normals, [a0, b0, b1, a1], [na, nb, nb, na]);
+      /*
+       * ⚠ Les vides sont DÉJÀ parcourus en sens horaire : le même enroulement
+       * que le contour extérieur tourne donc leurs faces vers le vide, hors du
+       * métal. Les retourner une seconde fois — ce que faisait ce code — tournait
+       * l'intérieur des tubes vers la matière : invisible en regardant dans
+       * l'about, mal éclairé, et un maillage dont le volume valait cinq fois
+       * celui du tube. Seul le miroir change l'enroulement.
+       */
+      if (!inverse) pushQuadN(positions, normals, [a0, b0, b1, a1], [na, nb, nb, na]);
       else pushQuadN(positions, normals, [b0, a0, a1, b1], [nb, na, na, nb]);
     }
   }

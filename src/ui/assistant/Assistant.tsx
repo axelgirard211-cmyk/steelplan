@@ -82,7 +82,8 @@ export function Assistant({
     }
     setCalcul(true);
     // À côté de l'interface : la fenêtre reste vivante et dit où en est la recherche.
-    dimensionnerEnFond(p, {}, setAvancement)
+    // Profils, puis assemblages : le projet créé sort vérifié jusqu'aux platines.
+    dimensionnerEnFond(p, { assemblages: true }, setAvancement)
       .resultat.then((r) => onCreer(r.projet))
       .catch(() => undefined)
       .finally(() => setCalcul(false));

@@ -24,6 +24,7 @@ export function DimensionnementFiche(): JSX.Element {
   const [calcul, setCalcul] = useState(false);
   const [avancement, setAvancement] = useState<Avancement | null>(null);
   const [changerDeFamille, setChangerDeFamille] = useState(false);
+  const [assemblages, setAssemblages] = useState(true);
   const interrompre = useRef<(() => void) | null>(null);
   // Quitter l'onglet interrompt une recherche en cours : personne ne la lirait.
   useEffect(() => () => interrompre.current?.(), []);
@@ -32,7 +33,7 @@ export function DimensionnementFiche(): JSX.Element {
     setCalcul(true);
     setAvancement(null);
     // À côté de l'interface : l'écran reste vivant et suit l'avancement.
-    const tache = dimensionnerEnFond(project, { changerDeFamille }, setAvancement);
+    const tache = dimensionnerEnFond(project, { changerDeFamille, assemblages }, setAvancement);
     interrompre.current = tache.interrompre;
     tache.resultat
       .then(setProp)
@@ -64,6 +65,14 @@ export function DimensionnementFiche(): JSX.Element {
       d.bracing.roof.profile = p.projet.bracing.roof.profile;
       d.bracing.wall.profile = p.projet.bracing.wall.profile;
       d.bracing.gable.profile = p.projet.bracing.gable.profile;
+      // Les réglages d'assemblage : seulement les sous-objets qu'ils touchent.
+      if (p.assemblages && p.assemblages.reglages.length > 0) {
+        d.connections.rafterToColumn = p.projet.connections.rafterToColumn;
+        d.connections.ridge = p.projet.connections.ridge;
+        d.connections.columnBase = p.projet.connections.columnBase;
+        d.connections.gusset = p.projet.connections.gusset;
+        d.secondary.gablePosts.courseTete = p.projet.secondary.gablePosts.courseTete;
+      }
     });
     setProp(null);
   };
@@ -86,6 +95,17 @@ export function DimensionnementFiche(): JSX.Element {
           }}
         />{' '}
         Autoriser un changement de famille (tube rond → tube carré, HEA → IPE…)
+      </label>
+      <label className="etiquette" style={{ display: 'block', margin: '0 0 8px' }}>
+        <input
+          type="checkbox"
+          checked={assemblages}
+          onChange={(e) => {
+            setAssemblages(e.target.checked);
+            setProp(null);
+          }}
+        />{' '}
+        Régler aussi les assemblages (platines, tiges d’ancrage, goussets, boulons, oblongs)
       </label>
 
       <button type="button" className="plat" onClick={lancer} disabled={calcul}>
@@ -123,57 +143,72 @@ function Resultat({
   const gain = prop.masseApres - prop.masseAvant;
   const pct = prop.masseAvant > 0 ? (gain / prop.masseAvant) * 100 : 0;
 
-  if (prop.changements.length === 0) {
+  const ass = prop.assemblages;
+  if (prop.changements.length === 0 && (!ass || (ass.reglages.length === 0 && ass.insolubles.length === 0))) {
     return (
       <p style={{ marginTop: 12, color: 'var(--ok)' }}>
-        Aucun profil plus léger ne tient : le dimensionnement actuel est déjà au plus juste.
+        Aucun profil plus léger ne tient{ass ? ', et tous les assemblages passent' : ''} : le dimensionnement actuel est
+        déjà au plus juste.
       </p>
     );
   }
 
   return (
     <div style={{ marginTop: 12 }}>
-      <table className="nomenclature">
-        <thead>
-          <tr>
-            <th>Poste</th>
-            <th>Actuel</th>
-            <th>Proposé</th>
-            <th className="nombre">Taux</th>
-            <th className="nombre">kg/m</th>
-            <th>Motif</th>
-          </tr>
-        </thead>
-        <tbody>
-          {prop.changements.map((c) => (
-            <tr key={c.poste}>
-              <td>{c.poste}</td>
-              <td>{c.avant}</td>
-              <td>
-                <strong>{c.apres}</strong>
-              </td>
-              <td className="nombre">
-                {num(c.tauxAvant, 2)} → {num(c.tauxApres, 2)}
-              </td>
-              <td className="nombre" style={c.deltaKgParM > 0 ? { color: 'var(--alerte)' } : undefined}>
-                {c.deltaKgParM > 0 ? '+' : ''}
-                {num(c.deltaKgParM, 1)}
-              </td>
-              <td>
-                {MOTIFS[c.motif]}
-                {/* ⚠ Une autre famille, c'est un autre assemblage : à dire, pas à taire. */}
-                {c.familleApres !== c.familleAvant && (
-                  <div style={{ fontSize: '0.9em', color: 'var(--alerte)' }}>
-                    change de famille : {FAMILY_LABELS[c.familleAvant]} → {FAMILY_LABELS[c.familleApres]} —
-                    assemblages à reprendre
-                  </div>
-                )}
-                {c.entraine && <div className="note" style={{ fontSize: '0.9em' }}>entraîne les {c.entraine}</div>}
-              </td>
+      {prop.changements.length > 0 && (
+        <table className="nomenclature">
+          <thead>
+            <tr>
+              <th>Poste</th>
+              <th>Actuel</th>
+              <th>Proposé</th>
+              <th className="nombre">Taux</th>
+              <th className="nombre">kg/m</th>
+              <th>Motif</th>
             </tr>
+          </thead>
+          <tbody>
+            {prop.changements.map((c) => (
+              <tr key={c.poste}>
+                <td>{c.poste}</td>
+                <td>{c.avant}</td>
+                <td>
+                  <strong>{c.apres}</strong>
+                </td>
+                <td className="nombre">
+                  {num(c.tauxAvant, 2)} → {num(c.tauxApres, 2)}
+                </td>
+                <td className="nombre" style={c.deltaKgParM > 0 ? { color: 'var(--alerte)' } : undefined}>
+                  {c.deltaKgParM > 0 ? '+' : ''}
+                  {num(c.deltaKgParM, 1)}
+                </td>
+                <td>
+                  {MOTIFS[c.motif]}
+                  {/* ⚠ Une autre famille, c'est un autre assemblage : à dire, pas à taire. */}
+                  {c.familleApres !== c.familleAvant && (
+                    <div style={{ fontSize: '0.9em', color: 'var(--alerte)' }}>
+                      change de famille : {FAMILY_LABELS[c.familleAvant]} → {FAMILY_LABELS[c.familleApres]} —
+                      assemblages à reprendre
+                    </div>
+                  )}
+                  {c.entraine && <div className="note" style={{ fontSize: '0.9em' }}>entraîne les {c.entraine}</div>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {ass && ass.reglages.length > 0 && <TableReglages reglages={ass.reglages} />}
+      {ass && ass.insolubles.length > 0 && (
+        <ul className="anomalies">
+          {ass.insolubles.map((i) => (
+            <li key={i.assemblage} className="erreur">
+              {i.assemblage} — {num(i.ratio, 2)} ({i.gouverne}) : {i.conseil}.
+            </li>
           ))}
-        </tbody>
-      </table>
+        </ul>
+      )}
 
       <dl className="paires" style={{ marginTop: 10 }}>
         <dt>Masse de l’ouvrage</dt>
@@ -183,6 +218,12 @@ function Resultat({
         </dd>
         <dt>Taux de travail maximal obtenu</dt>
         <dd className={prop.tauxMax > 1 ? 'alerte' : ''}>{num(prop.tauxMax, 2)}</dd>
+        {ass && (
+          <>
+            <dt>— assemblages</dt>
+            <dd className={ass.tauxMax > 1 ? 'alerte' : ''}>{num(ass.tauxMax, 2)}</dd>
+          </>
+        )}
         <dt>Modèles construits et vérifiés</dt>
         <dd className="derive">
           {prop.evaluations} en {num(prop.ms, 0)} ms
@@ -207,5 +248,37 @@ function Resultat({
         </button>
       </div>
     </div>
+  );
+}
+
+/** Les réglages d'assemblage proposés, et ce qu'ils font passer. */
+function TableReglages({ reglages }: { reglages: NonNullable<Proposition['assemblages']>['reglages'] }): JSX.Element {
+  return (
+    <table className="nomenclature" style={{ marginTop: 10 }}>
+      <thead>
+        <tr>
+          <th>Réglage d’assemblage</th>
+          <th>Actuel</th>
+          <th>Proposé</th>
+          <th className="nombre">Taux</th>
+          <th>Pour</th>
+        </tr>
+      </thead>
+      <tbody>
+        {reglages.map((r) => (
+          <tr key={r.reglage}>
+            <td>{r.reglage}</td>
+            <td>{r.avant}</td>
+            <td>
+              <strong>{r.apres}</strong>
+            </td>
+            <td className="nombre">
+              {num(r.tauxAvant, 2)} → {num(r.tauxApres, 2)}
+            </td>
+            <td style={{ fontSize: '0.9em' }}>{r.assemblages.join(' ; ')}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
