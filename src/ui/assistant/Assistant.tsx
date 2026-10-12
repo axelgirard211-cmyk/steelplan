@@ -132,11 +132,11 @@ export function Assistant({
         </button>
         <span className="separateur" />
         {n < ETAPES.length - 1 ? (
-          <button type="button" onClick={() => setN(n + 1)} disabled={bloquantes.length > 0} title={bloquantes.length > 0 ? 'Corrigez d’abord les erreurs de cette étape' : undefined}>
+          <button type="button" className="primaire" onClick={() => setN(n + 1)} disabled={bloquantes.length > 0} title={bloquantes.length > 0 ? 'Corrigez d’abord les erreurs de cette étape' : undefined}>
             Suivant →
           </button>
         ) : (
-          <button type="button" onClick={creer} disabled={bloquantes.length > 0 || calcul}>
+          <button type="button" className="primaire" onClick={creer} disabled={bloquantes.length > 0 || calcul}>
             {calcul ? `Dimensionnement${avancement ? ` — ${avancement.libelle} (${avancement.fait}/${avancement.total})` : '…'}` : 'Créer le projet'}
           </button>
         )}

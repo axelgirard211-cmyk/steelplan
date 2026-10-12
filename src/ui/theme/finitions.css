@@ -453,3 +453,118 @@ dl.paires {
 .parcours .ko .detail {
   color: var(--erreur);
 }
+
+/* ---- Réglages fins repliés dans une fiche ---- */
+
+dl.paires dt.reglages-fins {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+}
+
+button.lien-fin {
+  border: none;
+  background: none;
+  padding: 2px 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+button.lien-fin:hover {
+  text-decoration: underline;
+}
+
+/* ---- Plans : le poste d'abord ---- */
+
+.choix-poste h2 {
+  margin: 4px 0 6px;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+
+.choix-poste > .note {
+  max-width: 720px;
+  margin: 0 0 18px;
+}
+
+.grille-postes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.carte-poste {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 112px;
+  padding: 14px 16px;
+  border: 1px solid var(--bord);
+  border-radius: var(--rayon);
+  background: var(--fond-panneau);
+  color: var(--texte);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--ombre);
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s;
+}
+
+.carte-poste:hover:not(:disabled) {
+  border-color: var(--accent);
+  box-shadow: var(--ombre-haute);
+}
+
+.carte-poste:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.carte-poste.complet {
+  border-color: var(--accent);
+  background: var(--accent-doux);
+}
+
+.carte-poste .titre {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.carte-poste .objet {
+  flex: 1;
+  color: var(--texte-doux);
+  font-size: 12.5px;
+}
+
+.carte-poste .compte {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.poste-courant {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border-radius: var(--rayon-petit);
+  background: var(--fond-alt);
+}
+
+.poste-courant .titre-groupe {
+  padding: 0;
+}
+
+.poste-courant .compte {
+  color: var(--texte-doux);
+  font-size: 12px;
+}
+
+.poste-courant button {
+  justify-self: start;
+  margin-top: 4px;
+}

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { Poste } from '../core/drawing/postes';
 
 /**
  * NAVIGATION ENTRE LES VUES — de la pièce cliquée en 3D à sa planche en 2D.
@@ -26,6 +27,13 @@ interface Navigation {
   setOnglet(o: Onglet): void;
   /** Ouvre la planche en 2D dans la page d'édition, cadrée sur les repères. */
   voirEn2d(planche: string, reperes: readonly string[]): void;
+  /**
+   * Dossier ouvert dans l'onglet Plans : un poste, le dossier complet, ou
+   * `null` tant qu'aucun n'est choisi. Gardé d'un onglet à l'autre : revenir
+   * aux plans ne fait pas rechoisir.
+   */
+  postePlans: Poste | 'tous' | null;
+  choisirPoste(p: Poste | 'tous' | null): void;
 }
 
 export const useNavigation = create<Navigation>((set, get) => ({
@@ -35,4 +43,6 @@ export const useNavigation = create<Navigation>((set, get) => ({
   allerA: (titre) => set({ onglet: 'projet', rubrique: { titre, n: (get().rubrique?.n ?? 0) + 1 } }),
   setOnglet: (onglet) => set({ onglet }),
   voirEn2d: (planche, reperes) => set({ onglet: 'edition', demande2d: { planche, reperes, n: (get().demande2d?.n ?? 0) + 1 } }),
+  postePlans: null,
+  choisirPoste: (postePlans) => set({ postePlans }),
 }));

@@ -13,6 +13,7 @@ import {
   FAMILLES_POTEAU,
 } from '../champs';
 import { m2parM, mm } from '../format';
+import { ReglagesFins } from '../ReglagesFins';
 
 /**
  * OSSATURE SECONDAIRE, ENTIÈREMENT MODIFIABLE.
@@ -53,13 +54,6 @@ export function SecondaireFiche(): JSX.Element {
                 valeur={s.purlins.profile}
                 familles={FAMILLES_PANNE}
                 onChange={(v) => edit('Profil de panne', (d) => void (d.secondary.purlins.profile = v))}
-              />
-            </dd>
-            <dt>— nuance</dt>
-            <dd>
-              <ChampNuance
-                valeur={s.purlins.grade}
-                onChange={(v) => edit('Nuance des pannes', (d) => void (d.secondary.purlins.grade = v))}
               />
             </dd>
             <dt>— répartition</dt>
@@ -109,79 +103,88 @@ export function SecondaireFiche(): JSX.Element {
             */}
             <dt>— entraxe réel obtenu</dt>
             <dd className="derive">{mm(model.spacings.purlins)} mm</dd>
-            <dt>— débord à l’égout</dt>
-            <dd>
-              <ChampNombre
-                valeur={s.purlins.eaveOverhang}
-                pas={50}
-                min={0}
-                unite="mm"
-                onChange={(v) =>
-                  edit('Débord à l’égout', (d) => void (d.secondary.purlins.eaveOverhang = v))
-                }
-              />
-            </dd>
-            <dt>— panne sablière</dt>
-            <dd>
-              <Bascule
-                valeur={s.purlins.eavePurlin}
-                onChange={(v) =>
-                  edit('Panne sablière', (d) => void (d.secondary.purlins.eavePurlin = v))
-                }
-              />
-            </dd>
-            <dt>— panne faîtière</dt>
-            <dd>
-              <Bascule
-                valeur={s.purlins.ridgePurlin}
-                onChange={(v) =>
-                  edit('Panne faîtière', (d) => void (d.secondary.purlins.ridgePurlin = v))
-                }
-              />
-            </dd>
-            <dt>— liernes</dt>
-            <dd>
-              <Bascule
-                valeur={s.purlins.sagBars.enabled}
-                onChange={(v) =>
-                  edit('Liernes', (d) => void (d.secondary.purlins.sagBars.enabled = v))
-                }
-              />
-            </dd>
-            {s.purlins.sagBars.enabled && (
-              <>
-                <dt>— files de liernes</dt>
-                <dd>
-                  <ChampNombre
-                    valeur={s.purlins.sagBars.rows}
-                    pas={1}
-                    min={1}
-                    max={3}
-                    onChange={(v) =>
-                      edit('Files de liernes', (d) => {
-                        d.secondary.purlins.sagBars.rows = Math.round(v);
-                      })
-                    }
-                  />
-                </dd>
-                <dt>— diamètre du rond</dt>
-                <dd>
-                  <ChampNombre
-                    valeur={s.purlins.sagBars.diameter}
-                    pas={2}
-                    min={8}
-                    unite="mm"
-                    onChange={(v) =>
-                      edit('Diamètre de lierne', (d) => {
-                        d.secondary.purlins.sagBars.diameter = v;
-                      })
-                    }
-                  />
-                </dd>
-              </>
-            )}
-            <dt>— surface à peindre</dt>
-            <dd className="derive">{m2parM(getProfile(s.purlins.profile).perimeter)} m²/m</dd>
+            <ReglagesFins quoi="nuance, débord, sablière, faîtière, liernes">
+              <dt>— nuance</dt>
+              <dd>
+                <ChampNuance
+                  valeur={s.purlins.grade}
+                  onChange={(v) => edit('Nuance des pannes', (d) => void (d.secondary.purlins.grade = v))}
+                />
+              </dd>
+              <dt>— débord à l’égout</dt>
+              <dd>
+                <ChampNombre
+                  valeur={s.purlins.eaveOverhang}
+                  pas={50}
+                  min={0}
+                  unite="mm"
+                  onChange={(v) =>
+                    edit('Débord à l’égout', (d) => void (d.secondary.purlins.eaveOverhang = v))
+                  }
+                />
+              </dd>
+              <dt>— panne sablière</dt>
+              <dd>
+                <Bascule
+                  valeur={s.purlins.eavePurlin}
+                  onChange={(v) =>
+                    edit('Panne sablière', (d) => void (d.secondary.purlins.eavePurlin = v))
+                  }
+                />
+              </dd>
+              <dt>— panne faîtière</dt>
+              <dd>
+                <Bascule
+                  valeur={s.purlins.ridgePurlin}
+                  onChange={(v) =>
+                    edit('Panne faîtière', (d) => void (d.secondary.purlins.ridgePurlin = v))
+                  }
+                />
+              </dd>
+              <dt>— liernes</dt>
+              <dd>
+                <Bascule
+                  valeur={s.purlins.sagBars.enabled}
+                  onChange={(v) =>
+                    edit('Liernes', (d) => void (d.secondary.purlins.sagBars.enabled = v))
+                  }
+                />
+              </dd>
+              {s.purlins.sagBars.enabled && (
+                <>
+                  <dt>— files de liernes</dt>
+                  <dd>
+                    <ChampNombre
+                      valeur={s.purlins.sagBars.rows}
+                      pas={1}
+                      min={1}
+                      max={3}
+                      onChange={(v) =>
+                        edit('Files de liernes', (d) => {
+                          d.secondary.purlins.sagBars.rows = Math.round(v);
+                        })
+                      }
+                    />
+                  </dd>
+                  <dt>— diamètre du rond</dt>
+                  <dd>
+                    <ChampNombre
+                      valeur={s.purlins.sagBars.diameter}
+                      pas={2}
+                      min={8}
+                      unite="mm"
+                      onChange={(v) =>
+                        edit('Diamètre de lierne', (d) => {
+                          d.secondary.purlins.sagBars.diameter = v;
+                        })
+                      }
+                    />
+                  </dd>
+                </>
+              )}
+              <dt>— surface à peindre</dt>
+              <dd className="derive">{m2parM(getProfile(s.purlins.profile).perimeter)} m²/m</dd>
+            </ReglagesFins>
           </>
         )}
 
@@ -201,13 +204,6 @@ export function SecondaireFiche(): JSX.Element {
                 valeur={s.rails.profile}
                 familles={FAMILLES_LISSE}
                 onChange={(v) => edit('Profil de lisse', (d) => void (d.secondary.rails.profile = v))}
-              />
-            </dd>
-            <dt>— nuance</dt>
-            <dd>
-              <ChampNuance
-                valeur={s.rails.grade}
-                onChange={(v) => edit('Nuance des lisses', (d) => void (d.secondary.rails.grade = v))}
               />
             </dd>
             <dt>— répartition</dt>
@@ -252,23 +248,32 @@ export function SecondaireFiche(): JSX.Element {
             )}
             <dt>— entraxe réel obtenu</dt>
             <dd className="derive">{mm(model.spacings.rails)} mm</dd>
-            <dt>— arase du soubassement</dt>
-            <dd>
-              <ChampNombre
-                valeur={s.rails.sillHeight}
-                pas={100}
-                min={0}
-                unite="mm"
-                onChange={(v) => edit('Soubassement', (d) => void (d.secondary.rails.sillHeight = v))}
-              />
-            </dd>
-            <dt>— lisses sur pignons</dt>
-            <dd>
-              <Bascule
-                valeur={s.rails.onGables}
-                onChange={(v) => edit('Lisses de pignon', (d) => void (d.secondary.rails.onGables = v))}
-              />
-            </dd>
+            <ReglagesFins quoi="nuance, soubassement, pignons">
+              <dt>— nuance</dt>
+              <dd>
+                <ChampNuance
+                  valeur={s.rails.grade}
+                  onChange={(v) => edit('Nuance des lisses', (d) => void (d.secondary.rails.grade = v))}
+                />
+              </dd>
+              <dt>— arase du soubassement</dt>
+              <dd>
+                <ChampNombre
+                  valeur={s.rails.sillHeight}
+                  pas={100}
+                  min={0}
+                  unite="mm"
+                  onChange={(v) => edit('Soubassement', (d) => void (d.secondary.rails.sillHeight = v))}
+                />
+              </dd>
+              <dt>— lisses sur pignons</dt>
+              <dd>
+                <Bascule
+                  valeur={s.rails.onGables}
+                  onChange={(v) => edit('Lisses de pignon', (d) => void (d.secondary.rails.onGables = v))}
+                />
+              </dd>
+            </ReglagesFins>
           </>
         )}
 
@@ -292,15 +297,6 @@ export function SecondaireFiche(): JSX.Element {
                 }
               />
             </dd>
-            <dt>— nuance</dt>
-            <dd>
-              <ChampNuance
-                valeur={s.gablePosts.grade}
-                onChange={(v) =>
-                  edit('Nuance des potelets', (d) => void (d.secondary.gablePosts.grade = v))
-                }
-              />
-            </dd>
             <dt>— entraxe demandé</dt>
             <dd>
               <ChampNombre
@@ -313,18 +309,29 @@ export function SecondaireFiche(): JSX.Element {
                 }
               />
             </dd>
-            <dt>— course des oblongs de tête</dt>
-            <dd>
-              <ChampNombre
-                valeur={s.gablePosts.courseTete}
-                pas={5}
-                min={5}
-                unite="mm"
-                onChange={(v) =>
-                  edit('Course de tête des potelets', (d) => void (d.secondary.gablePosts.courseTete = v))
-                }
-              />
-            </dd>
+            <ReglagesFins quoi="nuance, course des oblongs">
+              <dt>— nuance</dt>
+              <dd>
+                <ChampNuance
+                  valeur={s.gablePosts.grade}
+                  onChange={(v) =>
+                    edit('Nuance des potelets', (d) => void (d.secondary.gablePosts.grade = v))
+                  }
+                />
+              </dd>
+              <dt>— course des oblongs de tête</dt>
+              <dd>
+                <ChampNombre
+                  valeur={s.gablePosts.courseTete}
+                  pas={5}
+                  min={5}
+                  unite="mm"
+                  onChange={(v) =>
+                    edit('Course de tête des potelets', (d) => void (d.secondary.gablePosts.courseTete = v))
+                  }
+                />
+              </dd>
+            </ReglagesFins>
           </>
         )}
       </dl>

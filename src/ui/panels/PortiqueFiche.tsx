@@ -12,6 +12,7 @@ import {
   FAMILLES_TRAVERSE,
 } from '../champs';
 import { cm4, kg, mm } from '../format';
+import { ReglagesFins } from '../ReglagesFins';
 
 /**
  * LE PORTIQUE, ENTIÈREMENT MODIFIABLE.
@@ -67,123 +68,125 @@ export function PortiqueFiche(): JSX.Element {
           />
         </dd>
 
-        <dt>Jarret de genou</dt>
-        <dd>
-          <Bascule
-            valeur={f.haunch.enabled}
-            onChange={(v) => edit('Jarret de genou', (d) => void (d.frame.haunch.enabled = v))}
-          />
-        </dd>
-        {f.haunch.enabled && (
-          <>
-            <dt>— longueur</dt>
-            <dd>
-              <ChampNombre
-                valeur={f.haunch.length}
-                pas={50}
-                min={0}
-                unite="mm"
-                onChange={(v) => edit('Longueur de jarret', (d) => void (d.frame.haunch.length = v))}
-              />
-            </dd>
-            <dt>— hauteur au genou</dt>
-            <dd>
-              <ChampNombre
-                valeur={f.haunch.depth}
-                pas={25}
-                min={0}
-                unite="mm"
-                onChange={(v) => edit('Hauteur de jarret', (d) => void (d.frame.haunch.depth = v))}
-              />
-            </dd>
-            <dt>— part du rampant</dt>
-            <dd className="derive">
-              {((f.haunch.length / rafterLength(project.grid, 'gauche')) * 100).toFixed(1)} %
-            </dd>
-          </>
-        )}
+        <ReglagesFins quoi="jarrets, portique de pignon, caractéristiques">
+          <dt>Jarret de genou</dt>
+          <dd>
+            <Bascule
+              valeur={f.haunch.enabled}
+              onChange={(v) => edit('Jarret de genou', (d) => void (d.frame.haunch.enabled = v))}
+            />
+          </dd>
+          {f.haunch.enabled && (
+            <>
+              <dt>— longueur</dt>
+              <dd>
+                <ChampNombre
+                  valeur={f.haunch.length}
+                  pas={50}
+                  min={0}
+                  unite="mm"
+                  onChange={(v) => edit('Longueur de jarret', (d) => void (d.frame.haunch.length = v))}
+                />
+              </dd>
+              <dt>— hauteur au genou</dt>
+              <dd>
+                <ChampNombre
+                  valeur={f.haunch.depth}
+                  pas={25}
+                  min={0}
+                  unite="mm"
+                  onChange={(v) => edit('Hauteur de jarret', (d) => void (d.frame.haunch.depth = v))}
+                />
+              </dd>
+              <dt>— part du rampant</dt>
+              <dd className="derive">
+                {((f.haunch.length / rafterLength(project.grid, 'gauche')) * 100).toFixed(1)} %
+              </dd>
+            </>
+          )}
 
-        <dt>Jarret de faîtage</dt>
-        <dd>
-          <Bascule
-            valeur={f.ridgeHaunch.enabled}
-            onChange={(v) => edit('Jarret de faîtage', (d) => void (d.frame.ridgeHaunch.enabled = v))}
-          />
-        </dd>
-        {f.ridgeHaunch.enabled && (
-          <>
-            <dt>— longueur</dt>
-            <dd>
-              <ChampNombre
-                valeur={f.ridgeHaunch.length}
-                pas={50}
-                min={0}
-                unite="mm"
-                onChange={(v) =>
-                  edit('Longueur jarret faîtage', (d) => void (d.frame.ridgeHaunch.length = v))
-                }
-              />
-            </dd>
-            <dt>— hauteur au faîtage</dt>
-            <dd>
-              <ChampNombre
-                valeur={f.ridgeHaunch.depth}
-                pas={25}
-                min={0}
-                unite="mm"
-                onChange={(v) =>
-                  edit('Hauteur jarret faîtage', (d) => void (d.frame.ridgeHaunch.depth = v))
-                }
-              />
-            </dd>
-          </>
-        )}
+          <dt>Jarret de faîtage</dt>
+          <dd>
+            <Bascule
+              valeur={f.ridgeHaunch.enabled}
+              onChange={(v) => edit('Jarret de faîtage', (d) => void (d.frame.ridgeHaunch.enabled = v))}
+            />
+          </dd>
+          {f.ridgeHaunch.enabled && (
+            <>
+              <dt>— longueur</dt>
+              <dd>
+                <ChampNombre
+                  valeur={f.ridgeHaunch.length}
+                  pas={50}
+                  min={0}
+                  unite="mm"
+                  onChange={(v) =>
+                    edit('Longueur jarret faîtage', (d) => void (d.frame.ridgeHaunch.length = v))
+                  }
+                />
+              </dd>
+              <dt>— hauteur au faîtage</dt>
+              <dd>
+                <ChampNombre
+                  valeur={f.ridgeHaunch.depth}
+                  pas={25}
+                  min={0}
+                  unite="mm"
+                  onChange={(v) =>
+                    edit('Hauteur jarret faîtage', (d) => void (d.frame.ridgeHaunch.depth = v))
+                  }
+                />
+              </dd>
+            </>
+          )}
 
-        {/*
-          Le portique de rive porte le pignon et ses potelets : il reçoit une
-          charge de toiture réduite de moitié mais une charge de vent entière.
-          C'est le seul cas où un profil distinct se justifie.
-        */}
-        <dt>Portique de pignon distinct</dt>
-        <dd>
-          <Bascule
-            valeur={f.distinctGableFrame}
-            onChange={(v) =>
-              edit('Portique de pignon distinct', (d) => void (d.frame.distinctGableFrame = v))
-            }
-          />
-        </dd>
-        {f.distinctGableFrame && (
-          <>
-            <dt>— poteaux de pignon</dt>
-            <dd>
-              <ChampProfil
-                valeur={f.gableColumnProfile}
-                familles={FAMILLES_POTEAU}
-                onChange={(v) =>
-                  edit('Poteau de pignon', (d) => void (d.frame.gableColumnProfile = v))
-                }
-              />
-            </dd>
-            <dt>— traverses de pignon</dt>
-            <dd>
-              <ChampProfil
-                valeur={f.gableRafterProfile}
-                familles={FAMILLES_TRAVERSE}
-                onChange={(v) =>
-                  edit('Traverse de pignon', (d) => void (d.frame.gableRafterProfile = v))
-                }
-              />
-            </dd>
-          </>
-        )}
+          {/*
+            Le portique de rive porte le pignon et ses potelets : il reçoit une
+            charge de toiture réduite de moitié mais une charge de vent entière.
+            C'est le seul cas où un profil distinct se justifie.
+          */}
+          <dt>Portique de pignon distinct</dt>
+          <dd>
+            <Bascule
+              valeur={f.distinctGableFrame}
+              onChange={(v) =>
+                edit('Portique de pignon distinct', (d) => void (d.frame.distinctGableFrame = v))
+              }
+            />
+          </dd>
+          {f.distinctGableFrame && (
+            <>
+              <dt>— poteaux de pignon</dt>
+              <dd>
+                <ChampProfil
+                  valeur={f.gableColumnProfile}
+                  familles={FAMILLES_POTEAU}
+                  onChange={(v) =>
+                    edit('Poteau de pignon', (d) => void (d.frame.gableColumnProfile = v))
+                  }
+                />
+              </dd>
+              <dt>— traverses de pignon</dt>
+              <dd>
+                <ChampProfil
+                  valeur={f.gableRafterProfile}
+                  familles={FAMILLES_TRAVERSE}
+                  onChange={(v) =>
+                    edit('Traverse de pignon', (d) => void (d.frame.gableRafterProfile = v))
+                  }
+                />
+              </dd>
+            </>
+          )}
 
-        <dt>Masse linéique poteau</dt>
-        <dd className="derive">{kg(poteau.G)} kg/m</dd>
-        <dt>Hauteur de traverse</dt>
-        <dd className="derive">{mm(traverse.h)} mm</dd>
-        <dt>Inertie traverse Iy</dt>
-        <dd className="derive">{cm4(traverse.Iy)} cm⁴</dd>
+          <dt>Masse linéique poteau</dt>
+          <dd className="derive">{kg(poteau.G)} kg/m</dd>
+          <dt>Hauteur de traverse</dt>
+          <dd className="derive">{mm(traverse.h)} mm</dd>
+          <dt>Inertie traverse Iy</dt>
+          <dd className="derive">{cm4(traverse.Iy)} cm⁴</dd>
+        </ReglagesFins>
       </dl>
     </div>
   );
