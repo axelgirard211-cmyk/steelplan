@@ -215,6 +215,7 @@ export function runChecks(p: ProjectParams, model: StructuralModel, perimetre: P
     byMark,
     combinations: combs,
     hypotheses: complet ? hypotheses(p, model, pireSensibilite) : [],
+    secondOrdre: pireSensibilite,
     maxRatio: lines.reduce((m, l) => Math.max(m, l.ratio), 0),
     nonVerifies: lines.filter((l) => l.ratio > 1).length,
     ms: performance.now() - t0,
@@ -303,7 +304,8 @@ function lignesDuPortique(
      * d'amplifier que la part « déplaçable » ; l'appliquer à l'ensemble est plus
      * sévère, donc acceptable, et évite de séparer deux contributions que le
      * solveur ne distingue pas. Sur une ossature rigide le facteur vaut 1 et ne
-     * change rien.
+     * change rien. Sous αcr = 3 il vaut 1 aussi, faute de validité : les efforts
+     * restent au premier ordre et la ligne le dit (voir plus bas).
      */
     const a = sens.amplification;
     const maille = fm.memberPanelLength.get(memberId) ?? longueur;
@@ -331,6 +333,18 @@ function lignesDuPortique(
 
     const { ratio, gouverne } = pire(check.ratios);
     const avertissements = [...check.avertissements];
+    /*
+     * ⚠ Ossature sous αcr = 3 dans cette combinaison : les taux qu'elle produit
+     * ne sont pas une vérification. Le dire sur la ligne même, et pas seulement en tête de rapport : une pièce
+     * se lit souvent seule, depuis la vue 3D ou le tableau.
+     */
+    if (sens.classe === 'instable') {
+      avertissements.push(
+        'Ossature sous αcr = 3 pour au moins une combinaison : efforts au premier ordre, sans ' +
+          'amplification. L’analyse au second ordre exigée par l’EN 1993-1-1 n’est pas faite — ' +
+          'cette ligne ne vaut pas vérification.',
+      );
+    }
     /*
      * ⚠ Diagnostic ciblé. Une ferme ne s'attache aux poteaux que par sa membrure
      * inférieure : elle ne leur apporte donc quasiment aucune raideur vis-à-vis

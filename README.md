@@ -252,7 +252,7 @@ SteelPlan est un outil de **pré-dimensionnement indicatif**. Chaque planche por
 **Calcul**
 
 - Le calcul est élastique au premier ordre. Si αcr < 3, l'analyse au second ordre complète n'est pas faite : le cas est signalé et les longueurs de flambement restent forfaitaires.
-- L'amplification 1/(1 − 1/αcr) est appliquée à tous les efforts dès que αcr < 10, y compris entre 1 et 3, où elle n'a plus de validité normative.
+- L'amplification 1/(1 − 1/αcr) n'est appliquée que pour 3 ≤ αcr < 10, et à tous les efforts, ce qui est plus sévère que le § 5.2.2(6)B, qui ne vise que les effets du déplacement latéral. Sous αcr = 3, aucun facteur n'est appliqué : les efforts restent ceux du premier ordre, le rapport et la note déclarent l'ossature hors domaine en tête, et chaque barre du portique porte l'avertissement.
 - Le portique est analysé dans son plan uniquement : Mz,Ed = 0 pour ses barres.
 - L'interaction N + M est une somme linéaire, au lieu des facteurs kyy/kyz du § 6.3.3. Pour Mcr, C1 = 1,0 ; It et Iw sont approchés.
 - La semelle comprimée est supposée maintenue par les pannes ou les lisses. Près du jarret et sous soulèvement, le bracon nécessaire n'est pas modélisé. L'inertie des jarrets est négligée.

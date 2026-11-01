@@ -30,14 +30,18 @@ export interface SensibiliteSecondOrdre {
   readonly alphaCr: number;
   /** Défaut d'aplomb retenu (radians). */
   readonly phi: number;
-  /** Facteur d'amplification des effets de déplacement latéral. */
+  /**
+   * Facteur d'amplification des effets de déplacement latéral : 1/(1 − 1/αcr)
+   * pour une ossature `souple`, 1 sinon — y compris `instable`, où aucun facteur
+   * n'est valable et où les efforts restent ceux du premier ordre.
+   */
   readonly amplification: number;
   /**
    * Classement de l'ossature :
    *  - `rigide`   : αcr ≥ 10, le second ordre est négligeable ;
    *  - `souple`   : 3 ≤ αcr < 10, effets amplifiés, calcul encore valable ;
    *  - `instable` : αcr < 3, l'EN 1993-1-1 exige une analyse au second ordre
-   *    complète, que SteelPlan ne fait pas.
+   *    complète, que SteelPlan ne fait pas : la vérification est hors domaine.
    */
   readonly classe: 'rigide' | 'souple' | 'instable';
 }
@@ -136,19 +140,23 @@ export function sensibilite(
   }
 
   const alphaCr = (horizontal / vertical) * (hauteur / delta);
-  return {
-    alphaCr,
-    phi,
-    /*
-     * ⚠ L'amplification ne s'applique qu'entre 3 et 10. Au-dessus, le second
-     * ordre est négligeable et l'appliquer serait du sur-dimensionnement
-     * gratuit ; en dessous, la formule diverge et la norme exige un vrai calcul
-     * au second ordre — dont l'absence doit être DITE, pas compensée par un
-     * facteur qui n'a plus de sens.
-     */
-    amplification: alphaCr >= 10 ? 1 : alphaCr > 1 ? 1 / (1 - 1 / alphaCr) : 1,
-    classe: alphaCr >= 10 ? 'rigide' : alphaCr >= 3 ? 'souple' : 'instable',
-  };
+  return { alphaCr, phi, ...classer(alphaCr) };
+}
+
+/**
+ * Classement d'une ossature et facteur d'amplification, d'après son αcr.
+ *
+ * ⚠ L'amplification ne s'applique que pour 3 ≤ αcr < 10 (EN 1993-1-1
+ * § 5.2.2(6)B). Au-dessus, le second ordre est négligeable et l'appliquer serait
+ * du sur-dimensionnement gratuit ; en dessous, la formule diverge et la norme
+ * exige un vrai calcul au second ordre — dont l'absence doit être DITE, pas
+ * compensée par un facteur qui n'a plus de sens. Les efforts y restent donc
+ * ceux du premier ordre, et le rapport déclare la vérification hors domaine.
+ */
+export function classer(alphaCr: number): Pick<SensibiliteSecondOrdre, 'amplification' | 'classe'> {
+  if (alphaCr >= 10) return { amplification: 1, classe: 'rigide' };
+  if (alphaCr >= 3) return { amplification: 1 / (1 - 1 / alphaCr), classe: 'souple' };
+  return { amplification: 1, classe: 'instable' };
 }
 
 /* ------------------------------------------------------------------ */

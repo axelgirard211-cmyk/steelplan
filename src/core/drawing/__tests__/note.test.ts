@@ -52,6 +52,18 @@ describe('note de pré-dimensionnement', () => {
     expect(t).toContain('bracon');
   });
 
+  it('déclare une ossature sous αcr = 3 hors domaine dès la synthèse', () => {
+    // ⚠ Juste sous les taux qu'il invalide, et non noyé dans les hypothèses.
+    const derniere = (p: typeof P): string => {
+      const s = sheetsNote(runChecks(p, buildProject(p)), { page: 1, total: 99, meta: p.meta });
+      return textes(s[s.length - 1]!).join(' ');
+    };
+    const ferme = derniere({ ...P, truss: { ...P.truss, enabled: true } });
+    expect(ferme).toContain('Ossature hors domaine');
+    expect(ferme.indexOf('Ossature hors domaine')).toBeLessThan(ferme.indexOf('Hypothèses de calcul'));
+    expect(derniere(P)).not.toContain('Ossature hors domaine');
+  });
+
   it('numérote ses planches en continu', () => {
     const numeros = planches.map((_, i) => i + 1);
     expect(numeros).toEqual(planches.map((_, i) => i + 1));

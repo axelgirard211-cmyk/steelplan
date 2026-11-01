@@ -1,4 +1,4 @@
-import { AVERTISSEMENT, RATIO_LABELS, type ChecksReport } from '../../checks/types';
+import { AVERTISSEMENT, RATIO_LABELS, horsDomaineSecondOrdre, type ChecksReport } from '../../checks/types';
 import { dessinerCadre, fenetreDe, type CartoucheData } from '../layout';
 import { DrawScene, pt } from '../scene';
 import type { Sheet } from '../sheet';
@@ -281,6 +281,9 @@ function planchHypotheses(rapport: ChecksReport, opts: NoteOptions): Sheet {
     `Taux de travail maximal ${rapport.maxRatio.toFixed(2).replace('.', ',')} sur ` +
       `${rapport.lines.length} repères vérifiés ; ${rapport.nonVerifies} repère(s) au-delà de 1,00.`,
   );
+  // ⚠ Juste sous les taux, qu'il invalide : plus bas, dans les hypothèses, il passait inaperçu.
+  const horsDomaine = horsDomaineSecondOrdre(rapport);
+  if (horsDomaine) paragraphe(horsDomaine, '⚠');
 
   section('Hypothèses de calcul');
   for (const h of rapport.hypotheses) paragraphe(h);

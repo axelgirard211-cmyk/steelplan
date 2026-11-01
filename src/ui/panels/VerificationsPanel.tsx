@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { AVERTISSEMENT, RATIO_LABELS, type CheckLine } from '../../core/checks/types';
+import { AVERTISSEMENT, RATIO_LABELS, horsDomaineSecondOrdre, type CheckLine } from '../../core/checks/types';
 import { ratioColor } from '../../render3d/colorMaps';
 import { AssemblagesVerif } from './AssemblagesVerif';
 import { DimensionnementFiche } from './DimensionnementFiche';
@@ -28,6 +28,8 @@ export function VerificationsPanel(): JSX.Element {
   const tauxAssemblages = Math.max(0, ...rapport.assemblages.map((a) => a.ratio));
   const assemblagesKo = rapport.assemblages.filter((a) => a.ratio > 1).length;
   const aReprendre = rapport.nonVerifies + assemblagesKo;
+  // Ossature sous αcr = 3 : aucun taux n'y vaut vérification, le verdict le dit d'abord.
+  const horsDomaine = horsDomaineSecondOrdre(rapport);
   const l = project.loads.loads;
   const f = project.loads.deflection;
 
@@ -38,11 +40,16 @@ export function VerificationsPanel(): JSX.Element {
         * mêmes que ceux du projet — et la réponse à la seule question qu'on vient
         * poser ici, « ça tient ? », attendait trois fiches plus bas.
         */}
-      <div className={`verdict ${aReprendre === 0 ? 'ok' : 'ko'}`} role="status">
+      <div className={`verdict ${aReprendre === 0 && !horsDomaine ? 'ok' : 'ko'}`} role="status">
         <div>
           <div className="verdict-titre">
-            {aReprendre === 0 ? 'Bâtiment vérifié' : `${aReprendre} élément${aReprendre > 1 ? 's' : ''} à reprendre`}
+            {horsDomaine
+              ? 'Ossature hors domaine — non vérifiée'
+              : aReprendre === 0
+                ? 'Bâtiment vérifié'
+                : `${aReprendre} élément${aReprendre > 1 ? 's' : ''} à reprendre`}
           </div>
+          {horsDomaine ? <div className="verdict-detail">{horsDomaine}</div> : null}
           <div className="verdict-detail">
             Barres : taux maximal {num(rapport.maxRatio, 2)}
             {rapport.nonVerifies > 0 ? ` — ${rapport.nonVerifies} au-delà de 1,00` : ''} · Assemblages :{' '}
