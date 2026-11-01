@@ -39,7 +39,7 @@ Le parcours affiché en tête de l'onglet Projet résume l'avancement : erreurs 
 - **Validation avant génération** : les erreurs bloquent, les avertissements laissent passer. Exemples : pinces sous les minima de l'EN 1993-1-8, tiges d'ancrage hors du poteau, bâtiment de plus de 100 m sans joint.
 - **Barres libres** (bracons, potences, poutres de reprise) : ajoutées à la main et dupliquables en série.
 
-Pour fixer les ordres de grandeur, le gabarit « Projet vierge » (20 × 30 m) génère 389 barres, 12 jarrets, 156 tôles, 888 boulons et 60 tiges d'ancrage, et 406 cordons (172,6 m). Cela représente 40 repères, 30,09 t et 879 m² de barres à peindre (899 m² tôles comprises, chiffre de la Vue 3D).
+Pour fixer les ordres de grandeur, le gabarit « Projet vierge » (20 × 30 m) génère 389 barres, 12 jarrets, 156 tôles, 888 boulons et 60 tiges d'ancrage, et 406 cordons (172,6 m). Cela représente 40 repères, 30,09 t et 899 m² à peindre, tôles comprises : le même chiffre en Vue 3D, dans les nomenclatures et au chiffrage.
 
 ### Calcul et vérifications
 
@@ -284,7 +284,7 @@ SteelPlan est un outil de **pré-dimensionnement indicatif**. Chaque planche por
 - DSTV : aucun fichier n'a encore été lu par une machine réelle. Faites percer et mesurer une pièce avant toute série. Sont exportés les profils I, U, L, CHS, caissons et plats (ces derniers sous le code M, à valider) ; les ronds et les Z et C formés à froid sont écartés et nommés.
 - IFC : les barres sont exportées sans leurs perçages par défaut, car certains lecteurs soustraient mal les trous. La maquette n'a qu'un seul niveau.
 - DXF R12 : la cotation n'est pas associative ; les cotes et les hachures sont exportées en traits.
-- La grille de prix par défaut donne des ordres de grandeur, pas des prix de marché : le chiffrage n'est pas un devis. La surface à peindre des nomenclatures et du chiffrage ne compte pas les tôles ; celle de la Vue 3D les compte.
+- La grille de prix par défaut donne des ordres de grandeur, pas des prix de marché : le chiffrage n'est pas un devis.
 - Les tolérances de la fiche de contrôle et la consommation du bon de peinture sont des valeurs usuelles, à confirmer par le plan qualité du fabricant et les fiches techniques du fournisseur.
 - La sauvegarde automatique est un filet de sécurité, pas un substitut au fichier projet. L'historique d'annulation n'est pas conservé d'une session à l'autre.
 

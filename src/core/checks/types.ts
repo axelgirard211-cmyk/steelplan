@@ -140,6 +140,8 @@ export interface ChecksReport {
   readonly combinations: readonly Combination[];
   /** Hypothèses de calcul, imprimées avec le rapport. */
   readonly hypotheses: readonly string[];
+  /** Neige et vent saisis à la main (site en mode manuel) plutôt que déduits du site. */
+  readonly chargesSaisies: boolean;
   readonly maxRatio: number;
   /** Nombre de repères dont le taux dépasse 1. */
   readonly nonVerifies: number;

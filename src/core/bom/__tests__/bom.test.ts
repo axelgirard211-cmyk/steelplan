@@ -204,11 +204,10 @@ describe('synthèse du projet', () => {
     expect(BOM.totals.massBolts).toBeLessThan(BOM.totals.massSteel * 0.1);
   });
 
-  it('reprend la surface à peindre du modèle', () => {
-    // Les tôles ne sont pas comptées dans la surface des barres : on vérifie
-    // qu'on reste dans le même ordre de grandeur que le modèle.
-    expect(BOM.totals.paintM2).toBeGreaterThan(0);
-    expect(BOM.totals.paintM2).toBeLessThanOrEqual(M.stats.paintM2 + 1e-6);
+  it('reprend la surface à peindre du modèle, tôles comprises', () => {
+    const toles = BOM.toles.reduce((s, l) => s + l.paintM2, 0);
+    expect(toles).toBeGreaterThan(0);
+    expect(BOM.totals.paintM2).toBeCloseTo(M.stats.paintM2, 6);
   });
 
   it('liste les soudures par désignation', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildProject, plateMassKg } from '../../build/buildProject';
+import { buildProject, plateMassKg, platePaintM2 } from '../../build/buildProject';
 import { elementsAFabriquer, tolesLibres } from '../../drawing/sheets/element';
 import { cutLengths } from '../../geometry/member';
 import { DEFAULT_PROJECT } from '../../model/defaults';
@@ -92,6 +92,25 @@ describe.each(CAS)('conservation de la masse — $nom', ({ p: P }) => {
      * lequel croire.
      */
     expect(buildBom(P, M).totals.massSteel).toBeCloseTo(M.stats.massKg, 6);
+  });
+
+  it('nomenclature, chiffrage, bon de traitement et Vue 3D annoncent la même surface à peindre', () => {
+    /*
+     * ⚠ Même règle pour la surface : les tôles se peignent et se facturent comme
+     * les barres. La synthèse des nomenclatures et le chiffrage ne comptaient que
+     * la liste de débit — 879 m² sur le projet vierge — quand la Vue 3D et la
+     * fiche Finition, qui lisent le modèle, en annonçaient 899.
+     */
+    const bom = buildBom(P, M);
+    expect(bom.totals.paintM2).toBeCloseTo(M.stats.paintM2, 6);
+
+    const peinture = valoriser(bom, { ...P.finition, type: 'peinture' }).lignes.find((l) => l.poste === 'Peinture');
+    expect(peinture?.quantite).toBeCloseTo(M.stats.paintM2, 6);
+
+    const bon =
+      elementsAFabriquer(M).reduce((s, e) => s + e.surfaceUnitaire * e.quantite, 0) +
+      tolesLibres(M).reduce((s, pl) => s + platePaintM2(pl), 0);
+    expect(bon).toBeCloseTo(M.stats.paintM2, 6);
   });
 });
 

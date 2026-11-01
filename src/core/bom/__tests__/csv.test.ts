@@ -76,6 +76,7 @@ describe('export CSV des tôles', () => {
       quantity: 4,
       massUnit: 14.734,
       massTotal: 58.936,
+      paintM2: 1.288,
     },
     {
       mark: 'RAI1',
@@ -89,6 +90,7 @@ describe('export CSV des tôles', () => {
       quantity: 8,
       massUnit: 1.27,
       massTotal: 10.16,
+      paintM2: 0.302,
     },
   ];
   const t = lireCsv(tolesToCsv(lignes));
