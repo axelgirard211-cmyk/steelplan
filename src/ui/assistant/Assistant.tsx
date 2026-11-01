@@ -45,7 +45,8 @@ export function Assistant({
   onFermer,
 }: {
   travauxEnCours: number;
-  onCreer: (p: ProjectParams) => void;
+  /** `remarque` : ce que l'utilisateur doit savoir du projet créé (profils insuffisants…). */
+  onCreer: (p: ProjectParams, remarque?: string) => void;
   onFermer: () => void;
 }): JSX.Element {
   const [gabarit, setGabarit] = useState(TEMPLATES[0]?.id ?? 'vierge');
@@ -54,7 +55,24 @@ export function Assistant({
   const [dimensionnerAuto, setDimensionnerAuto] = useState(true);
   const [calcul, setCalcul] = useState(false);
   const [avancement, setAvancement] = useState<Avancement | null>(null);
+  const [echec, setEchec] = useState<string | null>(null);
   const corps = useRef<HTMLDivElement>(null);
+  /*
+   * ⚠ Fermer l'assistant pendant le dimensionnement ne l'arrêtait pas : le
+   * calcul finissait en fond et REMPLAÇAIT le projet ouvert, fenêtre fermée,
+   * sans un mot. Fermer interrompt désormais le calcul.
+   */
+  const interrompre = useRef<(() => void) | null>(null);
+  const arreterCalcul = (): void => {
+    const f = interrompre.current;
+    interrompre.current = null; // le calcul rejeté saura qu'on l'a voulu
+    f?.();
+  };
+  useEffect(() => arreterCalcul, []);
+  const fermer = (): void => {
+    arreterCalcul();
+    onFermer();
+  };
 
   const maj = (recette: (d: Draft<ProjectParams>) => void): void => setP((x) => produce(x, recette));
 
@@ -81,16 +99,33 @@ export function Assistant({
       return;
     }
     setCalcul(true);
+    setEchec(null);
     // À côté de l'interface : la fenêtre reste vivante et dit où en est la recherche.
     // Profils, puis assemblages : le projet créé sort vérifié jusqu'aux platines.
-    dimensionnerEnFond(p, { assemblages: true }, setAvancement)
-      .resultat.then((r) => onCreer(r.projet))
-      .catch(() => undefined)
-      .finally(() => setCalcul(false));
+    const tache = dimensionnerEnFond(p, { assemblages: true }, setAvancement);
+    interrompre.current = tache.interrompre;
+    tache.resultat
+      .then((r) =>
+        onCreer(
+          r.projet,
+          r.insuffisants.length > 0
+            ? `${r.insuffisants.length} élément(s) ne tiennent pas même avec le plus fort profil de leur famille (${r.insuffisants.join(', ')}) : voir l’onglet Vérifications.`
+            : undefined,
+        ),
+      )
+      .catch((e: unknown) => {
+        // Interrompu par la fermeture : rien à dire, la fenêtre n'est plus là.
+        if (interrompre.current === null) return;
+        setEchec(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        interrompre.current = null;
+        setCalcul(false);
+      });
   };
 
   return (
-    <Modale titre="Nouveau projet — assistant" onFermer={onFermer} large fermerAuClic={false}>
+    <Modale titre="Nouveau projet — assistant" onFermer={fermer} large fermerAuClic={false}>
       <ol className="assistant-etapes" aria-label="Étapes">
         {ETAPES.map((e, i) => (
           <li key={e.titre} aria-current={i === n ? 'step' : undefined} className={i < n ? 'faite' : ''}>
@@ -108,6 +143,8 @@ export function Assistant({
         {n === 3 && <EtapeCharges p={p} maj={maj} />}
         {n === 4 && <Recapitulatif p={p} dimensionnerAuto={dimensionnerAuto} setDimensionnerAuto={setDimensionnerAuto} />}
 
+        {/* Région toujours présente : l'apparition d'une erreur est annoncée. */}
+        <div role="alert">
         {bloquantes.length > 0 && (
           <ul className="anomalies" style={{ marginTop: 10 }}>
             {bloquantes.map((i) => (
@@ -118,6 +155,12 @@ export function Assistant({
             ))}
           </ul>
         )}
+        {echec && (
+          <p className="avertissement">
+            Dimensionnement impossible : {echec}. Décochez « Dimensionner automatiquement » pour créer le projet avec les profils du gabarit.
+          </p>
+        )}
+        </div>
       </div>
 
       {n === ETAPES.length - 1 && travauxEnCours > 0 && (
@@ -127,7 +170,7 @@ export function Assistant({
       )}
 
       <div className="assistant-pied">
-        <button type="button" className="plat" onClick={() => (n === 0 ? onFermer() : setN(n - 1))}>
+        <button type="button" className="plat" onClick={() => (n === 0 ? fermer() : setN(n - 1))} disabled={calcul && n > 0}>
           {n === 0 ? 'Annuler' : '← Précédent'}
         </button>
         <span className="separateur" />

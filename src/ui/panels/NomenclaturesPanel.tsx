@@ -12,7 +12,7 @@ import {
 import { colisage, masseALivrer } from '../../core/bom/colisage';
 import { valoriser } from '../../core/bom/valorisation';
 import { archiveDstv, archiveDxfToles, lotDstvDuModele } from '../fichiersMachine';
-import { useProjetEffectif, useStructuralModel } from '../../state/derived';
+import { SAISIE_INVALIDE, useEtatModele, useProjetEffectif, useStructuralModel } from '../../state/derived';
 import { useProjectStore } from '../../state/store';
 import { ChiffrageFiche } from './ChiffrageFiche';
 import { kg, mm, num } from '../format';
@@ -46,6 +46,8 @@ const TITRES: Record<Onglet, string> = {
 export function NomenclaturesPanel(): JSX.Element {
   const project = useProjetEffectif();
   const model = useStructuralModel();
+  // Saisie invalide : on consulte le dernier état valide, on ne l'exporte pas.
+  const { aJour } = useEtatModele();
   const bom = useMemo(() => buildBom(project, model), [project, model]);
   const col = useMemo(() => colisage(model), [model]);
   // Les prix de la saisie, même quand le modèle affiché est le dernier valide :
@@ -128,15 +130,15 @@ export function NomenclaturesPanel(): JSX.Element {
             {num(bom.totals.massTotal, 0)} kg à livrer · {num(bom.totals.kgPerM2, 1)} kg/m²
           </span>
           <span className="separateur" />
-          <button type="button" className="plat" onClick={exporter}>
+          <button type="button" className="plat" onClick={exporter} disabled={!aJour} title={aJour ? undefined : SAISIE_INVALIDE}>
             Exporter en CSV
           </button>
           <button
             type="button"
             className="plat"
             onClick={exporterDstv}
-            disabled={lot.fichiers.length === 0}
-            title={`${lot.fichiers.length} fichiers NC1 pour perceuse-scie à commande numérique`}
+            disabled={lot.fichiers.length === 0 || !aJour}
+            title={!aJour ? SAISIE_INVALIDE : `${lot.fichiers.length} fichiers NC1 pour perceuse-scie à commande numérique`}
           >
             Lot DSTV ({lot.fichiers.length})
           </button>
@@ -144,8 +146,8 @@ export function NomenclaturesPanel(): JSX.Element {
             type="button"
             className="plat"
             onClick={exporterDxf}
-            disabled={model.plates.length === 0}
-            title="Un fichier DXF de découpe par repère de tôle, pour table d’oxycoupage ou plasma"
+            disabled={model.plates.length === 0 || !aJour}
+            title={!aJour ? SAISIE_INVALIDE : "Un fichier DXF de découpe par repère de tôle, pour table d’oxycoupage ou plasma"}
           >
             Lot DXF tôles
           </button>

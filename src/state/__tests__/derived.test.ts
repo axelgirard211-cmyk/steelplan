@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PROJECT } from '../../core/model/defaults';
 import type { ProjectParams } from '../../core/model/project';
-import { checksReport, structuralModel } from '../derived';
+import { checksReport, projetEffectif, structuralModel } from '../derived';
+import { useProjectStore } from '../store';
 
 /**
  * ⚠⚠ LE GARDE-FOU QUI EMPÊCHE LA PAGE BLANCHE.
@@ -52,5 +53,28 @@ describe('dérivation du modèle face aux saisies invalides', () => {
     const b = structuralModel(avec({ span: 22_000 }));
     expect(b).not.toBe(a);
     expect(b.stats.massKg).toBeGreaterThan(0);
+  });
+});
+
+describe('dernier état valide et changement de projet', () => {
+  it('n’attribue pas au projet ouvert le dernier état valide d’un AUTRE projet', () => {
+    // Projet A, valide : il devient le « dernier état valide ».
+    const a = avec({ span: 24000 });
+    useProjectStore.getState().loadProject(a);
+    expect(projetEffectif(a)).toBe(a);
+    // Projet B, fautif, ouvert ensuite : ses vues et exports ne doivent pas être ceux de A.
+    const b = avec({ span: 0 });
+    useProjectStore.getState().loadProject(b);
+    expect(projetEffectif(b)).not.toBe(a);
+  });
+
+  it('garde le dernier état valide du MÊME projet pendant une saisie fautive', () => {
+    const a = avec({ span: 22000 });
+    useProjectStore.getState().loadProject(a);
+    expect(projetEffectif(a)).toBe(a);
+    useProjectStore.getState().edit('Portée', (d) => {
+      d.grid.span = 0;
+    });
+    expect(projetEffectif(useProjectStore.getState().project)).toBe(a);
   });
 });

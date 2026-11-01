@@ -49,7 +49,7 @@ function point(v: unknown, path: string): Pt {
 const points = (v: unknown, path: string): Pt[] => liste(v, path).map((p, i) => point(p, `${path}[${i}]`));
 
 function calque(v: unknown, path: string): Layer {
-  if (typeof v !== 'string' || !(v in LAYER_STYLES)) throw echec(path, 'un calque connu', v);
+  if (typeof v !== 'string' || !Object.hasOwn(LAYER_STYLES, v)) throw echec(path, 'un calque connu', v);
   return v as Layer;
 }
 

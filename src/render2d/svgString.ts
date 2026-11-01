@@ -138,5 +138,7 @@ function echapper(s: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    // ⚠ L'apostrophe aussi : un attribut entre apostrophes s'y refermerait.
+    .replace(/'/g, '&#39;');
 }

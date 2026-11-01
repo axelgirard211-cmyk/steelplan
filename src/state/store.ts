@@ -23,6 +23,12 @@ interface AppState {
   issues: readonly Issue[];
   past: readonly HistoryEntry[];
   future: readonly HistoryEntry[];
+  /**
+   * Incrémenté à chaque projet chargé (ouverture, gabarit, restauration). Ce qui
+   * se souvient d'un état antérieur — le dernier modèle valide — doit l'oublier
+   * quand ce numéro change : il appartiendrait à un AUTRE projet.
+   */
+  chargement: number;
 
   /** Applique une modification au projet et l'inscrit dans l'historique. */
   edit(label: string, recipe: (draft: Draft<ProjectParams>) => void): void;
@@ -37,6 +43,7 @@ export const useProjectStore = create<AppState>((set, get) => ({
   issues: validateProject(DEFAULT_PROJECT),
   past: [],
   future: [],
+  chargement: 0,
 
   edit(label, recipe) {
     const [next, redo, undo] = produceWithPatches(get().project, recipe);
@@ -50,7 +57,7 @@ export const useProjectStore = create<AppState>((set, get) => ({
   },
 
   loadProject(p) {
-    set({ project: p, issues: validateProject(p), past: [], future: [] });
+    set((s) => ({ project: p, issues: validateProject(p), past: [], future: [], chargement: s.chargement + 1 }));
   },
 
   undo() {

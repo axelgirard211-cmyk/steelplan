@@ -51,7 +51,8 @@ export function verifierGrille(brut: unknown): GrillePrix | null {
   if (acier === null || typeof acier !== 'object' || Array.isArray(acier)) return null;
   const prixAcier: Record<string, number> = { ...GRILLE_PAR_DEFAUT.acier };
   for (const [nuance, v] of Object.entries(acier as Record<string, unknown>)) {
-    if (!(nuance in GRILLE_PAR_DEFAUT.acier) || !nombre(v)) return null;
+    // ⚠ Propriété propre : « toString » passait le test `in`.
+    if (!Object.hasOwn(GRILLE_PAR_DEFAUT.acier, nuance) || !nombre(v)) return null;
     prixAcier[nuance] = v;
   }
   const out: Record<string, unknown> = { acier: prixAcier };

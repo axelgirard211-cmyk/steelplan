@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { buildProject } from '../../build/buildProject';
 import { DEFAULT_PROJECT } from '../../model/defaults';
 import type { ProjectParams } from '../../model/project';
@@ -8,7 +8,8 @@ import { getProfile } from '../../catalog/index';
 import { cutLengths } from '../../geometry/member';
 import { inertieFaible } from '../buckling';
 import { runChecks } from '../index';
-import { dimensionner } from '../dimensionner';
+import { dimensionner, type OptionsDimensionnement, type Proposition } from '../dimensionner';
+import type { StructuralModel } from '../../build/types';
 import { candidats, postesActifs } from '../postes';
 
 /**
@@ -20,13 +21,33 @@ import { candidats, postesActifs } from '../postes';
  * tient — et seulement ensuite sur son économie.
  */
 
+/*
+ * ⚠ RAPIDITÉ. Un dimensionnement reconstruit le projet des centaines de fois :
+ * le même calcul, sur le même projet et avec les mêmes options, était relancé
+ * par cinq tests différents. Le dimensionnement étant déterministe, chaque
+ * proposition est calculée UNE fois et partagée ; seul le cas « relancé sur sa
+ * propre proposition » refait un calcul, puisque c'est ce qu'il vérifie.
+ */
+const propositions = new Map<string, Proposition>();
+function proposer(cle: string, p: ProjectParams, opts: OptionsDimensionnement = {}): Proposition {
+  let prop = propositions.get(cle);
+  if (!prop) {
+    prop = dimensionner(p, opts);
+    propositions.set(cle, prop);
+  }
+  return prop;
+}
+let modeleDefaut: StructuralModel | undefined;
+const modeleParDefaut = (): StructuralModel => (modeleDefaut ??= buildProject(DEFAULT_PROJECT));
+const industriel = (TEMPLATES.find((t) => t.id === 'batiment-industriel') ?? TEMPLATES[0])!;
+
 describe('postes dimensionnables', () => {
   it('sépare les trois contreventements, qui partagent pourtant un rôle', () => {
     /*
      * ⚠ Poutre au vent, palées et pignon portent tous le rôle `contreventement`.
      * Les confondre ferait remonter les trois au profil du plus sollicité.
      */
-    const model = buildProject(DEFAULT_PROJECT);
+    const model = modeleParDefaut();
     const postes = postesActifs(DEFAULT_PROJECT).filter((p) => p.id.startsWith('contreventement'));
     expect(postes.length).toBeGreaterThan(1);
 
@@ -58,7 +79,10 @@ describe('postes dimensionnables', () => {
 });
 
 describe('proposition sur le projet par défaut', () => {
-  const prop = dimensionner(DEFAULT_PROJECT);
+  let prop: Proposition;
+  beforeAll(() => {
+    prop = proposer('défaut', DEFAULT_PROJECT);
+  });
 
   it('sort un projet qui TIENT', () => {
     expect(prop.tauxMax, `taux max ${prop.tauxMax.toFixed(2)}`).toBeLessThanOrEqual(1);
@@ -89,7 +113,7 @@ describe('proposition sur le projet par défaut', () => {
       ).not.toBe('allegement');
     }
     // Et globalement, le projet par défaut étant déjà vérifié, il s'allège.
-    expect(runChecks(DEFAULT_PROJECT, buildProject(DEFAULT_PROJECT)).maxRatio).toBeLessThanOrEqual(1);
+    expect(runChecks(DEFAULT_PROJECT, modeleParDefaut()).maxRatio).toBeLessThanOrEqual(1);
     expect(prop.masseApres).toBeLessThan(prop.masseAvant);
   });
 
@@ -124,14 +148,14 @@ describe('familles et pièces liées', () => {
      * un profil plus léger : c'est un autre assemblage, d'autres goussets,
      * d'autres plans d'atelier. La famille est un choix de conception.
      */
-    const prop = dimensionner(DEFAULT_PROJECT);
+    const prop = proposer('défaut', DEFAULT_PROJECT);
     for (const c of prop.changements) {
       expect(c.familleApres, `${c.poste} : ${c.avant} → ${c.apres}`).toBe(c.familleAvant);
     }
   });
 
   it('signale tout changement de famille quand il est autorisé', () => {
-    const prop = dimensionner(DEFAULT_PROJECT, { changerDeFamille: true });
+    const prop = proposer('défaut|famille', DEFAULT_PROJECT, { changerDeFamille: true });
     expect(prop.tauxMax).toBeLessThanOrEqual(1);
     for (const c of prop.changements) {
       expect(c.familleApres).toBe(getProfile(c.apres).family);
@@ -159,15 +183,14 @@ describe('familles et pièces liées', () => {
     const lisses = prop.changements.find((c) => c.poste === 'Lisses');
     if (lisses) expect(lisses.entraine).toMatch(/chevêtres/);
     // Et sans ouverture, rien n'est entraîné.
-    expect(dimensionner(DEFAULT_PROJECT).changements.every((c) => c.entraine === null)).toBe(true);
+    expect(proposer('défaut', DEFAULT_PROJECT).changements.every((c) => c.entraine === null)).toBe(true);
   });
 });
 
 describe('robustesse', () => {
   it('tient sur tous les gabarits et n’en condamne aucun', () => {
     for (const t of TEMPLATES) {
-      const p = t.build();
-      const prop = dimensionner(p);
+      const prop = proposer(t.id, t.build());
       expect(isValid(validateProject(prop.projet)), t.id).toBe(true);
       // Soit tout tient, soit les postes en cause sont NOMMÉS. Le silence sur un
       // poste qu'aucun profil ne satisfait ferait croire à un projet vérifié.
@@ -178,7 +201,7 @@ describe('robustesse', () => {
   it('converge vers le même projet si on le relance', () => {
     // ⚠ Un dimensionnement qui oscille entre deux solutions à chaque clic est
     // inutilisable : on ne saurait jamais lequel des deux états est le bon.
-    const un = dimensionner(DEFAULT_PROJECT);
+    const un = proposer('défaut', DEFAULT_PROJECT);
     const deux = dimensionner(un.projet);
     expect(deux.changements, deux.changements.map((c) => `${c.poste} ${c.avant}→${c.apres}`).join(', ')).toEqual([]);
   });
@@ -188,9 +211,9 @@ describe('rapidité, à résultat égal', () => {
   it('trouve par recherche locale exactement ce que trouve le balayage complet', () => {
     // ⚠ La recherche autour du profil actuel ne vaut que si elle rend la même
     // proposition que le balayage de tout le catalogue, en moins d'essais.
-    for (const p of [DEFAULT_PROJECT, (TEMPLATES.find((t) => t.id === 'batiment-industriel') ?? TEMPLATES[0])!.build()]) {
-      const vite = dimensionner(p);
-      const lent = dimensionner(p, { balayageComplet: true });
+    for (const [cle, p] of [['défaut', DEFAULT_PROJECT], [industriel.id, industriel.build()]] as const) {
+      const vite = proposer(cle, p);
+      const lent = proposer(`${cle}|balayage`, p, { balayageComplet: true });
       expect(vite.changements.map((c) => `${c.poste}:${c.apres}`)).toEqual(lent.changements.map((c) => `${c.poste}:${c.apres}`));
       expect(vite.tauxMax).toBeCloseTo(lent.tauxMax, 9);
       expect(vite.evaluations).toBeLessThan(lent.evaluations);
@@ -198,7 +221,7 @@ describe('rapidité, à résultat égal', () => {
   });
 
   it('lit dans le rapport partiel les mêmes lignes que dans le rapport complet', () => {
-    const m = buildProject(DEFAULT_PROJECT);
+    const m = modeleParDefaut();
     const complet = runChecks(DEFAULT_PROJECT, m);
     for (const perimetre of ['portique', 'secondaire'] as const) {
       const partiel = runChecks(DEFAULT_PROJECT, m, perimetre);

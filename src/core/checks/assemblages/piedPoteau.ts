@@ -1,9 +1,14 @@
-import { getProfile } from '../../catalog/index';
+import { getGrade, getProfile } from '../../catalog/index';
 import type { SteelGradeId } from '../../catalog/types';
-import { FCK, type BasePlateParams, type BoltSpec } from '../../model/connections';
+import {
+  FCK,
+  positionsDesAncrages,
+  type BasePlateParams,
+  type BoltSpec,
+  type ClasseTige,
+} from '../../model/connections';
 import { GAMMA_M0 } from '../section';
-import { getGrade } from '../../catalog/index';
-import { designationBoulon, fvRd, ftRd } from '../boulons';
+import { aireResistante, GAMMA_M2 } from '../boulons';
 import type { Reaction } from '../reactions';
 import { assembler, verif, type AssemblageCheck, type VerifAssemblage } from './types';
 
@@ -28,6 +33,42 @@ const BETA_J = 2 / 3;
 /** Coefficient partiel du béton, EN 1992-1-1. */
 const GAMMA_C = 1.5;
 
+/** Limite d'élasticité et résistance ultime des tiges, EN 1993-1-8 tableau 3.1 (N/mm²). */
+const TIGES: Readonly<Record<ClasseTige, { fyb: number; fub: number }>> = {
+  '4.6': { fyb: 240, fub: 400 },
+  '5.6': { fyb: 300, fub: 500 },
+  '8.8': { fyb: 640, fub: 800 },
+};
+
+export interface ResistancesTige {
+  /** Traction Ft,Rd (N), k2 = 0,9 : EN 1993-1-8 tableau 3.4. */
+  readonly ftRd: number;
+  /** Cisaillement F2,vb,Rd (N), EN 1993-1-8 § 6.2.2(7). */
+  readonly fvbRd: number;
+  readonly alphaBc: number;
+}
+
+/**
+ * Résistances d'UNE tige d'ancrage.
+ *
+ * ⚠ Le cisaillement d'une tige n'est PAS celui d'un boulon : le § 6.2.2(7)
+ * remplace αv = 0,6 par αbc = 0,44 − 0,0003·fyb, qui pénalise les aciers à
+ * haute limite élastique — une tige scellée fléchit dans son mortier avant de
+ * cisailler, et une tige raide le supporte mal. Pour une 8.8 αbc vaut 0,248 :
+ * le calcul « boulon » surestimait sa résistance au cisaillement de 140 %.
+ */
+export function resistancesTige(diametre: number, classe: ClasseTige): ResistancesTige {
+  const d = Math.min(30, Math.max(12, diametre)) as BoltSpec['d'];
+  const { fyb, fub } = TIGES[classe] ?? TIGES['4.6'];
+  const as = aireResistante({ d, cls: '8.8' }); // As ne dépend que du diamètre
+  const alphaBc = 0.44 - 0.0003 * Math.min(640, Math.max(235, fyb));
+  return {
+    ftRd: (0.9 * fub * as) / GAMMA_M2,
+    fvbRd: (alphaBc * fub * as) / GAMMA_M2,
+    alphaBc,
+  };
+}
+
 export interface ContextePied {
   readonly id: string;
   readonly libelle: string;
@@ -36,20 +77,31 @@ export interface ContextePied {
   readonly nuance: SteelGradeId;
 }
 
-export function verifierPiedPoteau(
-  c: ContextePied,
-  compression: Reaction,
-  soulevement: Reaction,
-  cisaillement: Reaction,
-  moment: Reaction,
-): AssemblageCheck {
+/**
+ * Vérification du pied sous une liste de réactions, chacune CONCOMITANTE —
+ * N, V et M d'une même combinaison. On rend la plus défavorable.
+ *
+ * ⚠ Ne JAMAIS mêler les extrêmes de combinaisons différentes. On croisait la
+ * compression maximale (gravitaire) avec le moment maximal (vent) : un couple
+ * qui n'existe pas, trop sévère pour le béton et — surtout — trop clément pour
+ * les tiges. Le cas qui les arrache est le soulèvement ACCOMPAGNÉ de son moment
+ * (« 1,0 G + 1,5 W ») : N tire, M fait tirer davantage la rangée tendue, et
+ * aucune compression ne vient l'équilibrer. Il n'était jamais formé.
+ */
+export function verifierPiedPoteau(c: ContextePied, ...cas: readonly Reaction[]): AssemblageCheck {
+  let pire: AssemblageCheck | null = null;
+  for (const r of cas) {
+    const v = verifierCas(c, r);
+    if (!pire || v.ratio > pire.ratio) pire = v;
+  }
+  return pire ?? verifierCas(c, { fz: 0, fy: 0, m: 0, combinaison: '—' });
+}
+
+function verifierCas(c: ContextePied, r: Reaction): AssemblageCheck {
   const cb = c.cb;
   const profil = getProfile(c.profilPoteau);
   const verifs: VerifAssemblage[] = [];
-  const ancrage: BoltSpec = {
-    d: Math.min(30, Math.max(12, cb.anchorDiameter)) as BoltSpec['d'],
-    cls: '8.8',
-  };
+  const tige = resistancesTige(cb.anchorDiameter, cb.anchorClass);
 
   /* ---------------- Pression sur le béton ---------------- */
   /*
@@ -62,8 +114,9 @@ export function verifierPiedPoteau(
   const fcd = FCK[cb.concrete] / GAMMA_C;
   const fjd = BETA_J * fcd;
 
-  const nEd = Math.max(0, compression.fz) * 1000; // kN → N
-  const mEd = Math.abs(moment.m) * 1e6; // kN·m → N·mm
+  // N SIGNÉ : positif comprime la semelle, négatif l'arrache.
+  const nEd = r.fz * 1000; // kN → N
+  const mEd = Math.abs(r.m) * 1e6; // kN·m → N·mm
   const equilibre = equilibrePied(nEd, mEd, cb, fjd);
 
   verifs.push(
@@ -91,30 +144,15 @@ export function verifierPiedPoteau(
 
   /* ---------------- Traction des tiges ---------------- */
   /*
-   * ⚠ Deux sources de traction, et il faut la PLUS GRANDE des deux :
+   * ⚠ Deux sources de traction, et elles se CUMULENT dans un même cas :
    *  - le soulèvement d'ensemble, quand le vent arrache le portique ;
-   *  - l'équilibre de la platine sous grand excentrement, où les tiges tirent
-   *    alors même que l'effort normal reste une compression.
-   *
-   * Ne regarder que le soulèvement laisserait un pied ENCASTRÉ sous fort moment
-   * sans aucune vérification d'ancrage, alors que c'est exactement le cas où
-   * l'ancrage travaille le plus.
-   *
-   * Et le soulèvement se compte SIGNE COMPRIS : une réaction négative veut dire
-   * que la semelle retient la charpente. Prendre une valeur absolue ferait
-   * vérifier l'ancrage sous le cas de compression, c'est-à-dire rien du tout.
+   *  - l'équilibre de la platine sous moment, où la rangée tendue tire alors
+   *    même que l'effort normal peut rester une compression.
+   * C'est l'équilibre concomitant (N, M) qui les donne ensemble.
    */
-  const traction = Math.max(Math.max(0, -soulevement.fz) * 1000, equilibre.traction);
-  const tigesTendues = Math.max(1, Math.floor(cb.anchorCount / 2));
-  if (traction > 0) {
-    verifs.push(
-      verif(
-        'traction des tiges d’ancrage',
-        traction / tigesTendues / 1000,
-        ftRd(ancrage) / 1000,
-        'kN',
-      ),
-    );
+  const ft = equilibre.tractionParTige;
+  if (ft > 0) {
+    verifs.push(verif('traction des tiges d’ancrage', ft / 1000, tige.ftRd / 1000, 'kN'));
   }
 
   /* ---------------- Cisaillement ---------------- */
@@ -123,16 +161,18 @@ export function verifierPiedPoteau(
    * frottement sous la platine. On ne compte QUE les tiges : le frottement
    * dépend d'une compression qui peut ne pas être là au moment du vent.
    */
-  const v = Math.abs(cisaillement.fy) * 1000;
+  const fv = (Math.abs(r.fy) * 1000) / Math.max(1, cb.anchorCount);
   if (!cb.shearKey) {
-    verifs.push(
-      verif(
-        'cisaillement des tiges',
-        v / Math.max(1, cb.anchorCount) / 1000,
-        fvRd(ancrage) / 1000,
-        'kN',
-      ),
-    );
+    verifs.push(verif('cisaillement des tiges', fv / 1000, tige.fvbRd / 1000, 'kN'));
+    /*
+     * Interaction, EN 1993-1-8 tableau 3.4 : Fv/Fv,Rd + Ft/(1,4·Ft,Rd) ≤ 1. Elle
+     * n'a de sens que parce que V et T viennent désormais de la MÊME
+     * combinaison : croiser deux extrêmes l'aurait rendue arbitraire.
+     */
+    if (ft > 0 && fv > 0) {
+      const taux = fv / tige.fvbRd + ft / (1.4 * tige.ftRd);
+      verifs.push(verif('traction et cisaillement des tiges', taux, 1, '—'));
+    }
   }
 
   const nonCouvert = [
@@ -140,6 +180,8 @@ export function verifierPiedPoteau(
       '(EN 1992-4). Une tige d’acier suffisante scellée dans un béton insuffisant s’arrache ' +
       'avec son cône.',
     'dimensionnement de la semelle elle-même : portance du sol, renversement, glissement',
+    'flexion de la platine sous la traction des tiges (tronçon en T, EN 1993-1-8 § 6.2.6.11) ' +
+      'et pression diamétrale de la platine sur les tiges (F1,vb,Rd)',
   ];
   if (cb.shearKey) {
     nonCouvert.push('bêche de cisaillement : sa résistance et sa soudure ne sont pas calculées');
@@ -148,13 +190,10 @@ export function verifierPiedPoteau(
   return assembler({
     id: c.id,
     libelle: c.libelle,
-    boulon: `${cb.anchorCount} × Ø${cb.anchorDiameter} (${designationBoulon(ancrage)})`,
-    sollicitations:
-      `N = ${compression.fz.toFixed(1)} kN · ` +
-      `soulèvement ${soulevement.fz.toFixed(1)} kN · ` +
-      `V = ${cisaillement.fy.toFixed(1)} kN · ` +
-      `M = ${moment.m.toFixed(1)} kN·m`,
-    combinaison: compression.combinaison,
+    boulon: `${cb.anchorCount} tiges M${cb.anchorDiameter} ${cb.anchorClass}`,
+    // N, V et M d'une même combinaison ; N négatif : soulèvement.
+    sollicitations: `N = ${r.fz.toFixed(1)} kN · V = ${r.fy.toFixed(1)} kN · M = ${r.m.toFixed(1)} kN·m`,
+    combinaison: r.combinaison,
     verifs,
     nonCouvert,
   });
@@ -169,25 +208,28 @@ interface EquilibrePied {
   readonly compressionMax: number;
   /** Longueur du bloc comprimé (mm). */
   readonly longueurComprimee: number;
-  /** Traction que les tiges doivent reprendre pour équilibrer (N). */
-  readonly traction: number;
+  /** Traction de la tige la plus tendue (N). */
+  readonly tractionParTige: number;
 }
 
 /**
- * Équilibre d'un pied sous effort normal ET moment.
+ * Équilibre d'un pied sous effort normal SIGNÉ et moment concomitants.
  *
- * ⚠ Il y a DEUX régimes, et confondre les deux est ce qui faisait sortir un taux
- * infini sur le bâtiment industriel :
+ * ⚠ Il y a TROIS régimes, et confondre les deux premiers est ce qui faisait
+ * sortir un taux infini sur le bâtiment industriel :
  *
  *  - petit excentrement : la résultante tombe dans le tiers central, toute la
  *    platine reste comprimée, les tiges ne travaillent pas ;
  *  - grand excentrement : la résultante sort de la platine. Le béton se
- *    concentre sur un bloc court près d'une rive et LES TIGES TIRENT, alors même
- *    que l'effort normal reste une compression.
+ *    concentre sur un bloc court près d'une rive et LA RANGÉE OPPOSÉE TIRE,
+ *    que l'effort normal soit une compression ou une traction modérée ;
+ *  - traction dominante : aucun bloc ne se forme, les deux rangées extrêmes
+ *    tirent, la plus éloignée de M davantage.
  *
- * Le second régime n'est pas une anomalie à signaler mais un cas de calcul
- * ordinaire — c'est le fonctionnement normal d'un pied encastré. Le traiter
- * comme impossible revenait à condamner tous les portiques à pieds encastrés.
+ * La géométrie est celle que pose la construction (`positionsDesAncrages`) :
+ * rangée tendue, nombre de tiges qu'elle compte. Seules les deux rangées
+ * EXTRÊMES sont comptées — une rangée médiane, plus près du centre, est
+ * négligée, ce qui est du côté sûr.
  */
 function equilibrePied(
   nEd: number,
@@ -199,40 +241,39 @@ function equilibrePied(
   const b = cb.width;
   const compressionMax = fjd * b * L;
 
-  // Pas de moment : compression uniforme, rien à résoudre.
-  if (mEd <= 0) {
-    return {
-      compression: nEd,
-      compressionMax,
-      longueurComprimee: nEd > 0 ? L : 0,
-      traction: 0,
-    };
-  }
+  const positions = positionsDesAncrages(cb);
+  const zMax = positions.reduce((m, q) => Math.max(m, q.z), 0);
+  const parRangee = Math.max(1, positions.filter((q) => Math.abs(q.z - zMax) < 1).length);
+  // Bras de levier : de la rive comprimée à la rangée tendue, et entre rangées.
+  const dT = L / 2 + zMax;
+  const entreRangees = Math.max(2 * zMax, 1);
 
   // Petit excentrement : la résultante reste dans le tiers central.
-  const exc = nEd > 0 ? mEd / nEd : Infinity;
-  if (exc <= L / 6) {
+  if (nEd > 0 && mEd <= (nEd * L) / 6) {
     // Contrainte de rive maximale, diagramme trapézoïdal.
     const sigma = nEd / (b * L) + mEd / ((b * L * L) / 6);
-    return {
-      compression: sigma * b * L,
-      compressionMax,
-      longueurComprimee: L,
-      traction: 0,
-    };
+    return { compression: sigma * b * L, compressionMax, longueurComprimee: L, tractionParTige: 0 };
   }
 
   /*
-   * Grand excentrement : bloc rectangulaire de longueur x contre une rive, tiges
-   * tendues sur la rive opposée. Moments pris autour de la ligne des tiges :
+   * Bloc rectangulaire de longueur x contre une rive, rangée tendue sur la rive
+   * opposée. Moments pris autour de la ligne des tiges tendues :
    *   fjd·b·x·(dT − x/2) = N·(dT − L/2) + M
    * dont on retient la plus PETITE racine — le bloc le plus court qui équilibre.
    */
-  const dT = L - Math.max(cb.anchorDiameter * 1.5, 30);
-  const k = fjd * b;
   const rhs = nEd * (dT - L / 2) + mEd;
-  const disc = dT * dT - (2 * rhs) / k;
 
+  if (rhs <= 0) {
+    /*
+     * Traction dominante (N < 0, M ≤ |N|·zMax) : pas de béton comprimé. La
+     * rangée la plus tendue reçoit sa moitié de |N| plus le couple M / bras.
+     */
+    const rangee = -nEd / 2 + mEd / entreRangees;
+    return { compression: 0, compressionMax, longueurComprimee: 0, tractionParTige: Math.max(0, rangee) / parRangee };
+  }
+
+  const k = fjd * b;
+  const disc = dT * dT - (2 * rhs) / k;
   if (disc < 0) {
     /*
      * Aucun bloc ne peut équilibrer : la platine est trop courte pour ce moment.
@@ -244,7 +285,7 @@ function equilibrePied(
       compression: Math.max(nEd, requis),
       compressionMax,
       longueurComprimee: L,
-      traction: Math.max(0, requis - nEd),
+      tractionParTige: Math.max(0, requis - nEd) / parRangee,
     };
   }
 
@@ -254,6 +295,6 @@ function equilibrePied(
     compression: c,
     compressionMax,
     longueurComprimee: x,
-    traction: Math.max(0, c - nEd),
+    tractionParTige: Math.max(0, c - nEd) / parRangee,
   };
 }

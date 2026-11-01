@@ -397,9 +397,13 @@ function poser(e: Etape, p: Pt, ctx: Contexte): Resultat {
       if (!e.a) return { etape: { ...e, a: p }, actions: [] };
       if (!e.b) return { etape: { ...e, b: p }, actions: [] };
       return fin([{ type: 'ajouter', libelle: 'Cote', entites: [cote(e.a, e.b, decalageVers(e.a, e.b, p))] }]);
-    case 'miroir':
+    case 'miroir': {
       if (!e.a) return { etape: { ...e, a: p }, actions: [] };
-      return fin([{ type: 'transformer', copie: true, libelle: 'Miroir', affine: symetrie(e.a, p) }]);
+      // Deux points confondus ne définissent pas d'axe : on attend le second.
+      const affine = transformationEnCours(e, p);
+      if (!affine) return { etape: e, actions: [] };
+      return fin([{ type: 'transformer', copie: true, libelle: 'Miroir', affine }]);
+    }
     case 'deplacer':
     case 'copier':
     case 'rotation':

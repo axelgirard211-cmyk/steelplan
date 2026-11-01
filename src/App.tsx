@@ -1,9 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { CataloguePanel } from './ui/panels/CataloguePanel';
 import { ProjetPanel } from './ui/panels/ProjetPanel';
-import { NomenclaturesPanel } from './ui/panels/NomenclaturesPanel';
-import { PlansPanel } from './ui/panels/PlansPanel';
-import { VerificationsPanel } from './ui/panels/VerificationsPanel';
 import { selectCanRedo, selectCanUndo, useProjectStore } from './state/store';
 import { AideRaccourcis } from './ui/AideRaccourcis';
 import { BarreDeFichier } from './ui/BarreDeFichier';
@@ -37,6 +34,16 @@ const Vue3dPanel = lazy(() =>
 // La page d'édition embarque elle aussi le moteur 3D : même chargement à la demande.
 const EditionPanel = lazy(() =>
   import('./ui/edition/EditionPanel').then((m) => ({ default: m.EditionPanel })),
+);
+// Plans, nomenclatures et vérifications : rien de cela n'est lu à l'ouverture,
+// qui se fait sur l'onglet Projet. Les charger d'emblée alourdissait le premier
+// paquet de tout le dessin et de toutes les vérifications.
+const PlansPanel = lazy(() => import('./ui/panels/PlansPanel').then((m) => ({ default: m.PlansPanel })));
+const NomenclaturesPanel = lazy(() =>
+  import('./ui/panels/NomenclaturesPanel').then((m) => ({ default: m.NomenclaturesPanel })),
+);
+const VerificationsPanel = lazy(() =>
+  import('./ui/panels/VerificationsPanel').then((m) => ({ default: m.VerificationsPanel })),
 );
 
 
@@ -72,7 +79,7 @@ function Pastille({ onglet, etat }: { onglet: Onglet; etat: EtatDuProjet | null 
       </span>
     ) : (
       <span className="pastille-onglet ok" title="Taux de travail maximal, barres et assemblages">
-        {num(etat.tauxMax, 2)}
+        taux {num(etat.tauxMax, 2)}
       </span>
     );
   }
@@ -289,15 +296,21 @@ export function App(): JSX.Element {
             <Vue3dPanel />
           </Suspense>
         ) : onglet === 'plans' ? (
-          <PlansPanel />
+          <Suspense fallback={<p className="chargement">Chargement des plans…</p>}>
+            <PlansPanel />
+          </Suspense>
         ) : onglet === 'edition' ? (
           <Suspense fallback={<p className="chargement">Chargement de l’édition…</p>}>
             <EditionPanel />
           </Suspense>
         ) : onglet === 'nomenclatures' ? (
-          <NomenclaturesPanel />
+          <Suspense fallback={<p className="chargement">Chargement des nomenclatures…</p>}>
+            <NomenclaturesPanel />
+          </Suspense>
         ) : onglet === 'verifications' ? (
-          <VerificationsPanel />
+          <Suspense fallback={<p className="chargement">Chargement des vérifications…</p>}>
+            <VerificationsPanel />
+          </Suspense>
         ) : (
           <CataloguePanel />
         )}

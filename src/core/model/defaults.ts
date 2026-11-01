@@ -10,7 +10,7 @@ import type { ProjectParams } from './project';
  * égout à 6 m, bipente 10 %. Sert de point de départ et de gabarit de test.
  */
 export const DEFAULT_PROJECT: ProjectParams = {
-  version: 4,
+  version: 5,
   meta: {
     nom: 'Nouveau projet',
     client: '',
@@ -143,6 +143,15 @@ export const DEFAULT_PROJECT: ProjectParams = {
       groutThickness: 30,
       shearKey: false,
       concrete: 'C25/30',
+      /*
+       * 4.6 : la classe COURANTE des tiges d'ancrage en France — tiges à crosse
+       * en rond S235 fileté, livrées par les fabricants d'ancrages sans
+       * prescription particulière. La 8.8 que le calcul supposait jusqu'ici est
+       * une tige HR qu'il faut prescrire : la supposer par défaut doublait la
+       * résistance en traction (fub 800 contre 400 MPa) d'une pièce que le
+       * chantier reçoit en 4.6.
+       */
+      anchorClass: '4.6',
     },
     gusset: {
       thickness: 10,
@@ -184,6 +193,9 @@ export const DEFAULT_PROJECT: ProjectParams = {
     factors: {
       gammaG: 1.35,
       gammaQ: 1.5,
+      // NF EN 1990/NA tableau A1.1, site ≤ 1000 m. Au-dessus, en mode Eurocode,
+      // `facteursEffectifs` (climat/) le porte à 0,7 : l'altitude n'est connue
+      // qu'à ce moment-là, et une valeur figée ici l'ignorerait.
       psi0Neige: 0.5,
       psi0Vent: 0.6,
       psi0Exploitation: 0,

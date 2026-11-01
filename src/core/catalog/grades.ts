@@ -33,6 +33,11 @@ export const GRADES: Readonly<Record<SteelGradeId, SteelGrade>> = {
 export const GRADE_IDS: readonly SteelGradeId[] = ['S235', 'S275', 'S355', 'S420', 'S460'];
 
 export function getGrade(id: SteelGradeId): SteelGrade {
+  /*
+   * ⚠ Propriété PROPRE seulement : « toString » ou « constructor » venus d'un
+   * fichier remontaient sinon une fonction d'Object.prototype en guise de nuance.
+   */
+  if (!Object.hasOwn(GRADES, id)) throw new Error(`Nuance d’acier « ${String(id)} » inconnue.`);
   return GRADES[id];
 }
 

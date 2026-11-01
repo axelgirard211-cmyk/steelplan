@@ -41,7 +41,7 @@
   border-left: 1px solid var(--bord-fort);
 }
 
-.segments button[aria-selected='true'] {
+.segments button[aria-pressed='true'] {
   background: var(--accent);
   color: #fff;
 }

@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useChecksReport, useProjetEffectif, useStructuralModel } from '../../state/derived';
+import { useChecksReport, useEtatModele, useProjetEffectif, useStructuralModel } from '../../state/derived';
 import { maquetteIfc } from '../../export/ifc/index';
 import type { ColorMode } from '../../render3d/colorMaps';
 import { Legende, LegendeTaux } from './Vue3dLegendes';
@@ -22,6 +22,7 @@ export function Vue3dPanel(): JSX.Element {
   const model = useStructuralModel();
   const projet = useProjetEffectif();
   const rapport = useChecksReport();
+  const etat = useEtatModele();
   const conteneur = useRef<HTMLDivElement>(null);
   const scene = useRef<SteelScene | null>(null);
 
@@ -65,14 +66,9 @@ export function Vue3dPanel(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model]);
 
-  useEffect(() => {
-    if (scene.current) scene.current.setColorMode(colorMode, model, rapport.byMark);
-    scene.current?.setHidden(masques);
-    scene.current?.setIsolated(isole);
-    scene.current?.setClip(clip);
-    scene.current?.setSelected(selection);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [colorMode, rapport]);
+  // Mode de couleur ou nouveau rapport : on reteint les pièces en place, sans
+  // rien reconstruire — chaque modification du projet change aussi le rapport.
+  useEffect(() => scene.current?.setColorMode(colorMode, rapport.byMark), [colorMode, rapport]);
 
   /*
    * La grille suit le THÈME, choisi ou hérité du système. On relit les jetons
@@ -204,7 +200,14 @@ export function Vue3dPanel(): JSX.Element {
           type="button"
           className="plat"
           onClick={() => exporterIfc(projet, model, percagesIfc)}
-          title="Maquette IFC4 de la charpente — barres, tôles, boulons, assemblages et repères — pour la synthèse BIM"
+          // Le modèle affiché est le dernier VALIDE : exporté d'une saisie fausse,
+          // il ne correspondrait pas à ce que l'utilisateur croit avoir saisi.
+          disabled={!etat.aJour}
+          title={
+            etat.aJour
+              ? 'Maquette IFC4 de la charpente — barres, tôles, boulons, assemblages et repères — pour la synthèse BIM'
+              : "Saisie invalide : l'export ne correspondrait pas à la saisie"
+          }
         >
           Exporter en IFC
         </button>

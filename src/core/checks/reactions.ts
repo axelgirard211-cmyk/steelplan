@@ -50,6 +50,13 @@ export interface EnveloppeAppui {
   readonly horizontal: Reaction;
   /** Moment maximal en valeur absolue. */
   readonly moment: Reaction;
+  /**
+   * Toutes les réactions, combinaison par combinaison, N, V et M CONCOMITANTS.
+   * Les extrêmes ci-dessus suffisent au tableau des fondations ; une
+   * vérification qui croise N et M doit lire ceci, faute de quoi elle associe
+   * des efforts qui ne coexistent jamais.
+   */
+  readonly cas?: readonly Reaction[];
 }
 
 /** Accumulateur : on lui donne les réactions cas par cas, il garde les extrêmes. */
@@ -92,6 +99,7 @@ export class EnveloppeReactions {
         soulevement: pire((a, b) => (b.fz < a.fz ? b : a)),
         horizontal: pire((a, b) => (Math.abs(b.fy) > Math.abs(a.fy) ? b : a)),
         moment: pire((a, b) => (Math.abs(b.m) > Math.abs(a.m) ? b : a)),
+        cas: e.cas,
       });
     }
     return out.sort((a, b) => a.x - b.x || a.y - b.y);

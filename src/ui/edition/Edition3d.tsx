@@ -86,7 +86,15 @@ export function Edition3d(): JSX.Element {
       onHover: () => undefined,
     });
     scene.current = s;
-    const p = new Pointage(s, { onSurvol: setSurvol, onPoint: (c) => surPoint.current(c) });
+    // La scène ne dessine qu'à la demande : le marqueur et l'élastique du pointage
+    // bougent sans elle, il faut donc redemander une image à chaque survol.
+    const p = new Pointage(s, {
+      onSurvol: (c) => {
+        setSurvol(c);
+        s.demanderRendu();
+      },
+      onPoint: (c) => surPoint.current(c),
+    });
     pointage.current = p;
     return () => {
       p.dispose();
@@ -104,7 +112,10 @@ export function Edition3d(): JSX.Element {
   }, [model]);
 
   useEffect(() => scene.current?.setSelected(selection), [selection]);
-  useEffect(() => pointage.current?.setActif(outil === 'barre', premier), [outil, premier]);
+  useEffect(() => {
+    pointage.current?.setActif(outil === 'barre', premier);
+    scene.current?.demanderRendu();
+  }, [outil, premier]);
 
   const choisir = (o: Outil): void => {
     setOutil(o);
