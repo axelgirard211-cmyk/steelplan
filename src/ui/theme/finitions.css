@@ -204,11 +204,10 @@ button.primaire:disabled {
   cursor: default;
 }
 
-button:focus-visible,
-select:focus-visible,
-input:focus-visible {
+/* Focus clavier sur TOUT ce qui le reçoit (liens, summary, tabindex…), pas trois champs. */
+:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 input[type='search'],
@@ -216,7 +215,7 @@ input[type='text'],
 input[type='number'],
 select {
   border-radius: var(--rayon-petit);
-  border-color: var(--bord);
+  border-color: var(--bord-champ);
 }
 
 input[type='number'] {
@@ -256,4 +255,45 @@ input[type='number'] {
 
 dl.paires {
   gap: 6px 12px;
+}
+
+/* ---- Accessibilité ---- */
+
+/* Texte lu par les lecteurs d'écran, invisible à l'œil. */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Dépliage d'une ligne de tableau : porte focus et état, se lit comme la cellule. */
+button.depli {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Mouvement réduit : plus d'éclair ni de fondus (durée quasi nulle, pas nulle,
+   pour que les fins d'animation se déclenchent encore). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

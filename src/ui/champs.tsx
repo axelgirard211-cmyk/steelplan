@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FAMILY_LABELS,
   FAMILY_ORDER,
@@ -73,6 +73,18 @@ export const libellerAvec =
     if (el) el.setAttribute('aria-label', `${el.getAttribute('aria-label') ?? ''} — ${precision}`.replace(/^ — /, ''));
   };
 
+/**
+ * Champ numérique, validé à la SORTIE du champ ou sur Entrée — comme ChampTexte.
+ *
+ * ⚠ Valider à chaque frappe faisait passer « 6000 » par 6, 60 et 600 : trois
+ * bâtiments faux, chacun reconstruit (aperçu 3D, calculs), le bandeau « Saisie
+ * invalide » qui clignote, et quatre étapes d'annulation pour une seule valeur.
+ * Un champ vidé valait 0. Désormais la frappe reste un brouillon ; Échap rend la
+ * valeur d'origine, un champ vide la garde.
+ *
+ * Les flèches du clavier et du champ, elles, appliquent tout de suite : on les
+ * emploie justement pour voir l'effet pas à pas.
+ */
 export function ChampNombre({
   valeur,
   onChange,
@@ -90,12 +102,21 @@ export function ChampNombre({
   unite?: string;
   largeur?: number;
 }): JSX.Element {
+  const [brouillon, setBrouillon] = useState(String(valeur));
+  const annule = useRef(false);
+  // Une valeur changée ailleurs (annulation, ouverture de fichier) l'emporte.
+  useEffect(() => setBrouillon(String(valeur)), [valeur]);
+  const appliquer = (texte: string): void => {
+    const v = texte.trim() === '' ? NaN : Number(texte);
+    if (Number.isFinite(v) && v !== valeur) onChange(v);
+    else setBrouillon(String(valeur));
+  };
   return (
     <>
       <input
         ref={libeller}
         type="number"
-        value={valeur}
+        value={brouillon}
         step={pas}
         {...(min === undefined ? {} : { min })}
         {...(max === undefined ? {} : { max })}
@@ -105,8 +126,23 @@ export function ChampNombre({
         // défiler le panneau, sans rien voir. On rend la main au défilement.
         onWheel={(e) => e.currentTarget.blur()}
         onChange={(e) => {
-          const v = Number(e.target.value);
-          if (Number.isFinite(v)) onChange(v);
+          setBrouillon(e.target.value);
+          // Frappe au clavier : brouillon. Flèches ou boutons du champ : aucun
+          // type de saisie n'est donné — on applique aussitôt.
+          const type = (e.nativeEvent as InputEvent).inputType;
+          if (!type) appliquer(e.target.value);
+        }}
+        onBlur={(e) => {
+          if (annule.current) annule.current = false;
+          else appliquer(e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+          if (e.key === 'Escape') {
+            annule.current = true;
+            setBrouillon(String(valeur));
+            e.currentTarget.blur();
+          }
         }}
       />
       {unite ? ` ${unite}` : ''}
@@ -166,10 +202,17 @@ export function ChampTexte({
   precision?: string;
 }): JSX.Element {
   const [brouillon, setBrouillon] = useState(valeur);
+  // ⚠ Échap pose ce drapeau AVANT de quitter le champ : sans lui, la sortie
+  // validait le texte tapé — exactement ce qu'Échap devait abandonner.
+  const annule = useRef(false);
   const ref = useMemo(() => (precision ? libellerAvec(precision) : libeller), [precision]);
   // Une valeur changée ailleurs (annulation, ouverture de fichier) l'emporte.
   useEffect(() => setBrouillon(valeur), [valeur]);
   const valider = (): void => {
+    if (annule.current) {
+      annule.current = false;
+      return;
+    }
     const v = brouillon.trim();
     if (v !== valeur) onChange(v);
   };
@@ -185,6 +228,7 @@ export function ChampTexte({
       onKeyDown={(e) => {
         if (e.key === 'Enter') e.currentTarget.blur();
         if (e.key === 'Escape') {
+          annule.current = true;
           setBrouillon(valeur);
           e.currentTarget.blur();
         }

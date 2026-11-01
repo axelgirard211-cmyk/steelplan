@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { AVERTISSEMENT, RATIO_LABELS, type CheckLine } from '../../core/checks/types';
 import { ratioColor } from '../../render3d/colorMaps';
 import { AssemblagesVerif } from './AssemblagesVerif';
@@ -214,11 +214,28 @@ function Ligne({
   onToggle: () => void;
 }): JSX.Element {
   const pastille = `#${ratioColor(l.ratio).toString(16).padStart(6, '0')}`;
+  const idDetail = useId();
   return (
     <>
+      {/*
+        * Le clic sur toute la ligne reste (cible large à la souris), mais un <tr>
+        * ne reçoit ni le focus ni Entrée : le vrai déclencheur est le bouton de
+        * la première cellule, seul à porter l'état ouvert/fermé.
+        */}
       <tr onClick={onToggle} className={l.ratio > 1 ? 'depasse' : ''} style={{ cursor: 'pointer' }}>
         <td>
-          {l.mark}
+          <button
+            type="button"
+            className="depli"
+            aria-expanded={ouvert}
+            aria-controls={ouvert ? idDetail : undefined}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle();
+            }}
+          >
+            <span aria-hidden="true">{ouvert ? '▾' : '▸'}</span> {l.mark}
+          </button>
           {/*
             * ⚠ Les avertissements ne se lisent qu'en ouvrant la ligne. Sans ce
             * repère, rien ne disait qu'une ligne en portait : la mention « flexion
@@ -229,9 +246,13 @@ function Ligne({
             <span
               className="marque-avertissement"
               title={`${l.avertissements.length} avertissement(s) — cliquer la ligne pour les lire`}
-              aria-label={`${l.avertissements.length} avertissement(s)`}
             >
-              {' '}⚠
+              {/* aria-label est ignoré sur un span sans rôle : le texte caché parle à sa place. */}
+              <span aria-hidden="true"> ⚠</span>
+              <span className="visually-hidden">
+                {' '}
+                ({l.avertissements.length} avertissement(s))
+              </span>
             </span>
           ) : null}
         </td>
@@ -255,7 +276,7 @@ function Ligne({
         <td>{RATIO_LABELS[l.gouverne]}</td>
       </tr>
       {ouvert ? (
-        <tr className="detail">
+        <tr className="detail" id={idDetail}>
           <td colSpan={16}>
             <div className="detail-verif">
               <span>Combinaison : {l.combinaison}</span>

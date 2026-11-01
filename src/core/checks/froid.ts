@@ -168,8 +168,14 @@ export function sectionEfficace(
    * kσ = 23,9 (tableau 4.1, paroi interne). L'âme d'une panne est élancée mais
    * à moitié tendue : elle reste souvent entièrement efficace, et c'est ce que
    * ce calcul doit pouvoir conclure plutôt que de l'amputer par principe.
+   *
+   * ⚠ L'élancement λp se calcule sur la largeur TOTALE b̄ de la paroi (EN 1993-1-5
+   * § 4.4(2), tableau 4.1) : c'est kσ = 23,9 qui porte l'effet du gradient. Seule
+   * la largeur efficace, ensuite, s'applique à la partie comprimée bc = b̄/2.
+   * Prendre b̄/2 dans λp comptait le gradient deux fois et divisait λp par deux :
+   * l'âme d'un Z 300×2 ressortait entièrement efficace (ρ = 1) au lieu de 0,84.
    */
-  const rhoWeb = rho(bpWeb / 2, t, epsilon, 23.9, -1);
+  const rhoWeb = rho(bpWeb, t, epsilon, 23.9, -1);
 
   /* --- 5. Section efficace, recomposée en rectangles --- */
   const rects = rectsEfficaces(p, comprimee, { rhoFlange, rhoLip, rhoWeb, tRed });

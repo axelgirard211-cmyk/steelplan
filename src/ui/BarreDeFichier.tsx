@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { FormatError } from '../core/io/serialize';
 import { creerAutosave, oublierAuto, relireAuto, type Autosave } from '../core/io/storage';
 import { avecGrilleEntreprise } from '../core/io/grilleEntreprise';
+import type { ProjectParams } from '../core/model/project';
 import type { Template } from '../core/model/templates';
 import { useProjectStore } from '../state/store';
 import { GabaritsDialog } from './GabaritsDialog';
@@ -34,7 +35,31 @@ export function BarreDeFichier({
   const [assistant, setAssistant] = useState(false);
   const [message, setMessage] = useState<{ texte: string; erreur: boolean } | null>(null);
   const [aRestaurer, setARestaurer] = useState<Autosave | null>(null);
-  const [enregistreA, setEnregistreA] = useState<number | null>(null);
+  /*
+   * ⚠ « MODIFIÉ » NE SE DÉDUIT PAS DE L'HISTORIQUE. On testait « des éditions,
+   * et jamais enregistré » : après un premier enregistrement, plus rien n'était
+   * signalé, et une heure de travail se perdait en fermant l'onglet sans un mot.
+   * On retient donc le projet tel qu'il est dans son fichier, et on compare.
+   * `horsFichier` couvre la session restaurée : sans historique, elle n'existe
+   * pourtant dans aucun fichier.
+   */
+  const [reference, setReference] = useState<ProjectParams | null>(null);
+  const [horsFichier, setHorsFichier] = useState(false);
+  /*
+   * ⚠ Tant que l'utilisateur n'a pas répondu à « Restaurer ? », l'autosave se
+   * tait : elle écrasait la session retrouvée par le projet par défaut 1,5 s
+   * après l'ouverture — un rechargement à ce moment, et tout était perdu.
+   */
+  const [pret, setPret] = useState(false);
+  const modifie = reference ? project !== reference : nbEditions > 0 || horsFichier;
+  /*
+   * ⚠ …mais seulement tant qu'on ne travaille pas : laissée sans réponse, la
+   * question coupait aussi la sauvegarde du travail NEUF, sans le dire. La
+   * session retrouvée reste restaurable pendant la visite : elle est en mémoire.
+   */
+  const actif = pret || modifie;
+  // Ce que l'autosave retient : une session sans modification ne vaut pas d'être proposée.
+  const aSauver = modifie ? Math.max(nbEditions, 1) : 0;
 
   const autosave = useRef(creerAutosave());
 
@@ -52,21 +77,24 @@ export function BarreDeFichier({
     // On ne propose que s'il y avait un travail commencé : restaurer un projet
     // par défaut intact n'apporte rien et transforme l'ouverture en question.
     if (trouve && trouve.edits > 0) setARestaurer(trouve);
-    // ⚠ Toute première visite, sans travail à restaurer : l'assistant s'ouvre
-    // de lui-même, une fois. Ensuite, il attend derrière « Nouveau ».
-    else if (premiereVisite()) setAssistant(true);
+    else {
+      setPret(true);
+      // ⚠ Toute première visite, sans travail à restaurer : l'assistant s'ouvre
+      // de lui-même, une fois. Ensuite, il attend derrière « Nouveau ».
+      if (premiereVisite()) setAssistant(true);
+    }
   }, []);
 
   /* --- Enregistrement automatique à chaque changement --- */
   useEffect(() => {
-    autosave.current.planifier(project, nbEditions);
-  }, [project, nbEditions]);
+    if (actif) autosave.current.planifier(project, aSauver);
+  }, [project, aSauver, actif]);
 
   /* --- Filet de fermeture : enregistrer, et prévenir --- */
   useEffect(() => {
     const avantFermeture = (e: BeforeUnloadEvent): void => {
-      autosave.current.immediat(project, nbEditions);
-      if (nbEditions > 0 && enregistreA === null) {
+      if (actif) autosave.current.immediat(project, aSauver);
+      if (modifie) {
         e.preventDefault();
         // Les navigateurs imposent leur propre texte ; il suffit d'annuler.
         e.returnValue = '';
@@ -74,19 +102,44 @@ export function BarreDeFichier({
     };
     window.addEventListener('beforeunload', avantFermeture);
     return () => window.removeEventListener('beforeunload', avantFermeture);
-  }, [project, nbEditions, enregistreA]);
+  }, [project, aSauver, modifie, actif]);
 
+  /*
+   * Une confirmation s'efface d'elle-même ; une ERREUR reste jusqu'à ce qu'on la
+   * ferme — partie au bout de 8 s, elle pouvait n'avoir jamais été lue.
+   */
+  const minuterie = useRef<ReturnType<typeof setTimeout>>();
   const signaler = useCallback((texte: string, erreur = false): void => {
+    clearTimeout(minuterie.current);
     setMessage({ texte, erreur });
-    setTimeout(() => setMessage(null), erreur ? 8000 : 3500);
+    if (!erreur) minuterie.current = setTimeout(() => setMessage(null), 3500);
   }, []);
 
+  /** Un projet remplace le courant : la question de restauration est tranchée. */
+  const charger = useCallback(
+    (p: ProjectParams, ref: ProjectParams | null): void => {
+      loadProject(p);
+      setReference(ref);
+      setHorsFichier(false);
+      setARestaurer(null);
+      setPret(true);
+    },
+    [loadProject],
+  );
+
+  /*
+   * ⚠ Le projet est lu dans le STORE au moment de l'action, pas dans la
+   * fermeture : Ctrl+S pendant la frappe d'un champ valide d'abord le champ
+   * (App), et le projet capturé au dernier rendu n'avait pas encore sa valeur.
+   */
   const faireEnregistrer = useCallback(
     async (sous: boolean): Promise<void> => {
+      const p = useProjectStore.getState().project;
       try {
-        const r = await enregistrer(project, sous);
+        const r = await enregistrer(p, sous);
         if (r === 'annule') return;
-        setEnregistreA(Date.now());
+        setReference(p);
+        setHorsFichier(false);
         signaler(
           r === 'telecharge'
             ? 'Projet téléchargé. Ce navigateur ne sait pas réenregistrer dans le même fichier.'
@@ -96,17 +149,21 @@ export function BarreDeFichier({
         signaler(`Enregistrement impossible : ${(e as Error).message}`, true);
       }
     },
-    [project, signaler],
+    [signaler],
   );
 
   const faireOuvrir = useCallback(async (): Promise<void> => {
-    if (nbEditions > 0 && !confirm(`Abandonner ${nbEditions} modification(s) en cours ?`)) return;
+    const s = useProjectStore.getState();
+    const modifieMaintenant = reference ? s.project !== reference : s.past.length > 0 || horsFichier;
+    if (
+      modifieMaintenant &&
+      !confirm('Le projet en cours a des modifications non enregistrées. Les abandonner pour ouvrir un autre fichier ?')
+    )
+      return;
     try {
       const p = await ouvrir();
       if (!p) return;
-      loadProject(p);
-      setEnregistreA(Date.now());
-      setARestaurer(null);
+      charger(p, p);
       signaler(`Projet « ${p.meta.nom} » ouvert.`);
     } catch (e) {
       signaler(
@@ -114,19 +171,17 @@ export function BarreDeFichier({
         true,
       );
     }
-  }, [loadProject, nbEditions, signaler]);
+  }, [charger, reference, horsFichier, signaler]);
 
   const appliquerGabarit = useCallback(
     (t: Template): void => {
       // Un nouveau projet part avec les prix de l'entreprise, s'ils sont mémorisés.
-      loadProject(avecGrilleEntreprise(t.build()));
+      charger(avecGrilleEntreprise(t.build()), null);
       oublierFichierCourant();
-      setEnregistreA(null);
       setGabarits(false);
-      setARestaurer(null);
       signaler(`Gabarit « ${t.nom} » chargé.`);
     },
-    [loadProject, signaler],
+    [charger, signaler],
   );
 
   // Exposé au reste de l'application par les raccourcis clavier.
@@ -144,8 +199,6 @@ export function BarreDeFichier({
     return () => ecouteurs.forEach((off) => off());
   }, [faireEnregistrer, faireOuvrir]);
 
-  const modifie = nbEditions > 0;
-
   return (
     <>
       <button type="button" className="plat" onClick={() => setGabarits(true)} title="Ctrl+N">
@@ -158,14 +211,14 @@ export function BarreDeFichier({
         type="button"
         className="primaire"
         onClick={() => void faireEnregistrer(false)}
-        title="Ctrl+S"
+        title={modifie ? 'Modifications non enregistrées — Ctrl+S' : 'Ctrl+S'}
       >
-        Enregistrer{modifie && enregistreA === null ? ' •' : ''}
+        Enregistrer{modifie ? ' •' : ''}
       </button>
 
       <GabaritsDialog
         ouvert={gabarits}
-        travauxEnCours={nbEditions}
+        travauxEnCours={aSauver}
         onChoisir={appliquerGabarit}
         onAssistant={() => {
           setGabarits(false);
@@ -175,33 +228,41 @@ export function BarreDeFichier({
       />
       {assistant && (
         <Assistant
-          travauxEnCours={nbEditions}
-          onCreer={(p) => {
-            loadProject(avecGrilleEntreprise(p));
+          travauxEnCours={aSauver}
+          onCreer={(p, remarque) => {
+            charger(avecGrilleEntreprise(p), null);
             oublierFichierCourant();
-            setEnregistreA(null);
-            setARestaurer(null);
             setAssistant(false);
-            signaler(`Projet « ${p.meta.nom || 'sans nom'} » créé.`);
+            signaler(`Projet « ${p.meta.nom || 'sans nom'} » créé.${remarque ? ` ${remarque}` : ''}`, Boolean(remarque));
           }}
           onFermer={() => setAssistant(false)}
         />
       )}
 
-      {message ? (
-        <span className={message.erreur ? 'notice erreur' : 'notice'} role="status">
-          {message.texte}
-        </span>
-      ) : (
-        <span className="notice discret">
-          {autosave.current.disponible
-            ? 'Sauvegarde automatique active'
-            : 'Sauvegarde automatique indisponible sur ce navigateur'}
-        </span>
-      )}
+      {/* Régions toujours présentes : un lecteur d'écran n'annonce que ce qui
+          CHANGE dans une région déjà là, pas une région qui apparaît. */}
+      <span role="alert" className={message?.erreur ? 'notice erreur' : 'visually-hidden'}>
+        {message?.erreur ? message.texte : ''}
+        {message?.erreur && (
+          <button type="button" className="plat fermer-notice" aria-label="Fermer le message" onClick={() => setMessage(null)}>
+            ✕
+          </button>
+        )}
+      </span>
+      <span role="status" className={message && !message.erreur ? 'notice' : 'notice discret'}>
+        {message && !message.erreur
+          ? message.texte
+          : message
+            ? ''
+            : autosave.current.disponible
+              ? actif
+                ? 'Sauvegarde automatique active'
+                : 'Sauvegarde automatique en attente de votre réponse'
+              : 'Sauvegarde automatique indisponible sur ce navigateur'}
+      </span>
 
       {aRestaurer ? (
-        <div className="banniere" role="status">
+        <div className="banniere" role="region" aria-label="Travail retrouvé">
           <span>
             Travail non enregistré retrouvé ({depuis(aRestaurer.at)}, {aRestaurer.edits}{' '}
             modification(s)) : « {aRestaurer.project.meta.nom} ».
@@ -210,9 +271,9 @@ export function BarreDeFichier({
             type="button"
             className="primaire"
             onClick={() => {
-              loadProject(aRestaurer.project);
-              setARestaurer(null);
-              signaler('Session restaurée.');
+              charger(aRestaurer.project, null);
+              setHorsFichier(true);
+              signaler('Session restaurée. Pensez à l’enregistrer dans un fichier.');
             }}
           >
             Restaurer
@@ -220,12 +281,14 @@ export function BarreDeFichier({
           <button
             type="button"
             className="plat"
+            title="La session retrouvée est supprimée définitivement"
             onClick={() => {
               oublierAuto();
               setARestaurer(null);
+              setPret(true);
             }}
           >
-            Ignorer
+            Abandonner ce travail
           </button>
         </div>
       ) : null}

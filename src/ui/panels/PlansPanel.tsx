@@ -2,11 +2,11 @@ import { useMemo, useState } from 'react';
 import { libelleEchelle } from '../../core/drawing/scale';
 import type { Sheet, SheetKind } from '../../core/drawing/sheet';
 import { sheetToSvg, tailleFeuille } from '../../render2d/svgString';
-import { sheetToDxf } from '../../export/dxf';
+import { dxfEnOctets, sheetToDxf } from '../../export/dxf';
 import { Visionneuse } from '../Visionneuse';
 import { Editeur } from '../editeur/Editeur';
 import { appliquerRetouches } from '../../core/drawing/retouches';
-import { useProjetEffectif, useStructuralModel } from '../../state/derived';
+import { SAISIE_INVALIDE, useEtatModele, useProjetEffectif, useStructuralModel } from '../../state/derived';
 import { useDossier } from '../useDossier';
 import { normaliser } from '../projet/rubriques';
 import { planchesDuPoste, POSTES, sheetsBordereau, type Poste } from '../../core/drawing/postes';
@@ -55,6 +55,14 @@ export function PlansPanel(): JSX.Element {
 function PlanchesDuPoste({ poste }: { poste: Poste | 'tous' }): JSX.Element {
   const model = useStructuralModel();
   const project = useProjetEffectif();
+  /*
+   * ⚠ Saisie invalide : les planches montrent le DERNIER ÉTAT VALIDE. Les
+   * regarder est utile ; les envoyer en atelier sous le nom du projet saisi ne
+   * l'est pas — l'export attend que la saisie soit corrigée.
+   */
+  const { aJour } = useEtatModele();
+  const horsExport = aJour ? undefined : SAISIE_INVALIDE;
+  const [erreurExport, setErreurExport] = useState<string | null>(null);
   const [choisie, setChoisie] = useState(0);
   const [fondClair, setFondClair] = useState(true);
 
@@ -133,6 +141,7 @@ function PlanchesDuPoste({ poste }: { poste: Poste | 'tous' }): JSX.Element {
    */
   const exporterDossier = (): void => {
     setEnCours('dossier');
+    setErreurExport(null);
     setTimeout(() => {
       void pdf()
         .then(({ sheetsToPdf }) =>
@@ -141,6 +150,7 @@ function PlanchesDuPoste({ poste }: { poste: Poste | 'tous' }): JSX.Element {
             nomDeFichier(poste === 'tous' ? 'dossier.pdf' : `dossier-${poste}.pdf`),
           ),
         )
+        .catch((e: unknown) => setErreurExport(`Export du dossier impossible : ${e instanceof Error ? e.message : String(e)}`))
         .finally(() => setEnCours(null));
     }, 30);
   };
@@ -170,7 +180,7 @@ function PlanchesDuPoste({ poste }: { poste: Poste | 'tous' }): JSX.Element {
 
   const exporterDxf = (): void =>
     enregistrer(
-      new Blob([sheetToDxf(sheet)], { type: 'application/dxf' }),
+      new Blob([dxfEnOctets(sheetToDxf(sheet))], { type: 'application/dxf' }),
       nomDeFichier(`${sheet.id}.dxf`),
     );
 
@@ -264,7 +274,8 @@ function PlanchesDuPoste({ poste }: { poste: Poste | 'tous' }): JSX.Element {
             type="button"
             className="primaire"
             onClick={exporterDossier}
-            disabled={enCours !== null}
+            disabled={enCours !== null || !aJour}
+            title={horsExport}
           >
             {enCours === 'dossier'
               ? 'Export en cours…'
@@ -273,7 +284,7 @@ function PlanchesDuPoste({ poste }: { poste: Poste | 'tous' }): JSX.Element {
                 : `Dossier du poste PDF (${sheets.length} pl.)`}
           </button>
           {(poste === 'percage' || poste === 'tolerie') && (
-            <button type="button" className="plat" onClick={exporterFichiersMachine}>
+            <button type="button" className="plat" onClick={exporterFichiersMachine} disabled={!aJour} title={horsExport}>
               {poste === 'percage' ? 'Fichiers DSTV (.zip)' : 'Fichiers DXF de découpe (.zip)'}
             </button>
           )}
@@ -282,13 +293,19 @@ function PlanchesDuPoste({ poste }: { poste: Poste | 'tous' }): JSX.Element {
               Modifier la planche
             </button>
           )}
-          <button type="button" className="plat" onClick={exporterPlanche}>
+          <button type="button" className="plat" onClick={exporterPlanche} disabled={!aJour} title={horsExport}>
             Planche PDF
           </button>
-          <button type="button" className="plat" onClick={exporterDxf}>
+          <button type="button" className="plat" onClick={exporterDxf} disabled={!aJour} title={horsExport}>
             Planche DXF
           </button>
         </div>
+
+        {erreurExport && (
+          <p className="note erreur" role="alert">
+            {erreurExport}
+          </p>
+        )}
 
         {edition ? (
           <Editeur key={generee.id} sheet={generee} retouches={parPlanche.get(generee.id)} fondClair={fondClair} onQuitter={() => setEdition(false)} />

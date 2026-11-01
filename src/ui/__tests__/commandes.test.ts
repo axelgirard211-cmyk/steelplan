@@ -126,6 +126,13 @@ describe('commandes de modification', () => {
     expect(transformer({ kind: 'cercle', c: pt(1, 0), r: 1, layer: 'contour' }, sc.affine)).toMatchObject({ c: { x: 2 }, r: 2 });
   });
 
+  it('refuse un miroir dont les deux points sont confondus', () => {
+    const r = jouer(REPOS, [T('MI'), P(5, 5), P(5, 5)], avecSel);
+    expect(r.actions).toHaveLength(0);
+    expect(r.etape).toMatchObject({ cmd: 'miroir', a: { x: 5, y: 5 } });
+    expect(jouer(r.etape, [P(5, 10)], avecSel).actions).toHaveLength(1);
+  });
+
   it('efface la sélection d’un coup', () => {
     expect(demarrer('effacer', avecSel).actions).toEqual([{ type: 'effacer' }]);
   });
@@ -171,5 +178,89 @@ describe('commandes qui désignent un objet', () => {
     const rect: DrawEntity = { kind: 'polyligne', points: [pt(0, 0), pt(10, 0), pt(10, 5), pt(0, 5)], fermee: true, layer: 'contour' };
     const r = demarrer('hachurer', { ...CTX, nbSelection: 1, selection: [rect] });
     expect(r.actions[0]).toMatchObject({ type: 'ajouter', entites: [{ kind: 'hachure', contour: rect.points }] });
+  });
+});
+
+describe('ajuster et prolonger : intersections exactes, droites parallèles', () => {
+  type Ligne = Extract<DrawEntity, { kind: 'ligne' }>;
+  const l = (x0: number, y0: number, x1: number, y1: number): Ligne => ({ kind: 'ligne', a: pt(x0, y0), b: pt(x1, y1), layer: 'contour' });
+  const clic = (x: number, y: number, cible: Ligne): Evenement => ({ type: 'point', p: pt(x, y), sous: { cle: 'a:cible', entite: cible } });
+  const remplacants = (actions: Action[]): Ligne[] => {
+    const a = actions[0];
+    if (a?.type !== 'remplacer') throw new Error(`pas de remplacement : ${JSON.stringify(actions)}`);
+    expect(a.cle).toBe('a:cible');
+    return a.par as Ligne[];
+  };
+  const proche = (p: { x: number; y: number }, x: number, y: number): void => {
+    expect(p.x).toBeCloseTo(x, 12);
+    expect(p.y).toBeCloseTo(y, 12);
+  };
+
+  it('ajuste au point d’intersection exact de traits obliques', () => {
+    /*
+     * Cible y = 0 de x = 0 à 10. Coupantes obliques :
+     *  (2, −3)→(5, 3) : y = 0 pour t = 1/2, donc x = 3,5 ;
+     *  (6, −1)→(8, 1) : y = 0 pour t = 1/2, donc x = 7.
+     * Un clic en x = 5 retire [3,5 ; 7] et laisse [0 ; 3,5] et [7 ; 10].
+     */
+    const cible = l(0, 0, 10, 0);
+    const traits = [cible, l(2, -3, 5, 3), l(6, -1, 8, 1)];
+    const { actions, etape } = jouer(REPOS, [T('AJ'), clic(5, 0.1, cible)], { ...CTX, traits });
+    const [g, d] = remplacants(actions);
+    proche(g!.a, 0, 0);
+    proche(g!.b, 3.5, 0);
+    proche(d!.a, 7, 0);
+    proche(d!.b, 10, 0);
+    // La commande reste ouverte pour le tronçon suivant, comme en DAO.
+    expect(etape).toMatchObject({ cmd: 'ajuster' });
+  });
+
+  it('ajuste un bout : il ne reste qu’un morceau', () => {
+    const cible = l(0, 0, 10, 0);
+    const { actions } = jouer(REPOS, [T('AJ'), clic(9, 0, cible)], { ...CTX, traits: [cible, l(2, -3, 5, 3), l(6, -1, 8, 1)] });
+    const par = remplacants(actions);
+    expect(par).toHaveLength(1);
+    proche(par[0]!.b, 7, 0);
+  });
+
+  it('prolonge une ligne oblique jusqu’à l’intersection exacte', () => {
+    // y = x/2 prolongée jusqu'à x = 6 : (6, 3).
+    const cible = l(0, 0, 2, 1);
+    const { actions } = jouer(REPOS, [T('PR'), clic(1.9, 0.95, cible)], { ...CTX, traits: [cible, l(6, -10, 6, 10), l(9, -10, 9, 10)] });
+    const [longue] = remplacants(actions);
+    proche(longue!.a, 0, 0);
+    proche(longue!.b, 6, 3);
+  });
+
+  it('prolonge par le bout le plus proche du clic', () => {
+    const cible = l(0, 0, 2, 1);
+    const { actions } = jouer(REPOS, [T('PR'), clic(0.1, 0.05, cible)], { ...CTX, traits: [cible, l(-4, -10, -4, 10), l(6, -10, 6, 10)] });
+    const [longue] = remplacants(actions);
+    proche(longue!.a, -4, -2);
+    proche(longue!.b, 2, 1);
+  });
+
+  it('refuse d’ajuster une ligne que seuls des traits parallèles longent', () => {
+    const cible = l(0, 0, 10, 0);
+    const paralleles = [l(0, 2, 10, 2), l(-5, -1, 15, -1), l(3, 0.5, 7, 0.5)];
+    const { actions, messages, etape } = jouer(REPOS, [T('AJ'), clic(5, 0, cible)], { ...CTX, traits: [cible, ...paralleles] });
+    expect(actions).toEqual([]);
+    expect(messages[0]).toMatch(/aucun trait ne coupe/);
+    expect(etape).toMatchObject({ cmd: 'ajuster' });
+  });
+
+  it('refuse de prolonger vers des traits parallèles, même obliques', () => {
+    const cible = l(0, 0, 2, 1);
+    const paralleles = [l(0, 3, 2, 4), l(10, 0, 14, 2)];
+    const { actions, messages } = jouer(REPOS, [T('PR'), clic(1.9, 0.95, cible)], { ...CTX, traits: [cible, ...paralleles] });
+    expect(actions).toEqual([]);
+    expect(messages[0]).toMatch(/ne rencontre aucun trait/);
+  });
+
+  it('refuse de prolonger quand le seul trait est de l’autre côté', () => {
+    const cible = l(0, 0, 2, 1);
+    const { actions, messages } = jouer(REPOS, [T('PR'), clic(1.9, 0.95, cible)], { ...CTX, traits: [cible, l(-4, -10, -4, 10)] });
+    expect(actions).toEqual([]);
+    expect(messages[0]).toMatch(/ne rencontre aucun trait/);
   });
 });

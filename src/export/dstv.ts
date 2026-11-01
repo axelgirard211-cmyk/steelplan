@@ -30,6 +30,37 @@ import { sectionOutline } from '../core/geometry/section';
  * contrôler une pièce : la faire percer, la mesurer, comparer au plan de débit.
  */
 
+/**
+ * Longueur maximale des champs d'identification de l'en-tête ST.
+ *
+ * ⚠ Volontairement large : tronquer court (10 caractères) pouvait donner le
+ * MÊME repère à deux pièces différentes, ce qui est pire qu'un champ long que
+ * la machine coupera elle-même. Seul l'emballement est borné ici.
+ */
+export const LONGUEUR_IDENTIFIANT = 64;
+/** Longueur maximale du champ nuance de l'en-tête ST. */
+const LONGUEUR_NUANCE = 16;
+
+/**
+ * Texte saisi par l'utilisateur, rendu sûr pour une ligne de l'en-tête ST.
+ *
+ * ⚠ L'en-tête est positionnel : un retour à la ligne dans le nom du projet
+ * créait une ligne de plus et DÉCALAIT tous les champs suivants — la machine
+ * lisait alors la quantité comme une désignation et la longueur comme une
+ * hauteur. Caractères de contrôle et séparateurs de ligne sont remplacés par
+ * une espace, le champ est tronqué à la longueur du format, et un champ vide
+ * reçoit son repli plutôt que de laisser une ligne blanche.
+ */
+export function champTexte(v: string | undefined, repli: string, max = LONGUEUR_IDENTIFIANT): string {
+  const propre = (v ?? '')
+    .replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  // Troncature par points de code : une lettre accentuée ne se coupe pas en deux.
+  const tronque = Array.from(propre).slice(0, max).join('').trim();
+  return tronque || repli;
+}
+
 /** Faces d'un profil, notation DSTV. */
 type Face = 'v' | 'o' | 'u' | 'h';
 
@@ -109,11 +140,11 @@ export function elementToDstv(e: PieceDeDebit, opts: OptionsDstv): string | null
    */
   lignes.push(
     ...[
-      opts.meta.nom || 'SteelPlan', // commande
-      opts.meta.chantier || opts.meta.nom || 'SteelPlan', // dessin
-      opts.phase ?? '1', // phase
-      m.mark, // repère de la pièce
-      m.grade, // nuance
+      champTexte(opts.meta.nom, 'SteelPlan'), // commande
+      champTexte(opts.meta.chantier, champTexte(opts.meta.nom, 'SteelPlan')), // dessin
+      champTexte(opts.phase, '1'), // phase
+      champTexte(m.mark, '-'), // repère de la pièce
+      champTexte(m.grade, '-', LONGUEUR_NUANCE), // nuance
       String(e.quantite), // quantité
       p.id, // désignation du profil
       code, // code de forme

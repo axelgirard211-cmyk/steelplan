@@ -24,7 +24,8 @@ export function hatchLines(
   pas: number,
   angleDeg: number,
 ): Segment[] {
-  if (contour.length < 3 || pas <= 0) return [];
+  // `!(pas > 0)` écarte aussi NaN, que `pas <= 0` laissait passer.
+  if (contour.length < 3 || !(pas > 0)) return [];
 
   const a = deg2rad(angleDeg);
   const cos = Math.cos(a);
@@ -42,7 +43,8 @@ export function hatchLines(
   // hachurées voisines restent alignées, ce qui se voit tout de suite à l'œil.
   const k0 = Math.ceil(yMin / pas);
   const k1 = Math.floor(yMax / pas);
-  if (k1 < k0) return [];
+  // Plafond de défense : au-delà, ce n'est plus une hachure, c'est un aplat figé.
+  if (k1 < k0 || k1 - k0 > 20_000) return [];
 
   const out: Segment[] = [];
   for (let k = k0; k <= k1; k++) {
@@ -91,7 +93,8 @@ export function flattenArc(
   if (r <= 0 || balayage < 1e-9) return [];
   // Flèche f = r(1 − cos(Δ/2)) ⇒ Δ = 2·acos(1 − f/r)
   const dMax = r > flecheMax ? 2 * Math.acos(1 - flecheMax / r) : Math.PI / 4;
-  const n = Math.max(2, Math.ceil(balayage / dMax));
+  // Borné : un balayage de 10¹² radians ne doit pas allouer 10¹² points.
+  const n = Math.min(4096, Math.max(2, Math.ceil(balayage / dMax)));
   return Array.from({ length: n + 1 }, (_, i) => {
     const t = a0 + ((a1 - a0) * i) / n;
     return pt(c.x + r * Math.cos(t), c.y + r * Math.sin(t));

@@ -44,6 +44,20 @@ interface Effectif {
 
 let cacheEffectif: Effectif | null = null;
 let dernierValide: { projet: ProjectParams; modele: StructuralModel } | null = null;
+let chargementConnu = 0;
+
+/**
+ * ⚠ Le dernier état valide appartient au projet OÙ il a été obtenu. Ouvrir un
+ * projet B fautif après un projet A valide laissait les vues — et les exports —
+ * sur A : un dossier de plans d'un autre bâtiment, sous le nom de B.
+ */
+function oublierSiAutreProjet(): void {
+  const n = useProjectStore.getState().chargement;
+  if (n === chargementConnu) return;
+  chargementConnu = n;
+  dernierValide = null;
+  cacheEffectif = null;
+}
 
 function repli(): { projet: ProjectParams; modele: StructuralModel } {
   /*
@@ -71,6 +85,7 @@ function memeHorsRetouches(a: ProjectParams, b: ProjectParams): boolean {
 }
 
 function effectif(p: ProjectParams): Effectif {
+  oublierSiAutreProjet();
   if (cacheEffectif && (cacheEffectif.saisi === p || memeHorsRetouches(cacheEffectif.saisi, p))) return cacheEffectif;
 
   const erreurs = validateProject(p).filter((i: Issue) => i.level === 'erreur');
@@ -136,6 +151,10 @@ export function projetEffectif(p: ProjectParams): ProjectParams {
 export function useProjetEffectif(): ProjectParams {
   return effectif(useProjectStore((s) => s.project)).projet;
 }
+
+/** Infobulle des exports refusés tant que la saisie est invalide. */
+export const SAISIE_INVALIDE =
+  'Saisie invalide : l’export ne correspondrait pas à la saisie. Corrigez-la dans l’onglet Projet.';
 
 /** Les vues montrent-elles la saisie, et sinon pourquoi ? */
 export function useEtatModele(): EtatModele {

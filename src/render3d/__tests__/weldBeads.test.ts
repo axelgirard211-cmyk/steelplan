@@ -17,13 +17,27 @@ import type { Vec3 } from '../../core/math/vec3';
 const P = DEFAULT_PROJECT;
 const model = buildProject(P);
 
+/*
+ * ⚠ RAPIDITÉ. Le maillage compte des centaines de milliers de coordonnées ; un
+ * `expect` par coordonnée coûtait plus que le maillage lui-même. Chaque
+ * coordonnée est toujours contrôlée, mais on ne rapporte que la PREMIÈRE
+ * fautive, avec son rang — ce qui suffit à la retrouver. Le maillage du projet
+ * par défaut est construit une fois et partagé.
+ */
+/** Rang de la première coordonnée non finie, −1 s'il n'y en a pas. */
+function premiereNonFinie(c: Float32Array): number {
+  for (let i = 0; i < c.length; i++) if (!Number.isFinite(c[i] as number)) return i;
+  return -1;
+}
+
 function coordonnees(g: ReturnType<typeof weldBeadGeometry>): Float32Array {
   const attr = g?.getAttribute('position');
   return (attr?.array as Float32Array) ?? new Float32Array();
 }
 
+const g = weldBeadGeometry(model);
+
 describe('maillage des cordons', () => {
-  const g = weldBeadGeometry(model);
 
   it('existe dès que le modèle porte des soudures', () => {
     expect(model.welds.length).toBeGreaterThan(0);
@@ -38,17 +52,24 @@ describe('maillage des cordons', () => {
   });
 
   it('ne produit aucune coordonnée non finie', () => {
-    for (const v of coordonnees(g)) expect(Number.isFinite(v)).toBe(true);
+    const c = coordonnees(g);
+    const i = premiereNonFinie(c);
+    expect(i, `coordonnée ${i} : ${c[i]}`).toBe(-1);
   });
 
   it('reste dans l’emprise du bâtiment', () => {
     // Un cordon hors du bâtiment signalerait une tôle rattachée au mauvais about.
     const c = coordonnees(g);
     const marge = 600;
-    for (let i = 0; i < c.length; i += 3) {
-      expect(c[i + 2] as number).toBeGreaterThan(-marge);
-      expect(c[i + 2] as number).toBeLessThan(P.grid.eaveHeight + 3000 + marge);
+    const zMax = P.grid.eaveHeight + 3000 + marge;
+    let hors = -1;
+    for (let i = 0; i < c.length && hors < 0; i += 3) {
+      const z = c[i + 2] as number;
+      // Écrit à l'envers pour qu'un NaN soit lui aussi « hors ».
+      if (!(z > -marge && z < zMax)) hors = i;
     }
+    expect(hors, `sommet ${hors / 3} à z = ${c[hors + 2]}`).toBe(-1);
+    expect(c.length).toBeGreaterThan(0);
   });
 
   it('se dépose au contact des pièces qu’il assemble, non au milieu des barres', () => {
@@ -109,7 +130,9 @@ describe('robustesse', () => {
       const g = weldBeadGeometry(m);
       if (m.welds.length === 0) continue;
       expect(g, t.id).not.toBeNull();
-      for (const v of coordonnees(g)) expect(Number.isFinite(v), t.id).toBe(true);
+      const c = coordonnees(g);
+      const i = premiereNonFinie(c);
+      expect(i, `${t.id} : coordonnée ${i} : ${c[i]}`).toBe(-1);
     }
   });
 
@@ -117,7 +140,6 @@ describe('robustesse', () => {
     // Autant de cordons tracés que de cordons au modèle : aucun n'est
     // silencieusement ignoré parce que sa nature ne serait pas prévue — c'était
     // le cas des jarrets et des échantignolles, devenus soudés.
-    const g = weldBeadGeometry(model);
     expect(new Set(g?.userData.cordons as string[])).toEqual(new Set(model.welds.map((w) => w.id)));
   });
 });

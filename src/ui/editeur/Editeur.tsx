@@ -154,7 +154,7 @@ export function Editeur({
   const accroche = vise?.accroche ?? null;
   const curseur: Pt | null = vise?.p ?? null;
 
-  const ctx: Contexte = { echelle: sheet.echelle, curseur: curseur ?? pt(0, 0), nbSelection: selection.size, calque, hauteurTexte, traits, selection: choisis.map((el) => el.source) };
+  const ctx: Contexte = { echelle: sheet.echelle, curseur: curseur ?? pt(0, 0), nbSelection: choisis.length, calque, hauteurTexte, traits, selection: choisis.map((el) => el.source) };
 
   /** Élément sous le pointeur : celui qu'un clic désignerait. */
   const designe = (p: Pt): ElementEditable | null => {
@@ -186,7 +186,9 @@ export function Editeur({
 
   const appliquer = (actions: readonly Action[]): void => {
     const { retouches: r2, libelle, vider } = appliquerActions(r, actions, choisis, elements);
-    if (r2 !== r) ecrire(libelle, r2);
+    // ⚠ Un nouvel objet n'est pas un changement : comparé par contenu, sans quoi
+    // une action sans effet laissait une étape d'annulation vide.
+    if (r2 !== r && JSON.stringify(r2) !== JSON.stringify(r)) ecrire(libelle, r2);
     if (vider) setSelection(new Set());
   };
 
@@ -247,7 +249,7 @@ export function Editeur({
       if (chaude) setChaude(null);
       else if (etape.cmd === 'repos') setSelection(new Set());
       else traiter(avancer(etape, { type: 'echap' }, ctx));
-    } else if ((e.key === 'Delete' || e.key === 'Backspace') && saisie === '' && etape.cmd === 'repos' && selection.size > 0) {
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && saisie === '' && etape.cmd === 'repos' && choisis.length > 0) {
       e.preventDefault();
       lancer('effacer');
     } else if (e.key === 'F8') {
@@ -362,7 +364,7 @@ export function Editeur({
   };
 
   const bouton = (o: NomCommande): JSX.Element => (
-    <button key={o} type="button" className={`plat${etape.cmd === o ? ' actif' : ''}`} onClick={() => lancer(o)} title={`${LIBELLE_COMMANDE[o]} (${Object.entries(ALIAS).find(([, n]) => n === o)?.[0] ?? ''})`}>
+    <button key={o} type="button" className={`plat${etape.cmd === o ? ' actif' : ''}`} aria-pressed={etape.cmd === o} onClick={() => lancer(o)} title={`${LIBELLE_COMMANDE[o]} (${Object.entries(ALIAS).find(([, n]) => n === o)?.[0] ?? ''})`}>
       {LIBELLE_COMMANDE[o]}
     </button>
   );
@@ -376,10 +378,10 @@ export function Editeur({
         <span className="groupe-outils">Modifier</span>
         {MODIFICATION.map(bouton)}
         <span className="separateur" />
-        <button type="button" className={`plat${accrochageActif ? ' actif' : ''}`} onClick={() => setAccrochage((a) => !a)} title="F3">
+        <button type="button" className={`plat${accrochageActif ? ' actif' : ''}`} aria-pressed={accrochageActif} onClick={() => setAccrochage((a) => !a)} title="F3">
           Accrochage
         </button>
-        <button type="button" className={`plat${orthoActif ? ' actif' : ''}`} onClick={() => setOrtho((o) => !o)} title="F8">
+        <button type="button" className={`plat${orthoActif ? ' actif' : ''}`} aria-pressed={orthoActif} onClick={() => setOrtho((o) => !o)} title="F8">
           Ortho
         </button>
         <button type="button" className="plat" onClick={toutVoir}>

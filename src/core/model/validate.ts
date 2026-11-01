@@ -2,8 +2,9 @@ import { findProfile } from '../catalog/index';
 import { rad2deg } from '../math/tolerance';
 import { minEdgeDistance, minGauge, minPitch, positionsDesAncrages, tigeDAncrage, type EndPlateParams } from './connections';
 import { grilleDePlatine, semellesDerrierePlatine } from '../geometry/holes';
-import { bracedBays } from './bracing';
-import { buildingLength, leftSlopeRad, rafterLength, ridgeY, rightSlopeRad } from './grid';
+import { defautsDesTravees, dilatation } from './bracing';
+import { leftSlopeRad, rafterLength, ridgeHeight, ridgeY, rightSlopeRad } from './grid';
+import { barresEstimees, PLAFONDS } from './plafonds';
 import type { ProjectParams } from './project';
 import { CLASSES_EXECUTION } from './atelier';
 
@@ -121,12 +122,25 @@ export function validateProject(p: ProjectParams): Issue[] {
   positif('grid.baySpacing', g.baySpacing, "L'entraxe des portiques");
   positif('grid.span', g.span, 'La portée');
   positif('grid.eaveHeight', g.eaveHeight, "La hauteur à l'égout");
+  /*
+   * ⚠ PLAFONDS MÉTIER, bloquants. La génération est synchrone : un fichier à
+   * 2 000 travées figeait l'onglet avant le moindre message. Les bornes restent
+   * larges — aucun hangar réel ne les approche.
+   */
+  const plafond = (path: string, v: number, max: number, message: string) => {
+    if (v > max) err(path, message);
+  };
+  plafond('grid.nBays', g.nBays, PLAFONDS.travees, `Au plus ${PLAFONDS.travees} travées : recouper le bâtiment par des joints.`);
+  plafond('grid.baySpacing', g.baySpacing, PLAFONDS.entraxe, `Entraxe des portiques limité à ${PLAFONDS.entraxe / 1000} m.`);
+  plafond('grid.span', g.span, PLAFONDS.portee, `Portée limitée à ${PLAFONDS.portee / 1000} m.`);
+  plafond('grid.eaveHeight', g.eaveHeight, PLAFONDS.hauteur, `Hauteur à l'égout limitée à ${PLAFONDS.hauteur / 1000} m.`);
 
   for (const [path, rad] of [
     ['grid.slope', leftSlopeRad(g)],
     ['grid.slopeRight', rightSlopeRad(g)],
   ] as const) {
     if (rad <= 0) err(path, 'La pente doit être strictement positive.');
+    else if (rad >= Math.PI / 2) err(path, 'La pente doit rester inférieure à 90°.');
     else if (rad > Math.PI / 4) {
       warn(path, `Pente de ${rad2deg(rad).toFixed(1)}° : inhabituelle en bâtiment industriel.`);
     }
@@ -140,6 +154,10 @@ export function validateProject(p: ProjectParams): Issue[] {
    * deux fautes affichées pour une seule saisie. Les contrôles qui dépendent de
    * la trame attendent qu'elle soit juste.
    */
+  // Une pente raide sur une grande portée monte le faîtage sans limite.
+  if (!out.some((i) => i.level === 'erreur' && i.path.startsWith('grid.')) && !(ridgeHeight(g) <= PLAFONDS.faitage)) {
+    err('grid.slope', `Faîtage à plus de ${PLAFONDS.faitage / 1000} m : réduire la pente ou la portée.`);
+  }
   const trameValide = !out.some((i) => i.level === 'erreur' && i.path.startsWith('grid.'));
 
   /* --- Structure principale ---------------------------------------- */
@@ -181,6 +199,7 @@ export function validateProject(p: ProjectParams): Issue[] {
     if (!Number.isInteger(t.nPanels) || t.nPanels < 2) {
       err('truss.nPanels', 'Une ferme treillis compte au moins 2 panneaux.');
     }
+    plafond('truss.nPanels', t.nPanels, PLAFONDS.panneaux, `Une ferme compte au plus ${PLAFONDS.panneaux} panneaux.`);
     if (t.type === 'warren' && t.nPanels % 2 !== 0) {
       warn('truss.nPanels', 'Un treillis Warren se répartit mieux sur un nombre pair de panneaux.');
     }
@@ -226,6 +245,7 @@ export function validateProject(p: ProjectParams): Issue[] {
       if (s.purlins.sagBars.rows < 1) {
         err('secondary.purlins.sagBars.rows', 'Au moins une file de liernes doit être posée si elles sont activées.');
       }
+      plafond('secondary.purlins.sagBars.rows', s.purlins.sagBars.rows, PLAFONDS.filesLiernes, `Au plus ${PLAFONDS.filesLiernes} files de liernes par travée.`);
     }
   }
   if (s.rails.enabled) {
@@ -239,6 +259,20 @@ export function validateProject(p: ProjectParams): Issue[] {
     positif('secondary.gablePosts.courseTete', s.gablePosts.courseTete, 'La course des oblongs de tête de potelet');
   }
 
+  /*
+   * ⚠ GARDE SUR LE NOMBRE DE BARRES. Les plafonds de trame ne suffisent pas : un
+   * entraxe de pannes de 1 mm sur 100 m de rampant en génère 100 000 par travée.
+   * Le compte est estimé à partir des seuls paramètres, AVANT toute génération.
+   */
+  if (trameValide) {
+    const { total, principal } = barresEstimees(p);
+    if (!(total <= PLAFONDS.barres)) {
+      err(principal, `Environ ${Number.isFinite(total) ? Math.round(total) : '∞'} barres à générer (au plus ${PLAFONDS.barres}) : augmenter l’entraxe ou réduire le nombre d’éléments.`);
+    }
+  }
+  plafond('ouvertures.items', p.ouvertures.items.length, PLAFONDS.ouvertures, `Au plus ${PLAFONDS.ouvertures} ouvertures.`);
+  plafond('freeMembers', p.freeMembers.length, PLAFONDS.barresLibres, `Au plus ${PLAFONDS.barresLibres} barres libres.`);
+
   /* --- Contreventements -------------------------------------------- */
   for (const [path, set] of [
     ['bracing.roof', p.bracing.roof],
@@ -247,9 +281,7 @@ export function validateProject(p: ProjectParams): Issue[] {
   ] as const) {
     if (!set.enabled) continue;
     profil(`${path}.profile`, set.profile);
-    for (const b of set.bays) {
-      if (trameValide && (b < 0 || b >= g.nBays)) err(`${path}.bays`, `Travée ${b} inexistante (le bâtiment en compte ${g.nBays}).`);
-    }
+    for (const m of defautsDesTravees(set.bays, trameValide ? g.nBays : null)) err(`${path}.bays`, m);
   }
   if (!p.bracing.roof.enabled && !p.bracing.wall.enabled) {
     warn('bracing', 'Aucun contreventement : la stabilité longitudinale du bâtiment n’est pas assurée.');
@@ -260,6 +292,8 @@ export function validateProject(p: ProjectParams): Issue[] {
   const platine = (path: string, e: EndPlateParams) => {
     positif(`${path}.thickness`, e.thickness, "L'épaisseur de platine");
     if (e.rows < 2) err(`${path}.rows`, 'Une platine d’about comporte au moins 2 rangées de boulons.');
+    plafond(`${path}.rows`, e.rows, PLAFONDS.rangees, `Au plus ${PLAFONDS.rangees} rangées de boulons par platine.`);
+    plafond(`${path}.cols`, e.cols, PLAFONDS.filesBoulons, `Au plus ${PLAFONDS.filesBoulons} files de boulons par platine.`);
     const eMin = minEdgeDistance(e.bolt);
     if (e.edgeDistance < eMin) {
       err(`${path}.edgeDistance`, `Pince de ${e.edgeDistance} mm inférieure au minimum EN 1993-1-8 (${eMin.toFixed(0)} mm pour un M${e.bolt.d}).`);
@@ -272,13 +306,25 @@ export function validateProject(p: ProjectParams): Issue[] {
   platine('connections.rafterToColumn', p.connections.rafterToColumn);
   platine('connections.ridge', p.connections.ridge);
 
+  // Éclisse posée : bornée comme une platine (un million de rangées figeait la génération).
+  if (p.connections.splice.enabled) {
+    const sp = p.connections.splice;
+    positif('connections.splice.thickness', sp.thickness, "L'épaisseur d'éclisse");
+    if (sp.rows < 2) err('connections.splice.rows', 'Une éclisse comporte au moins 2 rangées de boulons.');
+    plafond('connections.splice.rows', sp.rows, PLAFONDS.rangees, `Au plus ${PLAFONDS.rangees} rangées de boulons par éclisse.`);
+  }
+
   /*
    * ⚠ Les rangées doivent TENIR sur la platine : entre les deux pinces, à 2,2 d0
    * l'une de l'autre au moins, et hors des semelles de la traverse. Six rangées
    * de M20 sur un IPE 240 se touchaient, et rien ne le disait.
    */
   const rafter = findProfile(p.frame.rafterProfile);
-  if (trameValide && p.frame.enabled && rafter && rafter.shape === 'I') {
+  // Une grille démesurée est déjà refusée plus haut : ne pas la construire.
+  const grillesRaisonnables = [p.connections.rafterToColumn, p.connections.ridge].every(
+    (e) => e.rows <= PLAFONDS.rangees && e.cols <= PLAFONDS.filesBoulons,
+  );
+  if (trameValide && grillesRaisonnables && p.frame.enabled && rafter && rafter.shape === 'I') {
     const cosA = Math.cos(leftSlopeRad(p.grid));
     for (const [path, e, haunch] of [
       ['connections.rafterToColumn', p.connections.rafterToColumn, p.frame.haunch],
@@ -317,7 +363,7 @@ export function validateProject(p: ProjectParams): Issue[] {
 
   const cb = p.connections.columnBase;
   positif('connections.columnBase.thickness', cb.thickness, "L'épaisseur de platine de pied");
-  if (p.frame.enabled) {
+  if (p.frame.enabled && cb.anchorCount <= PLAFONDS.ancrages) {
     const col = findProfile(p.frame.columnProfile);
     if (col && cb.length < col.h) {
       err('connections.columnBase.length', `Platine de pied (${cb.length} mm) plus courte que la hauteur du poteau ${col.id} (${col.h} mm).`);
@@ -339,6 +385,10 @@ export function validateProject(p: ProjectParams): Issue[] {
         `Tiges d'ancrage sous le poteau ${col.id} : allongez la platine de pied (${cb.length} mm) — il faut au moins ${Math.ceil(col.h / 2 + cle)} mm de l'axe à chaque tige.`,
       );
     }
+  }
+  plafond('connections.columnBase.anchorCount', cb.anchorCount, PLAFONDS.ancrages, `Au plus ${PLAFONDS.ancrages} tiges d’ancrage par pied.`);
+  if (!Number.isInteger(cb.anchorCount) || cb.anchorCount < 1) {
+    err('connections.columnBase.anchorCount', 'Le nombre de tiges d’ancrage est un entier, au moins 1.');
   }
   if (p.frame.baseFixity === 'encastre' && cb.anchorCount < 4) {
     err('connections.columnBase.anchorCount', 'Un pied encastré demande au moins 4 tiges d’ancrage.');
@@ -412,47 +462,3 @@ export function validateProject(p: ProjectParams): Issue[] {
 export function isValid(issues: readonly Issue[]): boolean {
   return !issues.some((i) => i.level === 'erreur');
 }
-
-/** Dilatation d'une ossature acier : α ≈ 12·10⁻⁶ /K (EN 1993-1-1 §3.2.6). */
-const ALPHA_ACIER = 12e-6;
-/** Écart de température retenu pour donner un ORDRE DE GRANDEUR du mouvement (K). */
-const ECART_INDICATIF = 30;
-/** Longueur au-delà de laquelle la SCI (P070) recommande un joint de dilatation. */
-const LONGUEUR_SANS_JOINT = 100_000;
-/** Distance entre palées d'extrémité à partir de laquelle SteelPlan le signale (repère indicatif). */
-const PALEES_ELOIGNEES = 60_000;
-
-/**
- * ⚠ BÂTIMENT LONG. Un hangar de 120 m sortait avec ses deux seules palées
- * d'extrémité, sans un mot : rien ne disait ni qu'un joint de dilatation est
- * d'usage à cette longueur, ni que deux palées aux pignons BRIDENT la file entre
- * elles. Une palée centrale laisse au contraire le bâtiment se dilater vers les
- * deux pignons. SteelPlan ne modélise ni joint ni action thermique : il le dit.
- */
-function dilatation(p: ProjectParams, warn: (path: string, message: string) => void): void {
-  const g = p.grid;
-  const L = buildingLength(g);
-  const m = (v: number): string => (v / 1000).toFixed(0);
-  if (L > LONGUEUR_SANS_JOINT) {
-    warn(
-      'grid.nBays',
-      `Bâtiment de ${m(L)} m d’un seul tenant : au-delà d’environ 100 m, l’usage est de le recouper par un joint de dilatation (SCI P070), ou de justifier les actions thermiques (EN 1991-1-5). SteelPlan ne modélise ni joint ni effet thermique.`,
-    );
-  }
-  const palees = bracedBays(p.bracing.wall, g.nBays);
-  if (palees.length < 2) return;
-  const x = (b: number): number => (b + 0.5) * g.baySpacing;
-  const premiere = Math.min(...palees);
-  const derniere = Math.max(...palees);
-  const ecart = x(derniere) - x(premiere);
-  const auCentre = palees.some((b) => x(b) > L / 3 && x(b) < (2 * L) / 3);
-  if (ecart > PALEES_ELOIGNEES && !auCentre) {
-    const bride = ALPHA_ACIER * ecart * ECART_INDICATIF;
-    const centrale = Math.floor(g.nBays / 2) + 1;
-    warn(
-      'bracing.wall.bays',
-      `Palées de stabilité distantes de ${m(ecart)} m, aucune en partie centrale : la dilatation de la file est bridée entre elles (≈ ${bride.toFixed(0)} mm pour ${ECART_INDICATIF} K d’écart). Une palée en travée centrale (travée ${centrale}) laisse le bâtiment se dilater vers les pignons ; sinon, justifier les efforts thermiques dans les sablières et les palées.`,
-    );
-  }
-}
-

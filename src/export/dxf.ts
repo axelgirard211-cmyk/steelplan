@@ -68,6 +68,8 @@ export function sheetToDxf(sheet: Pick<Sheet, 'scene'>, noms: Partial<Record<Lay
   g(70, 4); // 4 = millimètres
   g(9, '$MEASUREMENT');
   g(70, 1); // système métrique
+  g(9, '$DWGCODEPAGE');
+  g(3, 'ANSI_1252'); // les octets sont écrits en Windows-1252 : voir dxfEnOctets
   g(0, 'ENDSEC');
 
   /* --- Tables : types de ligne et calques --- */
@@ -146,17 +148,22 @@ function ecrireEntite(g: Emit, e: DrawEntity, nom: (c: Layer) => string): void {
       g(40, n(e.r));
       break;
 
-    case 'arc':
-      // L'arc DXF se donne par ses angles en DEGRÉS, dans le sens trigonométrique.
+    case 'arc': {
+      // L'arc DXF se donne par ses angles en DEGRÉS, et se trace TOUJOURS dans
+      // le sens trigonométrique de 50 vers 51. Un arc horaire (a1 < a0, comme
+      // le PDF le parcourt) s'écrit donc angles permutés : sinon la CAO
+      // dessinerait l'arc complémentaire.
+      const [debut, fin] = e.a1 < e.a0 ? [e.a1, e.a0] : [e.a0, e.a1];
       g(0, 'ARC');
       g(8, calque);
       g(10, n(e.c.x));
       g(20, n(e.c.y));
       g(30, 0);
       g(40, n(e.r));
-      g(50, n(normaliserDeg((e.a0 * 180) / Math.PI)));
-      g(51, n(normaliserDeg((e.a1 * 180) / Math.PI)));
+      g(50, n(normaliserDeg((debut * 180) / Math.PI)));
+      g(51, n(normaliserDeg((fin * 180) / Math.PI)));
       break;
+    }
 
     case 'remplissage':
       // Un masque blanc sous un repère n'a pas d'équivalent en R12 : un SOLID
@@ -257,6 +264,26 @@ function n(v: number): number {
 function normaliserDeg(a: number): number {
   const m = a % 360;
   return m < 0 ? m + 360 : m;
+}
+
+/** Caractères de Windows-1252 entre 0x80 et 0x9F, dans l'ordre des octets (0x81, 0x8D, 0x8F, 0x90, 0x9D vacants). */
+const CP1252_80_9F = '€\u0081‚ƒ„…†‡ˆ‰Š‹Œ\u008DŽ\u008F\u0090‘’“”•–—˜™š›œ\u009DžŸ';
+
+/**
+ * Le texte DXF en octets Windows-1252, comme l'annonce $DWGCODEPAGE.
+ *
+ * ⚠ `versCp1252` ramène le texte au jeu de caractères, mais une chaîne JS
+ * passée à un Blob ou au TextEncoder part en UTF-8 : « É » y devenait deux
+ * octets, que la CAO lisait « Ã‰ ». L'encodage se fait donc ici, octet par octet.
+ */
+export function dxfEnOctets(dxf: string): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(dxf.length);
+  for (let i = 0; i < dxf.length; i++) {
+    const code = dxf.charCodeAt(i);
+    const special = CP1252_80_9F.indexOf(dxf.charAt(i));
+    out[i] = code < 0x80 || (code >= 0xa0 && code <= 0xff) ? code : special >= 0 ? 0x80 + special : 0x3f; // « ? »
+  }
+  return out;
 }
 
 /** Aplatit un arc, exposé pour les moteurs qui ne savent pas en tracer. */
