@@ -155,14 +155,16 @@ export function Edition3d(): JSX.Element {
     <div className="edition3d">
       <div className="edition3d-vue">
         <div className="edition3d-outils">
-          {VUES.map(([v, l]) => (
-            <button key={v} type="button" className="plat" onClick={() => scene.current?.setView(v)}>
-              {l}
+          <div className="segment" role="group" aria-label="Point de vue">
+            {VUES.map(([v, l]) => (
+              <button key={v} type="button" onClick={() => scene.current?.setView(v)}>
+                {l}
+              </button>
+            ))}
+            <button type="button" onClick={() => scene.current?.recadrer()}>
+              Recadrer
             </button>
-          ))}
-          <button type="button" className="plat" onClick={() => scene.current?.recadrer()}>
-            Recadrer
-          </button>
+          </div>
           <button type="button" className="plat" onClick={() => selection && scene.current?.cadrerSur(selection)} disabled={!selection}>
             Cadrer sur la sélection
           </button>

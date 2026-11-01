@@ -44,7 +44,9 @@ export function libelleDeLaLigne(dt: Element): { libelle: string; ligne: string 
   const ligne = texte.replace(/^—\s*/, '');
   if (!texte.startsWith('—')) return { libelle: ligne, ligne };
   let r = dt.previousElementSibling;
-  while (r && !(r.tagName === 'DT' && !(r.textContent ?? '').trim().startsWith('—'))) r = r.previousElementSibling;
+  // Le repli des réglages fins n'est le libellé de personne.
+  const titre = (e: Element): boolean => e.tagName === 'DT' && !e.classList.contains('reglages-fins') && !(e.textContent ?? '').trim().startsWith('—');
+  while (r && !titre(r)) r = r.previousElementSibling;
   return { libelle: r ? `${(r.textContent ?? '').trim()} — ${ligne}` : ligne, ligne };
 }
 
@@ -54,7 +56,7 @@ export function libelleDeLaLigne(dt: Element): { libelle: string; ligne: string 
  */
 export function marquerLesAides(racine: ParentNode): void {
   for (const dt of racine.querySelectorAll('dl.paires > dt')) {
-    if (dt.hasAttribute('data-aide')) continue;
+    if (dt.hasAttribute('data-aide') || dt.classList.contains('reglages-fins')) continue;
     const { libelle, ligne } = libelleDeLaLigne(dt);
     const aide = aideDuChamp(libelle, ligne, dt.closest('.fiche')?.querySelector('h3')?.textContent ?? '');
     if (!aide) continue;

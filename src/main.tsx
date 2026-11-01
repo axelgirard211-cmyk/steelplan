@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App, themeMemorise } from './App';
 import './ui/theme/global.css';
 import './ui/theme/finitions.css';
+import './ui/theme/onglets.css';
 
 /*
  * Le thème retenu est posé AVANT le premier rendu. Appliqué seulement par

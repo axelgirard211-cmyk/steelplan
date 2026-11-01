@@ -156,17 +156,22 @@ export function Vue3dPanel(): JSX.Element {
 
   return (
     <section className="principal vue3d">
-      <div className="barre-outils">
-        {VUES.map((v) => (
-          <button key={v.id} type="button" className="plat" onClick={() => scene.current?.setView(v.id)}>
-            {v.label}
+      {/*
+        * UNE barre, en groupes : le point de vue, l'apparence, les outils, l'export.
+        * Les actions sur la pièce sélectionnée ont rejoint sa fiche — grisées en
+        * permanence ici, elles ne servaient qu'une fois une pièce cliquée.
+        */}
+      <div className="barre-outils barre-3d">
+        <div className="segment" role="group" aria-label="Point de vue">
+          {VUES.map((v) => (
+            <button key={v.id} type="button" onClick={() => scene.current?.setView(v.id)}>
+              {v.label}
+            </button>
+          ))}
+          <button type="button" onClick={() => scene.current?.recadrer()} title="Recadrer sur tout le bâtiment">
+            Recadrer
           </button>
-        ))}
-        <button type="button" className="plat" onClick={() => scene.current?.recadrer()}>
-          Recadrer
-        </button>
-
-        <span className="separateur" />
+        </div>
 
         <label className="etiquette">
           Couleurs
@@ -179,92 +184,81 @@ export function Vue3dPanel(): JSX.Element {
           </select>
         </label>
 
-        <label className="etiquette">
-          <input type="checkbox" checked={grille} onChange={(e) => setGrille(e.target.checked)} /> Grille
-        </label>
-        <label className="etiquette">
-          <input type="checkbox" checked={aretes} onChange={(e) => setAretes(e.target.checked)} /> Arêtes
-        </label>
-        <label className="etiquette">
-          <input
-            type="checkbox"
-            checked={modeMesure}
-            onChange={(e) => setModeMesure(e.target.checked)}
-          />{' '}
-          Mesurer
-        </label>
+        <div className="groupe-cases">
+          <label className="etiquette">
+            <input type="checkbox" checked={grille} onChange={(e) => setGrille(e.target.checked)} /> Grille
+          </label>
+          <label className="etiquette">
+            <input type="checkbox" checked={aretes} onChange={(e) => setAretes(e.target.checked)} /> Arêtes
+          </label>
+          <label className="etiquette">
+            <input type="checkbox" checked={modeMesure} onChange={(e) => setModeMesure(e.target.checked)} /> Mesurer
+          </label>
+          <CoupeDynamique scene={scene} clip={clip} setClip={setClip} />
+        </div>
         {mesure !== null && <span className="mesure">{mm(mesure)} mm ({metres(mesure)} m)</span>}
+        {(masques.size > 0 || isole !== null) && (
+          <button
+            type="button"
+            className="plat"
+            onClick={() => {
+              setMasques(new Set());
+              setIsole(null);
+            }}
+          >
+            Tout afficher
+          </button>
+        )}
 
         <span className="separateur" />
-        <button
-          type="button"
-          className="plat"
-          onClick={() => exporterIfc(projet, model, percagesIfc)}
-          // Le modèle affiché est le dernier VALIDE : exporté d'une saisie fausse,
-          // il ne correspondrait pas à ce que l'utilisateur croit avoir saisi.
-          disabled={!etat.aJour}
-          title={
-            etat.aJour
-              ? 'Maquette IFC4 de la charpente — barres, tôles, boulons, assemblages et repères — pour la synthèse BIM'
-              : "Saisie invalide : l'export ne correspondrait pas à la saisie"
-          }
-        >
-          Exporter en IFC
-        </button>
-        <label
-          className="etiquette"
-          title="Évide les barres de leurs perçages. Inutile à la synthèse, et certains lecteurs IFC les soustraient mal : la fabrication a les fichiers DSTV."
-        >
-          <input type="checkbox" checked={percagesIfc} onChange={(e) => setPercagesIfc(e.target.checked)} /> avec perçages
-        </label>
-      </div>
-
-      <div className="barre-outils">
-        <CoupeDynamique scene={scene} clip={clip} setClip={setClip} />
-        <span className="separateur" />
-        <button
-          type="button"
-          className="plat"
-          onClick={() => selection && scene.current?.cadrerSur(selection)}
-          disabled={!selection}
-          title="Cadrer sur la pièce sélectionnée — ou double-cliquer dessus dans la vue"
-        >
-          Cadrer dessus
-        </button>
-        <button type="button" className="plat" onClick={isolerRepere} disabled={!selection}>
-          Isoler le repère
-        </button>
-        <button
-          type="button"
-          className="plat"
-          onClick={() => selection && setMasques(new Set([...masques, selection]))}
-          disabled={!selection}
-        >
-          Masquer
-        </button>
-        <button
-          type="button"
-          className="plat"
-          onClick={() => {
-            setMasques(new Set());
-            setIsole(null);
-          }}
-          disabled={masques.size === 0 && isole === null}
-        >
-          Tout afficher
-        </button>
-        <span className="compte">
-          {model.stats.memberCount} barres · {model.stats.haunchCount} jarrets ·{' '}
-          {model.stats.plateCount} tôles · {model.stats.boltCount} boulons ·{' '}
-          {num(model.stats.weldMetres, 0)} m de cordon ·{' '}
-          {model.stats.markCount} repères · {num(model.stats.massKg, 0)} kg ·{' '}
-          {num(model.stats.paintM2, 0)} m² à peindre · généré en {model.buildMs.toFixed(1)} ms
-        </span>
+        <div className="groupe-export">
+          <button
+            type="button"
+            className="plat"
+            onClick={() => exporterIfc(projet, model, percagesIfc)}
+            // Le modèle affiché est le dernier VALIDE : exporté d'une saisie fausse,
+            // il ne correspondrait pas à ce que l'utilisateur croit avoir saisi.
+            disabled={!etat.aJour}
+            title={
+              etat.aJour
+                ? 'Maquette IFC4 de la charpente — barres, tôles, boulons, assemblages et repères — pour la synthèse BIM'
+                : "Saisie invalide : l'export ne correspondrait pas à la saisie"
+            }
+          >
+            Exporter en IFC
+          </button>
+          <label
+            className="etiquette"
+            title="Évide les barres de leurs perçages. Inutile à la synthèse, et certains lecteurs IFC les soustraient mal : la fabrication a les fichiers DSTV."
+          >
+            <input type="checkbox" checked={percagesIfc} onChange={(e) => setPercagesIfc(e.target.checked)} /> avec perçages
+          </label>
+        </div>
       </div>
 
       <div className="scene-et-fiche">
-        <div ref={conteneur} className="canevas3d" />
+        <div className="colonne-3d">
+          <div ref={conteneur} className="canevas3d" />
+          <p className="statut-3d">
+            {model.stats.memberCount} barres · {model.stats.haunchCount} jarrets · {model.stats.plateCount} tôles ·{' '}
+            {model.stats.boltCount} boulons · {num(model.stats.weldMetres, 0)} m de cordon · {model.stats.markCount} repères ·{' '}
+            {num(model.stats.massKg, 0)} kg · {num(model.stats.paintM2, 0)} m² à peindre · généré en {model.buildMs.toFixed(1)} ms
+          </p>
+        </div>
         <aside className="fiche-selection">
+          {selection && (barre || jarret || tole) && (
+            <div className="actions-selection" role="group" aria-label="Pièce sélectionnée">
+              <button type="button" className="plat" onClick={() => scene.current?.cadrerSur(selection)} title="Ou double-cliquer la pièce dans la vue">
+                Cadrer dessus
+              </button>
+              <button type="button" className="plat" onClick={isolerRepere}>
+                Isoler le repère
+              </button>
+              <button type="button" className="plat" onClick={() => setMasques(new Set([...masques, selection]))}>
+                Masquer
+              </button>
+            </div>
+          )}
           {barre ? (
             <FicheBarre m={barre} />
           ) : jarret ? (

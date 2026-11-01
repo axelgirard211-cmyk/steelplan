@@ -11,6 +11,8 @@ import { useDossier } from '../useDossier';
 import { normaliser } from '../projet/rubriques';
 import { planchesDuPoste, POSTES, sheetsBordereau, type Poste } from '../../core/drawing/postes';
 import { archiveDstv, archiveDxfToles, lotDstvDuModele } from '../fichiersMachine';
+import { useNavigation } from '../../state/navigation';
+import { ChoixDuPoste } from './ChoixDuPoste';
 
 /**
  * Le moteur PDF ne se charge qu'au premier export.
@@ -44,6 +46,13 @@ export const LIBELLES: Record<SheetKind, string> = {
  * l'export PDF reprendra tel quel.
  */
 export function PlansPanel(): JSX.Element {
+  // Le poste d'abord : tant qu'aucun n'est choisi, on demande lequel.
+  const poste = useNavigation((s) => s.postePlans);
+  return poste === null ? <ChoixDuPoste /> : <PlanchesDuPoste poste={poste} />;
+}
+
+/** Les planches du dossier choisi : liste, visionneuse, exports. */
+function PlanchesDuPoste({ poste }: { poste: Poste | 'tous' }): JSX.Element {
   const model = useStructuralModel();
   const project = useProjetEffectif();
   /*
@@ -63,7 +72,7 @@ export function PlansPanel(): JSX.Element {
    * avec son numéro dans le dossier complet. C'est ce qu'on imprime pour le
    * poste — et rien d'autre.
    */
-  const [poste, setPoste] = useState<Poste | 'tous'>('tous');
+  const choisirPoste = useNavigation((s) => s.choisirPoste);
   const vues = useMemo((): { sheet: Sheet; numero: number }[] => {
     if (poste === 'tous') return dossier.map((sheet, i) => ({ sheet, numero: i + 1 }));
     return [
@@ -178,24 +187,15 @@ export function PlansPanel(): JSX.Element {
   return (
     <>
       <nav className="laterale">
-        <label className="etiquette" style={{ display: 'block', marginBottom: 10 }}>
-          Dossier du poste
-          <select
-            value={poste}
-            onChange={(e) => {
-              setPoste(e.target.value as Poste | 'tous');
-              setChoisie(0);
-            }}
-            style={{ display: 'block', width: '100%', marginTop: 4 }}
-          >
-            <option value="tous">Dossier complet ({dossier.length} pl.)</option>
-            {POSTES.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.libelle} ({planchesDuPoste(dossier, x.id).length} pl.)
-              </option>
-            ))}
-          </select>
-        </label>
+        {/* Le dossier ouvert, et le chemin pour en changer. */}
+        <div className="poste-courant">
+          <span className="titre-groupe">Dossier</span>
+          <strong>{poste === 'tous' ? 'Dossier complet' : (POSTES.find((x) => x.id === poste)?.libelle ?? poste)}</strong>
+          <span className="compte">{sheets.length} planches</span>
+          <button type="button" className="plat" onClick={() => choisirPoste(null)}>
+            Changer de poste
+          </button>
+        </div>
         <input
           type="search"
           className="filtre-planches"
