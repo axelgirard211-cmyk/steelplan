@@ -1,24 +1,14 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { getProfile } from '../core/catalog/index';
 import type { StructuralModel } from '../core/build/types';
 import { changeDEchelle, distanceDeCadrage } from './cadrage';
 import { Jauge } from './jauge';
 import { cadrerOmbres, creerGrille, installerEclairage, type Eclairage } from './eclairage';
-import { creerBoulons, creerCordons, creerPiece } from './pieces';
+import { creerBoulons, creerCordons, creerPiece, piecesDuModele, type Aspect } from './pieces';
 import { filtrerBoulonnerie, libererAssemblages, remplacerCordons } from './pieces';
-import {
-  COULEUR_SELECTION,
-  COULEUR_TOLE,
-  ROLE_COLORS,
-  ACIER_PEINT,
-  couleurDeBarre,
-  ACIER_TOLE,
-  matiereDeRole,
-  type ColorMode,
-  type Matiere,
-} from './colorMaps';
-import { haunchGeometry, memberGeometry, plateGeometry } from './meshFactory';
+import type { ColorMode } from './colorMaps';
+import { Materiaux, type Teinte } from './materiaux';
+import { libererDecor, RenduADemande } from './rendu';
 
 /** Vues normalisées du dessinateur. */
 export type StandardView = 'iso' | 'face' | 'cote' | 'dessus' | 'arriere';
@@ -41,7 +31,9 @@ interface Piece {
   readonly id: string;
   readonly mesh: THREE.Mesh;
   readonly edges: THREE.LineSegments;
-  readonly baseColor: number;
+  readonly aspect: Aspect;
+  /** Aspect dans le mode de lecture en cours. */
+  teinte: Teinte;
 }
 
 /**
@@ -65,6 +57,8 @@ export class SteelScene {
   // Le rappel est différé : `options` n'est lu qu'au moment d'une mesure.
   private readonly jauge = new Jauge((d) => this.options.onMeasure(d));
   private readonly eclairage: Eclairage;
+  /** Matériaux partagés : un par aspect, et non un par pièce. */
+  private readonly materiaux = new Materiaux();
   /** Boulonnerie, instanciée : trois appels de dessin pour tout le bâtiment. */
   private boulons: THREE.InstancedMesh[] = [];
   /** Cordons de soudure : un seul maillage pour tout le bâtiment. */
@@ -83,7 +77,12 @@ export class SteelScene {
   private isole: ReadonlySet<string> | null = null;
   private modeMesure = false;
   private boite = new THREE.Box3();
-  private anime = 0;
+  // `update` émet « change » tant que l'amortissement fait encore glisser la
+  // vue : c'est ce qui redemande l'image suivante, jusqu'à l'arrêt complet.
+  private readonly rendu = new RenduADemande(() => {
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+  });
   /** Le cadrage initial appartient à la scène, pas au composant qui l'affiche :
    *  React peut la monter, la démonter et la remonter sans qu'on perde la vue. */
   private cadre = false;
@@ -129,6 +128,8 @@ export class SteelScene {
     this.controls.addEventListener('start', () => {
       this.vueCourante = null;
     });
+    // Toute retouche de la caméra — glissé, molette, amortissement — redessine.
+    this.controls.addEventListener('change', () => this.demanderRendu());
 
     this.eclairage = installerEclairage(this.scene, this.renderer);
 
@@ -145,36 +146,18 @@ export class SteelScene {
     this.renderer.domElement.addEventListener('pointerdown', this.surClic);
     this.renderer.domElement.addEventListener('dblclick', this.surDoubleClic);
     this.renderer.domElement.addEventListener('pointermove', this.surDeplacement);
+  }
 
-    const boucle = (): void => {
-      this.anime = requestAnimationFrame(boucle);
-      this.controls.update();
-      this.renderer.render(this.scene, this.camera);
-    };
-    boucle();
+  /** Redessine à la prochaine trame — la scène ne tourne pas en boucle. */
+  demanderRendu(): void {
+    this.rendu.demander();
   }
 
   /* ---------------- Modèle ---------------- */
 
   setModel(model: StructuralModel): void {
     this.viderPieces();
-    const reel = this.colorMode === 'realiste';
-
-    for (const m of model.members) {
-      const g = memberGeometry(m);
-      const mat = reel ? matiereDeRole(m.role) : null;
-      this.ajouter(m.id, g, couleurDeBarre(this.colorMode, m.role, m.profileId, m.mark, this.taux), mat);
-    }
-    for (const h of model.haunches) {
-      const hauteur = getProfile(h.profileId).h;
-      const g = haunchGeometry(h, hauteur);
-      if (g.getAttribute('position')) {
-        this.ajouter(h.id, g, ROLE_COLORS.jarret, reel ? ACIER_PEINT : null);
-      }
-    }
-    for (const pl of model.plates) {
-      this.ajouter(pl.id, plateGeometry(pl), COULEUR_TOLE, reel ? ACIER_TOLE : null);
-    }
+    for (const p of piecesDuModele(model)) this.ajouter(p.id, p.geometrie, p.aspect);
 
     this.boulons = creerBoulons(model);
     for (const b of this.boulons) this.racine.add(b);
@@ -198,24 +181,20 @@ export class SteelScene {
   }
 
   /** Fabrique la pièce, l'ajoute à la scène et la retient pour son cycle de vie. */
-  private ajouter(
-    id: string,
-    g: THREE.BufferGeometry,
-    couleur: number,
-    matiere: Matiere | null,
-  ): void {
-    const { mesh, edges, baseColor } = creerPiece(id, g, couleur, matiere);
+  private ajouter(id: string, g: THREE.BufferGeometry, aspect: Aspect): void {
+    const teinte = aspect(this.colorMode, this.taux);
+    const surface = this.materiaux.surface(teinte, false, false);
+    const { mesh, edges } = creerPiece(id, g, surface, this.materiaux.arete(teinte.matiere !== null));
     this.racine.add(mesh, edges);
-    this.pieces.push({ id, mesh, edges, baseColor });
+    this.pieces.push({ id, mesh, edges, aspect, teinte });
   }
 
   private viderPieces(): void {
     for (const p of this.pieces) {
       this.racine.remove(p.mesh, p.edges);
+      // Les matériaux sont partagés : seules les géométries appartiennent à la pièce.
       p.mesh.geometry.dispose();
-      (p.mesh.material as THREE.Material).dispose();
       p.edges.geometry.dispose();
-      (p.edges.material as THREE.Material).dispose();
     }
     this.pieces = [];
 
@@ -226,14 +205,21 @@ export class SteelScene {
 
   /* ---------------- Affichage ---------------- */
 
-  setColorMode(
-    mode: ColorMode,
-    model: StructuralModel,
-    taux: ReadonlyMap<string, number> | null = null,
-  ): void {
+  /**
+   * Change le mode de lecture des couleurs.
+   *
+   * ⚠ On REteint, on ne rebâtit pas : les géométries ne dépendent pas de la
+   * couleur, et les refaire doublait le coût de chaque modification du projet
+   * — le nouveau rapport de vérification relançait toute la construction.
+   */
+  setColorMode(mode: ColorMode, taux: ReadonlyMap<string, number> | null = null): void {
     this.colorMode = mode;
     this.taux = taux;
-    this.setModel(model);
+    for (const p of this.pieces) {
+      p.teinte = p.aspect(mode, taux);
+      p.edges.material = this.materiaux.arete(p.teinte.matiere !== null);
+    }
+    this.appliquerCouleurs();
   }
 
   setHidden(ids: ReadonlySet<string>): void {
@@ -253,6 +239,7 @@ export class SteelScene {
 
   setGridVisible(visible: boolean): void {
     this.grille.visible = visible;
+    this.demanderRendu();
   }
 
   /**
@@ -267,6 +254,7 @@ export class SteelScene {
     this.grille = creerGrille(majeure, mineure);
     this.grille.visible = visible;
     this.scene.add(this.grille);
+    this.demanderRendu();
   }
 
   setEdgesVisible(visible: boolean): void {
@@ -293,12 +281,12 @@ export class SteelScene {
   }
 
   private appliquerCouleurs(): void {
+    // Sélection et survol changent le MATÉRIAU de la pièce, pas sa couleur :
+    // le matériau est partagé, le reteindre teindrait toutes ses voisines.
     for (const p of this.pieces) {
-      const mat = p.mesh.material as THREE.MeshStandardMaterial;
-      const actif = p.id === this.selection;
-      mat.color.setHex(actif ? COULEUR_SELECTION : p.baseColor);
-      mat.emissive.setHex(p.id === this.survol && !actif ? 0x222a33 : 0x000000);
+      p.mesh.material = this.materiaux.surface(p.teinte, p.id === this.selection, p.id === this.survol);
     }
+    this.demanderRendu();
   }
 
   /* ---------------- Coupe dynamique ---------------- */
@@ -316,10 +304,7 @@ export class SteelScene {
       this.clipPlane.constant = config.flipped ? -config.position : config.position;
       plans.push(this.clipPlane);
     }
-    for (const p of this.pieces) {
-      (p.mesh.material as THREE.MeshStandardMaterial).clippingPlanes = plans;
-      (p.edges.material as THREE.LineBasicMaterial).clippingPlanes = plans;
-    }
+    this.materiaux.couper(plans);
     // La boulonnerie se coupe avec le reste : un boulon qui flotterait devant
     // une coupe donnerait une section fausse.
     for (const b of this.boulons) {
@@ -328,6 +313,7 @@ export class SteelScene {
     if (this.cordons) {
       (this.cordons.material as THREE.MeshStandardMaterial).clippingPlanes = plans;
     }
+    this.demanderRendu();
   }
 
   /** Étendue du modèle selon un axe, pour borner le curseur de coupe. */
@@ -362,6 +348,7 @@ export class SteelScene {
     this.camera.updateProjectionMatrix();
     this.controls.update();
     this.vueCourante = vue;
+    this.demanderRendu();
   }
 
   recadrer(): void {
@@ -400,6 +387,7 @@ export class SteelScene {
     this.controls.target.copy(point);
     this.camera.position.copy(point).addScaledVector(direction, distance);
     this.controls.update();
+    this.demanderRendu();
   }
 
   private rayon(): number {
@@ -412,6 +400,7 @@ export class SteelScene {
   setMeasureMode(actif: boolean): void {
     this.modeMesure = actif;
     if (!actif) this.jauge.effacer();
+    this.demanderRendu();
   }
 
   /* ---------------- Interaction ---------------- */
@@ -441,6 +430,7 @@ export class SteelScene {
       const t = this.toucher(up);
       if (this.modeMesure) {
         if (t) this.jauge.ajouter(t.point, this.rayon() / 120);
+        this.demanderRendu();
         return;
       }
       this.options.onSelect(t ? (t.object.userData['id'] as string) : null);
@@ -482,18 +472,25 @@ export class SteelScene {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     if (this.vueCourante) this.setView(this.vueCourante);
+    // Redimensionner le canevas l'efface : il faut redessiner aussitôt.
+    this.demanderRendu();
   }
 
   dispose(): void {
-    cancelAnimationFrame(this.anime);
+    this.rendu.arreter();
     this.observateur.disconnect();
     this.renderer.domElement.removeEventListener('pointerdown', this.surClic);
     this.renderer.domElement.removeEventListener('dblclick', this.surDoubleClic);
     this.renderer.domElement.removeEventListener('pointermove', this.surDeplacement);
     this.jauge.effacer();
     this.viderPieces();
+    this.materiaux.dispose();
+    libererDecor(this.scene, this.eclairage, this.grille);
     this.controls.dispose();
     this.renderer.dispose();
+    // Rend le contexte WebGL sur-le-champ : le navigateur n'en tolère qu'une
+    // poignée, et aperçu, vue 3D et édition en ouvrent chacun un.
+    this.renderer.forceContextLoss();
     this.renderer.domElement.remove();
   }
 }

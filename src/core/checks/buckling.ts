@@ -30,8 +30,15 @@ export function courbes(p: Profile): { y: Curve; z: Curve } {
     if (p.tf > 40) return p.h / p.b > 1.2 ? { y: 'b', z: 'c' } : { y: 'd', z: 'd' };
     return p.h / p.b > 1.2 ? { y: 'a', z: 'b' } : { y: 'b', z: 'c' };
   }
-  // Profils creux finis à chaud : courbe a. Les autres, courbe c.
-  if (p.shape === 'CHS' || p.shape === 'BOX') return { y: 'a', z: 'a' };
+  /*
+   * ⚠ Profils creux : courbe a s'ils sont FINIS À CHAUD (EN 10210), courbe c
+   * s'ils sont FORMÉS À FROID (EN 10219), tableau 6.2. Le catalogue est celui de
+   * l'EN 10219 — ses rayons d'angle sont ceux de l'EN 10219-2 (geom.ts) — et
+   * c'est ce qu'on trouve chez le négociant. Leur donner la courbe a surestimait
+   * χ de 10 à 20 % autour de λ̄ = 1, sur les diagonales de contreventement et
+   * les montants de treillis où ce mode gouverne. Un tube fini à chaud, s'il est
+   * réellement commandé, est donc vérifié du côté sûr.
+   */
   return { y: 'c', z: 'c' };
 }
 

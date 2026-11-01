@@ -103,11 +103,17 @@ function dessinerPlanche(doc: jsPDF, sheet: Sheet): void {
       case 'remplissage': {
         const gris = Math.round(e.gris * 255);
         doc.setFillColor(gris, gris, gris);
-        // Les contours intérieurs sont tracés dans le sens inverse : la règle
-        // pair-impair les évide.
+        // ⚠ Contour et trous forment UN seul chemin, rempli d'un coup selon la
+        // règle pair-impair : c'est elle qui évide les trous. Remplis un à un,
+        // chaque trou serait peint par-dessus.
         for (const anneau of [e.contour, ...e.trous]) {
-          tracerPolyligne(doc, anneau, Y, true, 'F');
+          const [tete, ...suite] = anneau;
+          if (!tete || suite.length < 2) continue;
+          doc.moveTo(tete.x, Y(tete.y));
+          for (const p of suite) doc.lineTo(p.x, Y(p.y));
+          doc.close();
         }
+        doc.fillEvenOdd();
         doc.setFillColor(0, 0, 0);
         break;
       }

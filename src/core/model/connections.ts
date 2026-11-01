@@ -109,7 +109,19 @@ export interface BasePlateParams {
   readonly shearKey: boolean;
   /** Béton de la fondation : il fixe la pression admissible sous la platine. */
   readonly concrete: ClasseBeton;
+  /**
+   * Classe des tiges d'ancrage (EN ISO 898-1). Distincte de celle des boulons
+   * de charpente : une tige se commande en acier doux, rarement en HR.
+   */
+  readonly anchorClass: ClasseTige;
 }
+
+/**
+ * Classes de tiges d'ancrage retenues. 4.6 et 5.6 : tiges à crosse ou à plaque
+ * en acier doux, le cas courant ; 8.8 : tiges HR, sur prescription.
+ */
+export type ClasseTige = '4.6' | '5.6' | '8.8';
+export const CLASSES_TIGE: readonly ClasseTige[] = ['4.6', '5.6', '8.8'];
 
 /** Tige d'ancrage d'un pied de poteau, et son trou volontairement généreux. */
 export function tigeDAncrage(cb: BasePlateParams): { bolt: BoltSpec; dTrou: number } {

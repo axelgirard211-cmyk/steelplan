@@ -145,14 +145,21 @@ export function verifierElement(
   const nb = nbRd(p, fy, xMin);
 
   /**
-   * ⚠ Le déversement ne s'applique qu'à une barre COMPRIMÉE ou FLÉCHIE SEULE.
-   * Un effort normal de traction stabilise la semelle comprimée par la flexion :
-   * une barre tendue ne déverse pas. La vérifier au déversement quand même
-   * conduisait à des taux de travail supérieurs à 15 sur les membrures
-   * inférieures de treillis, qui sont précisément des tirants — et à condamner un
-   * dimensionnement correct.
+   * ⚠ Le déversement se vérifie dès qu'il y a un moment d'axe fort, QUEL QUE
+   * SOIT le signe de N (EN 1993-1-1 § 6.3.2, qui ne l'exclut pas). Il était
+   * sauté dès que la barre était tendue — or sous « 1,0 G + 1,5 W » une traverse
+   * est tendue ET fléchie en sens inverse : c'est sa semelle INFÉRIEURE qui est
+   * comprimée, celle que les pannes ne tiennent pas. Le cas qui fait déverser
+   * les traverses était précisément celui qu'on ne regardait pas.
+   *
+   * La traction réduit la contrainte de la semelle comprimée (ENV 1993-1-1
+   * § 5.5.3 en tirait un moment efficace) ; on n'en compte PAS le bénéfice, et
+   * on ne l'ajoute pas non plus comme un terme défavorable : Mb,Rd seul. C'est
+   * du côté sûr. Les taux absurdes qui avaient fait exclure les barres tendues
+   * venaient des CORNIÈRES de treillis, que `sujetAuDeversement` écarte
+   * désormais (χLT = 1).
    */
-  const lt = comprime || Math.abs(s.nEd) < 1e-9 ? chiLT(p, fy, c.cls, l.lLT) : null;
+  const lt = Math.abs(s.myEd) > 0 ? chiLT(p, fy, c.cls, l.lLT) : null;
   const mb = lt ? mbRd(p, fy, c.cls, lt.chiLT) : 0;
 
   /**
@@ -162,7 +169,8 @@ export function verifierElement(
    * dépendent de la forme du diagramme de moment. La somme linéaire retenue ici
    * est PLUS SÉVÈRE que 6.3.3 dans la quasi-totalité des cas : un élément
    * accepté par SteelPlan le serait aussi par le calcul complet, l'inverse
-   * n'étant pas garanti. C'est le sens acceptable de l'approximation.
+   * n'étant pas garanti. C'est le sens acceptable de l'approximation. Une barre
+   * TENDUE n'a pas de terme de flambement : My/Mb,Rd seul.
    */
   const ratioFlambement = comprime && nb > 0 ? Math.abs(s.nEd) / nb : 0;
   const ratioStabilite =

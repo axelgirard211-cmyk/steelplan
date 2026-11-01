@@ -107,9 +107,13 @@ export class BarriereErreur extends Component<
       <section className="principal">
         <div className="bandeau-modele" role="alert">
           <strong>Cet affichage a rencontré une erreur et n’a pas pu être dessiné.</strong>
-          <ul>
-            <li>{e.message}</li>
-          </ul>
+          <p>Annulez la dernière modification ; si l’erreur revient, enregistrez et rechargez la page.</p>
+          {/* Le message de l'exception, souvent en anglais : utile pour un
+              signalement, pas pour l'utilisateur. */}
+          <details>
+            <summary>Détail technique</summary>
+            <code>{e.message}</code>
+          </details>
           <button
             type="button"
             className="plat"

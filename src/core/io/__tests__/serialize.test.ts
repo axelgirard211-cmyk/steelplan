@@ -10,7 +10,7 @@ import {
   roofArea,
 } from '../../model/grid';
 import { deserializeProject, serializeProject } from '../serialize';
-import { FormatError } from '../migrate';
+import { CURRENT_VERSION, FormatError, migrate } from '../migrate';
 import type { ProjectParams } from '../../model/project';
 
 describe('sérialisation du projet', () => {
@@ -44,7 +44,7 @@ describe('sérialisation du projet', () => {
 
   it('produit un JSON lisible et versionné', () => {
     const texte = serializeProject(DEFAULT_PROJECT);
-    expect(texte).toContain('\n  "version": 4');
+    expect(texte).toContain('\n  "version": 5');
     expect(JSON.parse(texte).grid.span).toBe(20000);
   });
 
@@ -343,6 +343,18 @@ describe('retouches des planches dans le fichier', () => {
     expect(deserializeProject(JSON.stringify(ancien)).project.prix).toEqual(DEFAULT_PROJECT.prix);
   });
 
+  it('ouvre un fichier du format 4, enregistré avant la classe des tiges d’ancrage', () => {
+    // La 8.8 n'était qu'une hypothèse du calcul, jamais portée au plan : le
+    // fichier ancien reçoit la classe courante, 4.6.
+    const ancien = JSON.parse(serializeProject(DEFAULT_PROJECT)) as {
+      version: number;
+      connections: { columnBase: Record<string, unknown> };
+    };
+    delete ancien.connections.columnBase['anchorClass'];
+    ancien.version = 4;
+    expect(deserializeProject(JSON.stringify(ancien)).project.connections.columnBase.anchorClass).toBe('4.6');
+  });
+
   it('relit la grille de prix du projet sans perte', () => {
     const p = { ...DEFAULT_PROJECT, prix: { ...DEFAULT_PROJECT.prix, montage: 450, marge: 8, acier: { ...DEFAULT_PROJECT.prix.acier, S355: 1.4 } } };
     expect(deserializeProject(serializeProject(p)).project.prix).toEqual(p.prix);
@@ -356,5 +368,110 @@ describe('retouches des planches dans le fichier', () => {
     const calque = JSON.parse(serializeProject(avec)) as { retouches: { ajouts: { entite: { layer: string } }[] }[] };
     calque.retouches[0]!.ajouts[0]!.entite.layer = 'inconnu';
     expect(() => deserializeProject(JSON.stringify(calque))).toThrow(FormatError);
+  });
+});
+
+describe('migrations du format', () => {
+  /** Le projet par défaut tel qu'un format antérieur l'aurait écrit. */
+  const ancien = (version: number, retirer: (o: Record<string, unknown>) => void = () => {}): string => {
+    const o = JSON.parse(serializeProject(DEFAULT_PROJECT)) as Record<string, unknown>;
+    retirer(o);
+    o['version'] = version;
+    return JSON.stringify(o);
+  };
+  type Assemblages = Record<string, Record<string, unknown>>;
+
+  it('ouvre un fichier du format 3, enregistré avant la soudure des semelles sur platine', () => {
+    /*
+     * 3 → 4 : les semelles des barres sur platine d'about recevaient toutes des
+     * cordons d'angle. Un fichier du format 3 n'a donc pas le champ, et doit
+     * reprendre exactement ce qu'il dessinait : des cordons d'angle, au jarret
+     * comme au faîtage.
+     */
+    const texte = ancien(3, (o) => {
+      const c = o['connections'] as Assemblages;
+      delete c['rafterToColumn']?.['soudureSemelles'];
+      delete c['ridge']?.['soudureSemelles'];
+    });
+    expect(texte).not.toContain('soudureSemelles');
+    const { project } = deserializeProject(texte);
+    expect(project.connections.rafterToColumn.soudureSemelles).toBe('angle');
+    expect(project.connections.ridge.soudureSemelles).toBe('angle');
+    // Et rien d'autre ne bouge — hormis le numéro de format, amené au courant.
+    expect({ ...project, version: 0 }).toEqual({ ...DEFAULT_PROJECT, version: 0 });
+    // Réenregistré, il passe au format courant, avec le champ écrit.
+    const reecrit = serializeProject(project);
+    expect(JSON.parse(reecrit).version).toBe(CURRENT_VERSION);
+    expect(reecrit).toContain('"soudureSemelles": "angle"');
+  });
+
+  it('garde un bout à bout à pleine pénétration au format 4', () => {
+    const p: ProjectParams = {
+      ...DEFAULT_PROJECT,
+      connections: {
+        ...DEFAULT_PROJECT.connections,
+        ridge: { ...DEFAULT_PROJECT.connections.ridge, soudureSemelles: 'pleine-penetration' },
+      },
+    };
+    const relu = deserializeProject(serializeProject(p)).project;
+    expect(relu.connections.ridge.soudureSemelles).toBe('pleine-penetration');
+    expect(relu.connections.rafterToColumn.soudureSemelles).toBe('angle');
+  });
+
+  it('refuse une manière de souder inconnue en nommant le champ', () => {
+    const texte = ancien(4, (o) => {
+      (o['connections'] as Assemblages)['ridge']!['soudureSemelles'] = 'brasure';
+    });
+    expect(() => deserializeProject(texte)).toThrow(FormatError);
+    expect(() => deserializeProject(texte)).toThrow(/connections\.ridge\.soudureSemelles/);
+  });
+
+  it.each([
+    ['0', 0],
+    ['2,5', 2.5],
+    ['« 3 » écrit en texte', '3'],
+    ['négative', -1],
+  ])('refuse une version %s', (_nom, version) => {
+    const texte = ancien(4, (o) => {
+      o['version'] = version;
+    }).replace(/"version":[^,]+/, `"version":${JSON.stringify(version)}`);
+    expect(() => deserializeProject(texte)).toThrow(FormatError);
+    expect(() => deserializeProject(texte)).toThrow(/version/i);
+  });
+
+  it('n’a aucune migration manquante entre le format 1 et le format courant', () => {
+    /*
+     * ⚠ Relever CURRENT_VERSION sans écrire la migration correspondante rend
+     * illisible tout fichier antérieur, avec « Migration manquante du format n
+     * vers n + 1 ». La chaîne est donc parcourue depuis chaque format.
+     */
+    for (let v = 1; v <= CURRENT_VERSION; v++) {
+      const brut = { version: v, marqueur: 'conservé' };
+      expect(() => migrate(brut), `format ${v}`).not.toThrow(/Migration manquante/);
+      const migre = migrate(brut);
+      expect(migre['version'], `format ${v}`).toBe(CURRENT_VERSION);
+      expect(migre['marqueur'], `format ${v}`).toBe('conservé');
+    }
+  });
+
+  it('rend une FormatError nommée pour une migration manquante, jamais une TypeError', () => {
+    // La seule façon d'atteindre une migration absente depuis l'extérieur est un
+    // format hors de la chaîne : il doit être refusé AVANT de la parcourir.
+    for (const v of [0, 1.5, CURRENT_VERSION + 1]) {
+      let erreur: unknown;
+      try {
+        migrate({ version: v });
+      } catch (e) {
+        erreur = e;
+      }
+      expect(erreur, `format ${v}`).toBeInstanceOf(FormatError);
+      expect((erreur as Error).name).toBe('FormatError');
+    }
+  });
+
+  it('refuse ce qui n’est pas un objet projet', () => {
+    for (const brut of [null, [], 'projet', 4]) {
+      expect(() => migrate(brut), JSON.stringify(brut)).toThrow(/pas un projet SteelPlan/);
+    }
   });
 });

@@ -61,7 +61,8 @@ const PHASES: readonly { readonly titre: string; readonly roles: readonly Member
     roles: ['traverse', 'console', 'jarret', 'membrure-sup', 'membrure-inf', 'montant', 'diagonale'],
   },
   { titre: '3 — Contreventements (avant de libérer la grue)', roles: ['contreventement'] },
-  { titre: '4 — Pannes, lisses et liernes', roles: ['panne', 'lisse', 'lierne', 'attache', 'equerre'] },
+  // Les chevêtres d'ouverture se posent avec les lisses qu'ils reçoivent.
+  { titre: '4 — Pannes, lisses et liernes', roles: ['panne', 'lisse', 'chevetre', 'lierne', 'attache', 'equerre'] },
   { titre: '5 — Pièces ajoutées au projet', roles: ['libre'] },
 ];
 

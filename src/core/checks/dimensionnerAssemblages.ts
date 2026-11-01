@@ -1,7 +1,7 @@
 import { buildProject } from '../build/buildProject';
 import type { StructuralModel } from '../build/types';
 import { getProfile } from '../catalog/index';
-import { BOLT_DIAMETERS, type EndPlateParams } from '../model/connections';
+import { BOLT_DIAMETERS, CLASSES_TIGE, type EndPlateParams } from '../model/connections';
 import type { ProjectParams } from '../model/project';
 import { isValid, validateProject } from '../model/validate';
 import type { AssemblageCheck } from './assemblages/types';
@@ -118,6 +118,20 @@ const PIED = {
   nombre: pied('anchorCount', 'nombre de tiges d’ancrage', (v) => (v < 8 ? v + 2 : null), ''),
   longueur: pied('length', 'longueur de la platine de pied', (v) => (v < 1200 ? v + 50 : null), ' mm'),
   largeur: pied('width', 'largeur de la platine de pied', (v) => (v < 800 ? v + 50 : null), ' mm'),
+  /*
+   * Classe des tiges : 4.6 → 5.6 → 8.8. Le cran qui reste quand le diamètre est
+   * au plus fort. Ajouter des tiges, lui, n'aide pas la traction : une rangée
+   * de plus se place au milieu de la platine, que le calcul ne compte pas.
+   */
+  classe: {
+    nom: 'classe des tiges d’ancrage',
+    valeur: (p) => p.connections.columnBase.anchorClass,
+    suivant: (p) => {
+      const i = CLASSES_TIGE.indexOf(p.connections.columnBase.anchorClass);
+      const c = i >= 0 ? CLASSES_TIGE[i + 1] : undefined;
+      return c ? { ...p, connections: { ...p.connections, columnBase: { ...p.connections.columnBase, anchorClass: c } } } : null;
+    },
+  } satisfies Levier,
 };
 
 const GOUSSET = {
@@ -192,7 +206,9 @@ function leviersPour(a: AssemblageCheck, p: ProjectParams, model: StructuralMode
   if (a.id === 'pied') {
     if (g.startsWith('flexion')) return [PIED.epaisseur];
     if (g.startsWith('pression sur béton')) return [PIED.longueur, PIED.largeur];
-    return [PIED.tiges, PIED.nombre];
+    // Traction ou cisaillement des tiges : leur diamètre, leur classe, le bras
+    // de levier de la platine, puis leur nombre (qui soulage le cisaillement).
+    return [PIED.tiges, PIED.classe, PIED.longueur, PIED.nombre];
   }
   if (a.id.startsWith('cv-')) {
     if (g.startsWith('section nette du tube')) return leviersTube(p, model, a.id.slice(3));

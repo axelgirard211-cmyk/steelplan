@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildProject, platePaintM2 } from '../../build/buildProject';
+import { buildProject, plateMassKg, platePaintM2 } from '../../build/buildProject';
 import { elementsAFabriquer, tolesLibres } from '../../drawing/sheets/element';
 import { cutLengths } from '../../geometry/member';
 import { DEFAULT_PROJECT } from '../../model/defaults';
+import type { ProjectParams } from '../../model/project';
+import { TEMPLATES } from '../../model/templates';
 import { buildBom } from '../index';
 import { colisage, masseALivrer, PLATEAU_STANDARD } from '../colisage';
 import { GRILLE_PAR_DEFAUT, valoriser } from '../valorisation';
@@ -10,11 +12,41 @@ import { GRILLE_PAR_DEFAUT, valoriser } from '../valorisation';
 const P = DEFAULT_PROJECT;
 const M = buildProject(P);
 
+/**
+ * Projet vierge percé d'un portail sur le long pan et d'un châssis en allège
+ * sur le pignon : montants, linteaux et traverse basse y sont tous présents.
+ */
+const AVEC_OUVERTURES: ProjectParams = {
+  ...DEFAULT_PROJECT,
+  ouvertures: {
+    enabled: true,
+    profile: 'UPE 160',
+    grade: 'S235',
+    items: [
+      { id: 'P1', face: 'long-pan-gauche', type: 'portail', position: 7000, largeur: 4000, hauteur: 4500, allege: 0 },
+      { id: 'F1', face: 'pignon-ouest', type: 'chassis', position: 6000, largeur: 2000, hauteur: 1500, allege: 2000 },
+    ],
+  },
+};
+
+/*
+ * ⚠ Tous les gabarits, et un projet avec ouvertures. Contrôlée sur le seul
+ * projet par défaut, la conservation laissait passer les chevêtres : aucune
+ * phase ne les prenait, et 247 kg d'un portail de 4 × 4,5 m n'étaient ni
+ * colisés, ni écartés hors gabarit — le projet par défaut n'en a pas.
+ */
+const CAS: readonly { readonly nom: string; readonly p: ProjectParams }[] = [
+  ...TEMPLATES.map((t) => ({ nom: t.nom, p: t.build() })),
+  { nom: 'Projet vierge avec portail et châssis', p: AVEC_OUVERTURES },
+];
+
 /* ================================================================== */
 /* Conservation de la masse                                            */
 /* ================================================================== */
 
-describe('conservation de la masse', () => {
+describe.each(CAS)('conservation de la masse — $nom', ({ p: P }) => {
+  const M = buildProject(P);
+
   /*
    * ⚠ L'INVARIANT CENTRAL de tout ce qui sort du logiciel. Fiches de
    * fabrication, tableau de montage et colisage se servent tous dans
@@ -27,11 +59,11 @@ describe('conservation de la masse', () => {
    * là où leur traverse s'appelle « 0-TG », ils n'étaient rattachés à aucun
    * élément et 498 kg de renforts disparaissaient de tous les documents.
    */
-  it('les éléments à fabriquer pèsent exactement le modèle', () => {
-    const total = elementsAFabriquer(M).reduce(
-      (s, e) => s + e.masseUnitaire * e.quantite,
-      0,
-    );
+  it('les éléments à fabriquer et les tôles libres pèsent exactement le modèle', () => {
+    // Éclisses et goussets ne sont soudés à aucun élément : ils comptent à part.
+    const total =
+      elementsAFabriquer(M).reduce((s, e) => s + e.masseUnitaire * e.quantite, 0) +
+      tolesLibres(M).reduce((s, pl) => s + plateMassKg(pl), 0);
     expect(total).toBeCloseTo(M.stats.massKg, 6);
   });
 
@@ -79,6 +111,27 @@ describe('conservation de la masse', () => {
       elementsAFabriquer(M).reduce((s, e) => s + e.surfaceUnitaire * e.quantite, 0) +
       tolesLibres(M).reduce((s, pl) => s + platePaintM2(pl), 0);
     expect(bon).toBeCloseTo(M.stats.paintM2, 6);
+  });
+});
+
+describe('chevêtres d’ouverture', () => {
+  const M = buildProject(AVEC_OUVERTURES);
+  const C = colisage(M);
+
+  it('le projet d’essai porte bien des chevêtres', () => {
+    // Sans eux, la conservation ci-dessus passerait sans rien prouver.
+    expect(M.members.filter((m) => m.role === 'chevetre').length).toBeGreaterThanOrEqual(7);
+  });
+
+  it('partent avec les lisses qu’ils reçoivent', () => {
+    const charges = C.colis.flatMap((c) => c.lignes.map((l) => ({ mark: l.mark, phase: c.phase })));
+    const chevetres = elementsAFabriquer(M).filter((e) => e.membre.role === 'chevetre');
+    expect(chevetres.length).toBeGreaterThan(0);
+    for (const e of chevetres) {
+      const ou = charges.filter((x) => x.mark === e.repere);
+      expect(ou.length, e.repere).toBeGreaterThan(0);
+      for (const x of ou) expect(x.phase, e.repere).toContain('lisses');
+    }
   });
 });
 

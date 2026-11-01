@@ -14,6 +14,8 @@
  * refusée par celui qui la lit.
  */
 
+import { dxfEnOctets } from './dxf';
+
 interface Entree {
   readonly nom: string;
   readonly contenu: string;
@@ -39,7 +41,8 @@ export function zip(entrees: readonly Entree[]): Blob {
 
   for (const e of entrees) {
     const nom = encodeur.encode(e.nom);
-    const data = encodeur.encode(e.contenu);
+    // Un DXF annonce Windows-1252 dans son en-tête : ses octets doivent l'être.
+    const data = e.nom.toLowerCase().endsWith('.dxf') ? dxfEnOctets(e.contenu) : encodeur.encode(e.contenu);
     const crc = crc32(data);
 
     /*

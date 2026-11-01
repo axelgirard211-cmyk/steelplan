@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { AssemblageCheck } from '../../core/checks/assemblages/index';
 import { ratioColor } from '../../render3d/colorMaps';
 import { useChecksReport } from '../../state/derived';
@@ -67,10 +67,25 @@ function Ligne({
   ouvert: boolean;
   onToggle: () => void;
 }): JSX.Element {
+  const idDetail = useId();
   return (
     <>
+      {/* Même schéma que les barres : clic de ligne pour la souris, bouton pour le clavier. */}
       <tr onClick={onToggle} style={{ cursor: 'pointer' }}>
-        <td>{a.libelle}</td>
+        <td>
+          <button
+            type="button"
+            className="depli"
+            aria-expanded={ouvert}
+            aria-controls={ouvert ? idDetail : undefined}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle();
+            }}
+          >
+            <span aria-hidden="true">{ouvert ? '▾' : '▸'}</span> {a.libelle}
+          </button>
+        </td>
         <td>{a.boulon}</td>
         <td>{a.sollicitations}</td>
         <td>{a.combinaison}</td>
@@ -80,7 +95,7 @@ function Ligne({
         <td>{a.gouverne}</td>
       </tr>
       {ouvert && (
-        <tr>
+        <tr id={idDetail}>
           <td colSpan={6} style={{ background: 'rgba(127,127,127,0.08)' }}>
             <table className="nomenclature" style={{ margin: '6px 0' }}>
               <tbody>

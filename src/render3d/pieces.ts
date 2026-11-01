@@ -1,8 +1,28 @@
 import * as THREE from 'three';
 import { diametreNominal, listerBoulons, percagesDesBarres } from '../core/build/bolts';
 import type { StructuralModel } from '../core/build/types';
-import { ACIER_BOULON, type Matiere } from './colorMaps';
-import { boltMatrices, boltPartGeometries, edgesOf, matriceDePercage, percageGeometry } from './meshFactory';
+import { getProfile } from '../core/catalog/index';
+import {
+  ACIER_BOULON,
+  ACIER_PEINT,
+  ACIER_TOLE,
+  COULEUR_TOLE,
+  ROLE_COLORS,
+  couleurDeBarre,
+  matiereDeRole,
+  type ColorMode,
+} from './colorMaps';
+import type { Teinte } from './materiaux';
+import {
+  boltMatrices,
+  boltPartGeometries,
+  edgesOf,
+  haunchGeometry,
+  matriceDePercage,
+  memberGeometry,
+  percageGeometry,
+  plateGeometry,
+} from './meshFactory';
 import { weldBeadGeometry } from './weldBeads';
 
 /**
@@ -16,47 +36,73 @@ import { weldBeadGeometry } from './weldBeads';
 export interface PieceMaillee {
   readonly mesh: THREE.Mesh;
   readonly edges: THREE.LineSegments;
-  readonly baseColor: number;
+}
+
+/** Aspect d'une pièce selon le mode de lecture : la reteindre ne la rebâtit pas. */
+export type Aspect = (mode: ColorMode, taux: ReadonlyMap<string, number> | null) => Teinte;
+
+export interface PieceACreer {
+  readonly id: string;
+  readonly geometrie: THREE.BufferGeometry;
+  readonly aspect: Aspect;
+}
+
+/**
+ * Géométries et aspects de toutes les pièces du modèle : barres, jarrets, tôles.
+ *
+ * L'aspect est une FONCTION du mode de lecture, et non une couleur figée : changer
+ * de mode de couleur ne fait que la réévaluer, sans refaire une seule géométrie.
+ */
+export function piecesDuModele(model: StructuralModel): PieceACreer[] {
+  const out: PieceACreer[] = [];
+  for (const m of model.members) {
+    out.push({
+      id: m.id,
+      geometrie: memberGeometry(m),
+      aspect: (mode, taux) => ({
+        couleur: couleurDeBarre(mode, m.role, m.profileId, m.mark, taux),
+        matiere: mode === 'realiste' ? matiereDeRole(m.role) : null,
+      }),
+    });
+  }
+  for (const h of model.haunches) {
+    const g = haunchGeometry(h, getProfile(h.profileId).h);
+    if (!g.getAttribute('position')) continue;
+    out.push({
+      id: h.id,
+      geometrie: g,
+      aspect: (mode) => ({ couleur: ROLE_COLORS.jarret, matiere: mode === 'realiste' ? ACIER_PEINT : null }),
+    });
+  }
+  for (const pl of model.plates) {
+    out.push({
+      id: pl.id,
+      geometrie: plateGeometry(pl),
+      aspect: (mode) => ({ couleur: COULEUR_TOLE, matiere: mode === 'realiste' ? ACIER_TOLE : null }),
+    });
+  }
+  return out;
 }
 
 /**
  * Maillage d'une pièce et ses arêtes.
  *
- * En mode réaliste, la MATIÈRE prime sur la couleur de rôle : c'est elle qui
- * fait la différence entre de l'acier et du plastique teinté. Dans les modes de
- * lecture (rôle, profil, taux), on garde une surface mate et peu réfléchissante,
- * pour que la couleur reste franche et comparable d'une pièce à l'autre — un
- * reflet fausserait la lecture d'un code couleur.
+ * Les matériaux ne lui appartiennent pas : ils sont PARTAGÉS entre toutes les
+ * pièces de même aspect (voir `materiaux.ts`). Libérer une pièce, c'est libérer
+ * ses géométries, jamais ses matériaux.
  */
 export function creerPiece(
   id: string,
   g: THREE.BufferGeometry,
-  couleur: number,
-  matiere: Matiere | null,
+  surface: THREE.Material,
+  arete: THREE.Material,
 ): PieceMaillee {
-  const materiau = new THREE.MeshStandardMaterial({
-    color: matiere ? matiere.couleur : couleur,
-    metalness: matiere ? matiere.metalness : 0.1,
-    roughness: matiere ? matiere.roughness : 0.75,
-    clippingPlanes: [],
-    side: THREE.DoubleSide,
-  });
-  const mesh = new THREE.Mesh(g, materiau);
+  const mesh = new THREE.Mesh(g, surface);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.userData['id'] = id;
-
-  const edges = new THREE.LineSegments(
-    edgesOf(g),
-    new THREE.LineBasicMaterial({
-      color: 0x11151a,
-      transparent: true,
-      // Les arêtes servent à lire la structure ; en rendu réaliste elles doivent
-      // s'effacer, sinon le modèle redevient un dessin.
-      opacity: matiere ? 0.12 : 0.35,
-    }),
-  );
-  return { mesh, edges, baseColor: matiere ? matiere.couleur : couleur };
+  const edges = new THREE.LineSegments(edgesOf(g), arete);
+  return { mesh, edges };
 }
 
 /**

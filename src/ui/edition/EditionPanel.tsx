@@ -60,11 +60,16 @@ export function EditionPanel(): JSX.Element {
   return (
     <section ref={page} className="principal edition">
       <div className="edition-entete">
-        <div className="segments" role="tablist" aria-label="Que modifier">
-          <button type="button" role="tab" aria-selected={mode === '3d'} onClick={() => setMode('3d')}>
+        {/*
+          * Bascule de mode, pas des onglets : role="tab" promettait les flèches,
+          * des panneaux reliés et un ordre de tabulation qui n'existaient pas. Deux
+          * boutons à état (aria-pressed) disent exactement ce qu'ils font.
+          */}
+        <div className="segments" role="group" aria-label="Que modifier">
+          <button type="button" aria-pressed={mode === '3d'} onClick={() => setMode('3d')}>
             Modèle 3D
           </button>
-          <button type="button" role="tab" aria-selected={mode === '2d'} onClick={() => setMode('2d')}>
+          <button type="button" aria-pressed={mode === '2d'} onClick={() => setMode('2d')}>
             Plans 2D
           </button>
         </div>

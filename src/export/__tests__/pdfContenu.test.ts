@@ -144,6 +144,19 @@ describe('flux de contenu du PDF', () => {
     expect(flux).toMatch(/0\.?\s+g/);
   });
 
+  it('évide les trous d’un remplissage : un seul chemin, règle pair-impair', async () => {
+    const s = new DrawScene();
+    s.remplissage(
+      [pt(0, 0), pt(40, 0), pt(40, 40), pt(0, 40)],
+      [[pt(10, 10), pt(10, 30), pt(30, 30), pt(30, 10)]],
+      0.5,
+    );
+    const flux = await contenu(s);
+    // Deux sous-chemins (deux « m »), puis UN remplissage pair-impair.
+    expect(operandes(flux, 'm')).toHaveLength(2);
+    expect(flux.match(/\bf\*/g)).toHaveLength(1);
+  });
+
   it('trace chaque hachure en traits, comme les autres formats', async () => {
     const s = new DrawScene();
     s.hachure([pt(0, 0), pt(20, 0), pt(20, 20), pt(0, 20)], [], 2, 0);

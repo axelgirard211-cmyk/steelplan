@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 
 /**
  * FENÊTRE MODALE — voile, titre, bouton de fermeture, et le clavier qui va avec.
@@ -38,6 +38,16 @@ export function Modale({
   children: ReactNode;
 }): JSX.Element {
   const boite = useRef<HTMLDivElement>(null);
+  const idTitre = useId();
+  /*
+   * ⚠ onFermer vit dans une référence : le parent passe souvent une fonction
+   * fléchée, nouvelle à chaque rendu. Placée dans les dépendances de l'effet,
+   * elle le relançait à chaque frappe — et l'effet, en se relançant, rendait le
+   * focus à l'élément d'origine puis le reprenait sur la boîte : le champ en
+   * cours de saisie perdait le curseur.
+   */
+  const fermer = useRef(onFermer);
+  fermer.current = onFermer;
 
   useEffect(() => {
     const precedent = document.activeElement as HTMLElement | null;
@@ -47,7 +57,7 @@ export function Modale({
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopImmediatePropagation();
-        onFermer();
+        fermer.current();
         return;
       }
       if (e.key === 'Tab') {
@@ -64,7 +74,8 @@ export function Modale({
       window.removeEventListener('keydown', surTouche, true);
       precedent?.focus?.();
     };
-  }, [onFermer]);
+    // Une seule fois par ouverture : voir la référence `fermer` ci-dessus.
+  }, []);
 
   return (
     <div className="voile" onClick={fermerAuClic ? onFermer : undefined}>
@@ -73,12 +84,12 @@ export function Modale({
         className={etroit ? 'dialogue etroit' : large ? 'dialogue large' : 'dialogue'}
         role="dialog"
         aria-modal="true"
-        aria-label={titre}
+        aria-labelledby={idTitre}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         <header>
-          <h2>{titre}</h2>
+          <h2 id={idTitre}>{titre}</h2>
           <button type="button" className="plat" onClick={onFermer} aria-label="Fermer">
             ✕
           </button>
@@ -94,7 +105,7 @@ function enfermerLeFocus(e: KeyboardEvent, boite: HTMLElement | null): void {
   if (!boite) return;
   const commandes = [
     ...boite.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"])',
     ),
   ];
   if (commandes.length === 0) {

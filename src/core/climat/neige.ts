@@ -14,37 +14,53 @@ export type ZoneNeige = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2' | 'D' | 'E';
 export const ZONES_NEIGE: readonly ZoneNeige[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D', 'E'];
 
 /**
- * Valeur caractéristique au sol sk,0 (kN/m²) sous 200 m d'altitude, et charge
- * ACCIDENTELLE sAd là où la carte en impose une.
+ * Valeur caractéristique au sol sk,200 (kN/m²) sous 200 m d'altitude, et charge
+ * ACCIDENTELLE sAd là où la carte en impose une — NF EN 1991-1-3/NA § 4.1(1),
+ * tableau des régions (amendement A1 de 2011).
  *
  * ⚠ La charge accidentelle n'est PAS un supplément de sécurité : c'est une chute
  * exceptionnelle, d'un seul tenant, vérifiée sous combinaison accidentelle avec
- * γ = 1,0. Elle n'existe que dans certaines régions — les régions « 2 » et D —
- * et elle y dépasse largement la neige normale. L'ignorer sur un bâtiment situé
- * en C2 revient à sauter le cas qui gouverne.
+ * γ = 1,0. Elle n'existe que dans les régions A2, B1, B2, C2 et D — et elle y
+ * dépasse largement la neige normale. L'ignorer sur un bâtiment situé en B1
+ * revient à sauter le cas qui gouverne.
+ *
+ * ⚠ Le tableau ne suit PAS l'indice de la région : B1 a une charge accidentelle
+ * (1,00) et C1 n'en a pas. Il portait auparavant sAd = 0 en B1, 1,00 en B2 et
+ * 1,35 en C1 — trois valeurs fausses, dont deux du côté dangereux.
  */
 const CARTE: Readonly<Record<ZoneNeige, { sk0: number; sAd: number }>> = {
   A1: { sk0: 0.45, sAd: 0 },
   A2: { sk0: 0.45, sAd: 1.0 },
-  B1: { sk0: 0.55, sAd: 0 },
-  B2: { sk0: 0.55, sAd: 1.0 },
-  C1: { sk0: 0.65, sAd: 1.35 },
+  B1: { sk0: 0.55, sAd: 1.0 },
+  B2: { sk0: 0.55, sAd: 1.35 },
+  C1: { sk0: 0.65, sAd: 0 },
   C2: { sk0: 0.65, sAd: 1.35 },
   D: { sk0: 0.9, sAd: 1.8 },
   E: { sk0: 1.4, sAd: 0 },
 };
 
 /**
- * Majoration d'altitude Δs1 (kN/m²), NF EN 1991-1-3/NA § 4.1.
+ * Majoration d'altitude Δs (kN/m²), NF EN 1991-1-3/NA § 4.1(1).
  *
  * ⚠ Elle est CONTINUE mais sa pente change à 500 et à 1000 m : la neige
  * s'accumule d'autant plus vite qu'on monte. Retenir une pente unique donnerait
  * 0,80 kN/m² au lieu de 1,05 à 1000 m — un quart de la charge en moins sur un
  * bâtiment de montagne.
+ *
+ * ⚠ DEUX lois, selon la région : Δs1 pour A1 à D, Δs2 — deux fois plus raide —
+ * pour la région E (Alpes, Pyrénées). Appliquer Δs1 en E donnait à 1000 m
+ * 1,05 kN/m² au lieu de 2,20 : la moitié de la majoration d'un site de montagne.
  */
-export function majorationAltitude(altitude: number): number {
+export function majorationAltitude(altitude: number, zone: ZoneNeige = 'A1'): number {
   const a = Math.max(0, altitude);
   if (a <= 200) return 0;
+  if (zone === 'E') {
+    // Δs2 : 1,5A/1000 − 0,30 ; 3,5A/1000 − 1,30 ; 7A/1000 − 4,80.
+    if (a <= 500) return (1.5 * a) / 1000 - 0.3;
+    if (a <= 1000) return (3.5 * a) / 1000 - 1.3;
+    return (7 * a) / 1000 - 4.8;
+  }
+  // Δs1 : A/1000 − 0,20 ; 1,5A/1000 − 0,45 ; 3,5A/1000 − 2,45.
   if (a <= 500) return a / 1000 - 0.2;
   if (a <= 1000) return (1.5 * a) / 1000 - 0.45;
   return (3.5 * a) / 1000 - 2.45;
@@ -62,7 +78,7 @@ export interface NeigeAuSol {
 export function neigeAuSol(zone: ZoneNeige, altitude: number): NeigeAuSol {
   const c = CARTE[zone];
   return {
-    sk: c.sk0 + majorationAltitude(altitude),
+    sk: c.sk0 + majorationAltitude(altitude, zone),
     // ⚠ La charge accidentelle ne reçoit PAS la majoration d'altitude : elle est
     // donnée telle quelle par la carte. La majorer serait cumuler deux fois le
     // même caractère exceptionnel.

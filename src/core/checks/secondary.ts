@@ -5,6 +5,8 @@ import type { SteelGradeId } from '../catalog/types';
 import { cutLengths, type Member, type MemberRole } from '../geometry/member';
 import { bracedBays } from '../model/bracing';
 import { leftSlopeRad, ridgeHeight, rightSlopeRad } from '../model/grid';
+import { coefficientsToiture, CPI_NEGATIF } from '../climat/vent';
+import { rad2deg } from '../math/tolerance';
 import type { ProjectParams } from '../model/project';
 import type { ActionId, ActionIntensities, Combination } from '../analysis/loadCases';
 import { GAMMA_M1 } from './coefficients';
@@ -57,7 +59,20 @@ export function checkSecondary(
     let pied: AppuiPotelet | null = null;
     let traction: TractionDiagonale | null = null;
     for (const comb of combs) {
-      const ligne = verifier(p, model, q, comb, m);
+      /*
+       * ⚠ Une panne reçoit le vent dans les DEUX sens : aspirée (dépression) ou
+       * poussée (pression descendante, EN 1991-1-4 tableau 7.4a, valeurs
+       * positives, aggravées par la dépression intérieure cpi = −0,3). Chaque
+       * combinaison avec vent est examinée sous les deux, et la pire est
+       * retenue : sans cela, la neige dominante était même SOULAGÉE par le vent
+       * d'accompagnement, compté en soulèvement.
+       */
+      const sens: readonly SensVent[] = m.role === 'panne' && (comb.factors.W ?? 0) !== 0 ? ['souleve', 'pousse'] : ['souleve'];
+      let ligne: CheckLine | null = null;
+      for (const sv of sens) {
+        const l = verifier(p, model, q, comb, m, sv);
+        if (l) ligne = ligne ? fusionner(ligne, l) : l;
+      }
       if (ligne) meilleure = meilleure ? fusionner(meilleure, ligne) : ligne;
       // Le pied d'un potelet sur deux appuis rend la moitié du vent : V = qL/2.
       if (ligne && m.role === 'potelet' && comb.kind === 'ELU' && (!pied || Math.abs(ligne.vEd) > pied.v)) {
@@ -112,12 +127,35 @@ const PORTIQUE: readonly MemberRole[] = [
 
 /* ------------------------------------------------------------------ */
 
+/** Sens du vent sur la toiture, pour une panne. */
+type SensVent = 'souleve' | 'pousse';
+
+/**
+ * Pression de vent DESCENDANTE sur une panne (kN/m², perpendiculaire au rampant).
+ *
+ * qp × (cpe,10 positif le plus fort des zones G et H − cpi), avec cpi = −0,3
+ * (EN 1991-1-4 § 7.2.9) : la dépression intérieure tire la couverture vers le
+ * bas, si bien qu'il y a une pression nette même sur une toiture presque plate
+ * (cpe = 0).
+ *
+ * En saisie manuelle qp n'est pas connue : on la déduit de la pression de
+ * façade saisie, qp·(cpe,D − cpi), en prenant cpe,D = 0,7 — la plus petite
+ * valeur du tableau 7.1 —, ce qui la MAJORE. Prendre la pression de façade
+ * elle-même aurait triplé la pression d'une toiture faiblement pentue.
+ */
+function ventDescendant(p: ProjectParams, q: ActionIntensities): number {
+  const qp = q.qp > 0 ? q.qp : q.wMur / (0.7 - CPI_NEGATIF);
+  const c = coefficientsToiture(Math.abs(rad2deg(leftSlopeRad(p.grid))));
+  return qp * (Math.max(c.G[1], c.H[1], 0) - CPI_NEGATIF);
+}
+
 function verifier(
   p: ProjectParams,
   model: StructuralModel,
   q: ActionIntensities,
   comb: Combination,
   m: Member,
+  sensVent: SensVent = 'souleve',
 ): CheckLine | null {
   const g = (a: ActionId): number => comb.factors[a] ?? 0;
   const profil = getProfile(m.profileId);
@@ -144,10 +182,14 @@ function verifier(
         ((g('Q') * q.qToit + g('S') * q.sToit + g('Sacc') * q.sAccToit) * e * Math.cos(alpha)) /
         1000;
       const vertical = gv + sv;
-      // Dépression : perpendiculaire au rampant, en sens inverse de la gravité.
-      const soulevement = (g('W') * q.wToit * e) / 1000;
+      // Vent : perpendiculaire au rampant ; la dépression s'oppose à la gravité,
+      // la pression descendante s'y ajoute.
+      const vent =
+        sensVent === 'pousse'
+          ? (g('W') * ventDescendant(p, q) * e) / 1000
+          : -(g('W') * q.wToit * e) / 1000;
 
-      qFort = vertical * Math.cos(alpha) - soulevement;
+      qFort = vertical * Math.cos(alpha) + vent;
       qFaible = vertical * Math.sin(alpha);
       // Les liernes réduisent la portée de flexion d'axe faible : c'est toute
       // leur raison d'être, et l'ignorer condamnerait des pannes correctes.
@@ -221,7 +263,17 @@ function verifier(
   const ratios = libre
     ? { ...check.ratios, stabilite: Math.max(check.ratios.stabilite, libre.ratio) }
     : check.ratios;
-  const avertissements = libre ? [...check.avertissements, libre.message] : check.avertissements;
+  const avertissements = [
+    ...check.avertissements,
+    ...(libre ? [libre.message] : []),
+    // Le libellé de combinaison ne dit pas le sens du vent : on l'écrit ici.
+    ...(sensVent === 'pousse'
+      ? [
+          `Vent examiné dans les deux sens : dépression ${q.wToit.toFixed(2)} kN/m² et pression ` +
+            `descendante ${ventDescendant(p, q).toFixed(2)} kN/m² (EN 1991-1-4 tab. 7.4a, cpi = −0,3).`,
+        ]
+      : []),
+  ];
 
   const { ratio, gouverne } = pire(ratios);
   return {
@@ -315,6 +367,24 @@ function entraxePotelets(p: ProjectParams): number {
 }
 
 /**
+ * Réaction d'une lierne, en fraction de q·L (q parallèle au rampant, L la
+ * travée de la panne).
+ *
+ * ⚠ La panne est CONTINUE sur ses liernes, en flexion d'axe faible : la lierne
+ * n'est pas l'appui d'une poutre isostatique mais l'appui intermédiaire d'une
+ * poutre continue, qui en reçoit davantage. Une rangée : poutre à deux travées
+ * égales, appui central 1,25 × q·L/2 = 0,625·q·L, et non q·L/2. Deux rangées :
+ * trois travées, appuis intérieurs 1,10 × q·L/3. Au-delà, 1,143 × q·L/(n + 1),
+ * le coefficient de la poutre à quatre travées, enveloppe des suivantes.
+ */
+export function reactionLierne(rangees: number): number {
+  const n = Math.max(1, Math.round(rangees));
+  if (n === 1) return 0.625;
+  if (n === 2) return 1.1 / 3;
+  return 1.143 / (n + 1);
+}
+
+/**
  * Effort de traction dans une diagonale de contreventement ou une lierne.
  *
  * ⚠ CHEMINEMENT SIMPLIFIÉ, à connaître avant d'utiliser le résultat. La force du
@@ -342,7 +412,7 @@ function effortDeTraction(
     const sv = (((comb.factors.S ?? 0) * q.sToit) * e * Math.cos(alpha)) / 1000;
     const parallele = (gv + sv) * Math.sin(alpha);
     const nPannes = Math.max(1, Math.round(p.grid.span / 2 / Math.max(e, 1)));
-    return (parallele * p.grid.baySpacing) / 2 * nPannes;
+    return parallele * p.grid.baySpacing * reactionLierne(p.secondary.purlins.sagBars.rows) * nPannes;
   }
 
   if (g === 0) return 0;

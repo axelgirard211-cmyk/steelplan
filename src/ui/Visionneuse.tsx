@@ -145,11 +145,11 @@ export function Visionneuse({
   return (
     <div className="visionneuse">
       <div className="visionneuse-outils">
-        <button type="button" className="plat" onClick={() => zoomer(1 / 1.5)} disabled={zoom <= ZOOM_MIN} title="Dézoomer">
+        <button type="button" className="plat" onClick={() => zoomer(1 / 1.5)} disabled={zoom <= ZOOM_MIN} title="Dézoomer" aria-label="Dézoomer">
           −
         </button>
         <span className="compte zoom">{Math.round(zoom * 100)} %</span>
-        <button type="button" className="plat" onClick={() => zoomer(1.5)} disabled={zoom >= ZOOM_MAX} title="Zoomer">
+        <button type="button" className="plat" onClick={() => zoomer(1.5)} disabled={zoom >= ZOOM_MAX} title="Zoomer" aria-label="Zoomer">
           +
         </button>
         <button type="button" className="plat" onClick={() => setZoom(1)} disabled={zoom === 1} title="Ajuster à la largeur">

@@ -136,7 +136,31 @@ export function chargesEffectives(p: ProjectParams): ProjectParams['loads']['loa
  * combiner une neige et d'en appliquer une autre.
  */
 export function modeleDeCharges(p: ProjectParams): ProjectParams['loads'] {
-  return { ...p.loads, loads: chargesEffectives(p) };
+  return { ...p.loads, loads: chargesEffectives(p), factors: facteursEffectifs(p) };
+}
+
+/** Altitude au-delà de laquelle la neige change de facteurs ψ, NF EN 1990/NA tableau A1.1. */
+export const ALTITUDE_PSI_NEIGE = 1000;
+
+/**
+ * Facteurs de combinaison effectivement employés.
+ *
+ * ⚠ ψ0 de la neige n'est PAS une constante : l'annexe nationale française de
+ * l'EN 1990 (tableau A1.1) le porte de 0,5 à 0,7 pour un site au-dessus de
+ * 1000 m (ψ1 = 0,5 et ψ2 = 0,2, contre 0,2 et 0 en plaine). En montagne la neige
+ * dure tout l'hiver : elle accompagne le vent bien plus souvent qu'en plaine.
+ * Garder 0,5 sous-estimait de 29 % la neige d'accompagnement de « 1,35 G + 1,5 W
+ * + 1,5 ψ0 S », la combinaison qui gouverne les poteaux d'un bâtiment de
+ * station. ψ1 et ψ2 ne servent pas : SteelPlan ne forme ni combinaison fréquente
+ * ni quasi permanente.
+ *
+ * L'altitude n'est connue qu'en mode Eurocode. La valeur saisie est conservée si
+ * elle est plus sévère : on ne réduit jamais un choix de l'ingénieur.
+ */
+export function facteursEffectifs(p: ProjectParams): ProjectParams['loads']['factors'] {
+  const f = p.loads.factors;
+  if (p.site.mode === 'manuel' || p.site.altitude <= ALTITUDE_PSI_NEIGE) return f;
+  return { ...f, psi0Neige: Math.max(f.psi0Neige, 0.7) };
 }
 
 /** Lignes d'hypothèses décrivant le climat retenu, pour le rapport. */
@@ -186,6 +210,12 @@ export function hypothesesClimat(p: ProjectParams): string[] {
     'Vent sur pignon : la pression sur le pignon lui-même descend par les potelets et la poutre au vent, ' +
       'calculés par le cheminement simplifié des contreventements.',
   ];
+  if (p.site.altitude > ALTITUDE_PSI_NEIGE) {
+    out.push(
+      `Site à ${p.site.altitude} m, au-dessus de ${ALTITUDE_PSI_NEIGE} m : ψ0 de la neige porté à ` +
+        `${facteursEffectifs(p).psi0Neige.toFixed(2)} (NF EN 1990/NA, tableau A1.1).`,
+    );
+  }
   if (n.sAccidentelle > 0) {
     out.push(
       `Région ${n.sol.zone} : charge de neige ACCIDENTELLE sAd = ${n.sol.sAd.toFixed(2)} kN/m² au sol, ` +

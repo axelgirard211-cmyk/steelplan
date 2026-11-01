@@ -1,5 +1,17 @@
+import { GRADE_IDS } from '../catalog/grades';
+import { ZONES_NEIGE } from '../climat/neige';
+import { TERRAINS, ZONES_VENT } from '../climat/vent';
+import { CLASSES_EXECUTION } from '../model/atelier';
+import type { BracingShape } from '../model/bracing';
+import { BOLT_DIAMETERS, type BoltClass, type ClasseBeton } from '../model/connections';
 import { DEFAULT_PROJECT } from '../model/defaults';
-import type { Ouverture } from '../model/ouvertures';
+import type { PreparationSurface, TypeFinition } from '../model/finition';
+import type { BaseFixity } from '../model/frame';
+import type { RoofType, SlopeUnit } from '../model/grid';
+import { FACES_OUVERTURE, type Ouverture, type TypeOuverture } from '../model/ouvertures';
+import type { SpacingMode } from '../model/secondary';
+import type { TrussType } from '../model/truss';
+import type { SoudureSemelles } from '../geometry/weld';
 import type { FreeMember, ProjectParams, Revision } from '../model/project';
 import { validateProject, type Issue } from '../model/validate';
 import { lireRetouches } from './lireRetouches';
@@ -109,7 +121,67 @@ function mergeWithDefaults(def: unknown, raw: unknown, path: string): unknown {
   if (attendu === 'number' && !Number.isFinite(raw as number)) {
     throw new FormatError(`Champ « ${path} » : valeur numérique invalide (${String(raw)}).`);
   }
+  const permis = enumerationDe(path);
+  if (permis && !permis.includes(raw as string | number)) {
+    throw new FormatError(
+      `Champ « ${path} » : valeur ${JSON.stringify(raw)} inconnue (attendu : ${permis.join(', ')}).`,
+    );
+  }
   return raw;
+}
+
+/*
+ * ÉNUMÉRATIONS — liste blanche à la relecture.
+ *
+ * ⚠ Le contrôle de TYPE ne suffit pas : « toString » est bien un texte, et une
+ * nuance « toString » allait chercher une fonction d'Object.prototype dans la
+ * table des aciers ; un mode de pannes « bogus » laissait le générateur choisir
+ * une branche au hasard. Tout champ à valeurs fermées est donc confronté à sa
+ * liste, et le fichier refusé en nommant le chemin fautif.
+ */
+type Valeurs = readonly (string | number)[];
+const SPACING: readonly SpacingMode[] = ['entraxe', 'nombre'];
+const FORMES: readonly BracingShape[] = ['croix', 'diagonale', 'k'];
+const CLASSES_BOULON: readonly BoltClass[] = ['8.8', '10.9'];
+const SOUDURES: readonly SoudureSemelles[] = ['angle', 'pleine-penetration'];
+
+/** Par chemin complet, les indices de liste ramenés à « [] ». */
+const ENUMERATIONS: Readonly<Record<string, Valeurs>> = {
+  'grid.roofType': ['bipente', 'monopente'] satisfies RoofType[],
+  'grid.slopeUnit': ['pourcent', 'degres'] satisfies SlopeUnit[],
+  'frame.baseFixity': ['articule', 'encastre'] satisfies BaseFixity[],
+  'truss.type': ['warren', 'pratt', 'howe', 'polonceau'] satisfies TrussType[],
+  'secondary.purlins.mode': SPACING,
+  'secondary.rails.mode': SPACING,
+  'secondary.gablePosts.mode': SPACING,
+  'ouvertures.items[].face': FACES_OUVERTURE,
+  'ouvertures.items[].type': ['portail', 'porte', 'chassis'] satisfies TypeOuverture[],
+  'bracing.roof.shape': FORMES,
+  'bracing.wall.shape': FORMES,
+  'bracing.gable.shape': FORMES,
+  'connections.rafterToColumn.soudureSemelles': SOUDURES,
+  'connections.ridge.soudureSemelles': SOUDURES,
+  'connections.columnBase.concrete': ['C20/25', 'C25/30', 'C30/37', 'C35/45', 'C40/50'] satisfies ClasseBeton[],
+  'finition.type': ['peinture', 'galvanisation', 'brut'] satisfies TypeFinition[],
+  'finition.preparation': ['Sa 3', 'Sa 2½', 'Sa 2', 'St 3', 'St 2'] satisfies PreparationSurface[],
+  'finition.categorie': ['C1', 'C2', 'C3', 'C4', 'C5'],
+  'atelier.classeExecution': CLASSES_EXECUTION,
+  'site.mode': ['manuel', 'eurocode'],
+  'site.zoneNeige': ZONES_NEIGE,
+  'site.zoneVent': ZONES_VENT,
+  'site.terrain': TERRAINS,
+};
+
+/** Les valeurs permises d'un champ, ou `undefined` s'il est libre. */
+function enumerationDe(path: string): Valeurs | undefined {
+  const norme = path.replace(/\[\d+\]/g, '[]');
+  if (Object.hasOwn(ENUMERATIONS, norme)) return ENUMERATIONS[norme];
+  // Toute nuance, où qu'elle soit (portique, pannes, barres libres…).
+  if (norme === 'grade' || norme.endsWith('.grade')) return GRADE_IDS;
+  // Tout boulon de la rubrique Assemblages : diamètre et classe normalisés.
+  if (/(?:^|\.)(?:bolt|secondaryBolt)\.d$/.test(norme)) return BOLT_DIAMETERS;
+  if (/(?:^|\.)(?:bolt|secondaryBolt)\.cls$/.test(norme)) return CLASSES_BOULON;
+  return undefined;
 }
 
 function parseFreeMember(raw: unknown, path: string): FreeMember {

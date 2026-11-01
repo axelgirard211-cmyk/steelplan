@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getProfile } from '../../catalog/index';
-import { fibreAbscissa, memberFrame, type Member } from '../../geometry/member';
+import { fibreAbscissa, memberFrame, type Member, type MemberFrame } from '../../geometry/member';
 import { sectionOutline, type Pt2, type SectionOutline } from '../../geometry/section';
 import { add, dot, scale, sub, type Vec3 } from '../../math/vec3';
 import { DEFAULT_PROJECT } from '../../model/defaults';
@@ -43,6 +43,103 @@ const PROJETS = [
   ...TEMPLATES.map((t) => [t.id, t.build()] as const),
   ['ouvertures', AVEC_OUVERTURES] as const,
 ];
+
+/*
+ * ⚠ RAPIDITÉ. Les contrôles ci-dessous posent des dizaines de milliers de
+ * points contre chaque pièce voisine. Recalculer à chaque point le repère de la
+ * barre, son contour de section ou le repère de la tôle coûtait l'essentiel du
+ * temps : tout ce qui ne dépend que de la pièce est calculé UNE fois. Le modèle
+ * de chaque gabarit l'est aussi, à la demande, et partagé par ses trois tests.
+ * Les points contrôlés et les tolérances sont inchangés.
+ */
+const modeles = new Map<string, StructuralModel>();
+function modele(nom: string, p: ProjectParams): StructuralModel {
+  let M = modeles.get(nom);
+  if (!M) {
+    M = buildProject(p);
+    modeles.set(nom, M);
+  }
+  return M;
+}
+const cadres = new WeakMap<Member, MemberFrame>();
+function cadre(m: Member): MemberFrame {
+  let f = cadres.get(m);
+  if (!f) {
+    f = memberFrame(m);
+    cadres.set(m, f);
+  }
+  return f;
+}
+const cadresDeTole = new WeakMap<Plate, ReturnType<typeof plateFrame>>();
+function cadreDeTole(pl: Plate): ReturnType<typeof plateFrame> {
+  let f = cadresDeTole.get(pl);
+  if (!f) {
+    f = plateFrame(pl);
+    cadresDeTole.set(pl, f);
+  }
+  return f;
+}
+const contours = new Map<number, Map<string, SectionOutline>>();
+function contour(profileId: string, n: number): SectionOutline {
+  let parProfil = contours.get(n);
+  if (!parProfil) {
+    parProfil = new Map();
+    contours.set(n, parProfil);
+  }
+  let c = parProfil.get(profileId);
+  if (!c) {
+    c = sectionOutline(getProfile(profileId), n);
+    parProfil.set(profileId, c);
+  }
+  return c;
+}
+/**
+ * Repère et contour fin d'une barre, tels que les lit `dansBarre`, avec les
+ * abscisses extrêmes de ses deux coupes sur les sommets du contour. L'abscisse
+ * de coupe étant affine sur la section, un point plus près de l'about que la
+ * coupe la plus reculée, de TOL ou moins, ne peut entrer dans le métal : il est
+ * écarté sans calcul, exactement comme le ferait le calcul complet.
+ */
+interface BarreLue {
+  readonly f: MemberFrame;
+  readonly sec: SectionOutline;
+  readonly sMin: number;
+  readonly sMax: number;
+}
+const barresLues = new WeakMap<Member, BarreLue>();
+function barreLue(m: Member): BarreLue {
+  let b = barresLues.get(m);
+  if (!b) {
+    const f = cadre(m);
+    const sec = contour(m.profileId, 4);
+    let sMin = Infinity;
+    let sMax = -Infinity;
+    for (const q of sec.outer) {
+      const s0 = fibreAbscissa(f, m.start, m.cutStart, q);
+      const s1 = fibreAbscissa(f, m.start, m.cutEnd, q);
+      sMin = Math.min(sMin, s0, s1);
+      sMax = Math.max(sMax, s0, s1);
+    }
+    b = { f, sec, sMin, sMax };
+    barresLues.set(m, b);
+  }
+  return b;
+}
+/** Encadrement du contour extérieur : un point hors de lui est hors du polygone. */
+const encadrements = new WeakMap<readonly Pt2[], { y0: number; y1: number; z0: number; z1: number }>();
+function horsEncadrement(q: Pt2, poly: readonly Pt2[]): boolean {
+  let e = encadrements.get(poly);
+  if (!e) {
+    e = {
+      y0: Math.min(...poly.map((p) => p.y)),
+      y1: Math.max(...poly.map((p) => p.y)),
+      z0: Math.min(...poly.map((p) => p.z)),
+      z1: Math.max(...poly.map((p) => p.z)),
+    };
+    encadrements.set(poly, e);
+  }
+  return q.y < e.y0 || q.y > e.y1 || q.z < e.z0 || q.z > e.z1;
+}
 /** Pénétration tolérée (mm) : en deçà, c'est un contact. */
 const TOL = 1;
 
@@ -85,16 +182,16 @@ function distPoly(p: Pt2, poly: readonly Pt2[]): number {
   return m;
 }
 
-const sections = new Map<string, SectionOutline>();
 /** Profondeur (mm) à laquelle un point entre dans le métal d'une barre, trous déduits ; 0 s'il n'y est pas. */
 function dansBarre(m: Member, P: Vec3): number {
-  const f = memberFrame(m);
-  const d = sub(P, m.start);
-  const q = { y: dot(d, f.ay), z: dot(d, f.az) };
-  const s = dot(d, f.ax);
-  const sec = sections.get(m.profileId) ?? sectionOutline(getProfile(m.profileId), 4);
-  sections.set(m.profileId, sec);
-  if (!dansPoly(q, sec.outer) || sec.holes.some((h) => dansPoly(q, h))) return 0;
+  const { f, sec, sMin, sMax } = barreLue(m);
+  const dx = P.x - m.start.x;
+  const dy = P.y - m.start.y;
+  const dz = P.z - m.start.z;
+  const s = dx * f.ax.x + dy * f.ax.y + dz * f.ax.z;
+  if (s <= sMin + TOL || s >= sMax - TOL) return 0;
+  const q = { y: dx * f.ay.x + dy * f.ay.y + dz * f.ay.z, z: dx * f.az.x + dy * f.az.y + dz * f.az.z };
+  if (horsEncadrement(q, sec.outer) || !dansPoly(q, sec.outer) || sec.holes.some((h) => dansPoly(q, h))) return 0;
   const s0 = fibreAbscissa(f, m.start, m.cutStart, q);
   const s1 = fibreAbscissa(f, m.start, m.cutEnd, q);
   const prof = Math.min(distPoly(q, sec.outer), s - Math.min(s0, s1), Math.max(s0, s1) - s);
@@ -107,11 +204,11 @@ function dansBarre(m: Member, P: Vec3): number {
 }
 /** Même chose dans une tôle, oblongs compris. */
 function dansTole(pl: Plate, P: Vec3): number {
-  const { u, v, n } = plateFrame(pl);
+  const { u, v, n } = cadreDeTole(pl);
   const d = sub(P, pl.origin);
   const q = { y: dot(d, u), z: dot(d, v) };
   const e = Math.abs(dot(d, n));
-  if (e > pl.thickness / 2 - TOL || !dansPoly(q, pl.outline)) return 0;
+  if (e > pl.thickness / 2 - TOL || horsEncadrement(q, pl.outline) || !dansPoly(q, pl.outline)) return 0;
   const prof = Math.min(distPoly(q, pl.outline), pl.thickness / 2 - e);
   if (prof <= TOL) return 0;
   for (const h of pl.holes) {
@@ -125,12 +222,12 @@ function dansTole(pl: Plate, P: Vec3): number {
 }
 
 function coinsDeTole(pl: Plate): Vec3[] {
-  const { u, v } = plateFrame(pl);
+  const { u, v } = cadreDeTole(pl);
   return pl.outline.map((q) => add(pl.origin, add(scale(u, q.y), scale(v, q.z))));
 }
 function enveloppeDeBarre(m: Member): Boite {
-  const f = memberFrame(m);
-  const r = Math.max(...sectionOutline(getProfile(m.profileId), 1).outer.map((q) => Math.hypot(q.y, q.z)));
+  const f = cadre(m);
+  const r = Math.max(...contour(m.profileId, 1).outer.map((q) => Math.hypot(q.y, q.z)));
   const s0 = fibreAbscissa(f, m.start, m.cutStart, { y: 0, z: 0 });
   const s1 = fibreAbscissa(f, m.start, m.cutEnd, { y: 0, z: 0 });
   return boite([add(m.start, scale(f.ax, s0)), add(m.start, scale(f.ax, s1))], r);
@@ -187,7 +284,7 @@ function conflitsDeToles(M: StructuralModel): string[] {
   const barres = M.members.map((m) => ({ m, b: enveloppeDeBarre(m) }));
   const toles = M.plates.map((pl) => ({ pl, b: boite(coinsDeTole(pl), pl.thickness) }));
   for (const { pl, b } of toles) {
-    const { u, v } = plateFrame(pl);
+    const { u, v } = cadreDeTole(pl);
     const ys = pl.outline.map((q) => q.y);
     const zs = pl.outline.map((q) => q.z);
     const pts: Vec3[] = [];
@@ -228,8 +325,8 @@ function conflitsDeBarres(M: StructuralModel): string[] {
   const out: string[] = [];
   const env = M.members.map((m) => ({ m, b: enveloppeDeBarre(m) }));
   for (const a of env) {
-    const f = memberFrame(a.m);
-    const sec = sectionOutline(getProfile(a.m.profileId), 2);
+    const f = cadre(a.m);
+    const sec = contour(a.m.profileId, 2);
     const pts: Vec3[] = [];
     for (const q of [...sec.outer, ...sec.holes.flat()]) {
       const s0 = fibreAbscissa(f, a.m.start, a.m.cutStart, q);
@@ -251,7 +348,7 @@ function conflitsDeBarres(M: StructuralModel): string[] {
 
 describe('géométrie 3D de tous les gabarits', () => {
   it('pose les trois ouvertures du projet d’essai, chevêtres attachés', () => {
-    const M = buildProject(AVEC_OUVERTURES);
+    const M = modele('ouvertures', AVEC_OUVERTURES);
     expect(M.members.filter((m) => m.role === 'chevetre').length).toBeGreaterThanOrEqual(9);
     // Chaque montant a son pied, et au moins un plat d'attache.
     for (const mo of M.members.filter((m) => m.role === 'chevetre' && Math.abs(m.start.z - m.end.z) > 1)) {
@@ -260,17 +357,16 @@ describe('géométrie 3D de tous les gabarits', () => {
     }
   });
   for (const [nom, p] of PROJETS) {
-    const M = buildProject(p);
     it(`${nom} : chaque boulon traverse ses trous, sans toucher d'autre pièce`, () => {
-      const c = conflitsDeBoulons(M);
+      const c = conflitsDeBoulons(modele(nom, p));
       expect(c.slice(0, 10), `${c.length} conflit(s)`).toEqual([]);
     });
     it(`${nom} : aucune tôle n'entre dans une barre ou dans une autre tôle`, () => {
-      const c = conflitsDeToles(M);
+      const c = conflitsDeToles(modele(nom, p));
       expect(c.slice(0, 10), `${c.length} conflit(s)`).toEqual([]);
     });
     it(`${nom} : aucune barre n'entre dans une autre`, () => {
-      const c = conflitsDeBarres(M);
+      const c = conflitsDeBarres(modele(nom, p));
       expect(c.slice(0, 10), `${c.length} conflit(s)`).toEqual([]);
     });
   }

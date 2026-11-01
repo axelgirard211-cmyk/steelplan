@@ -6,7 +6,7 @@
  * une fonction de migration ; on ne modifie JAMAIS une migration déjà publiée.
  */
 
-export const CURRENT_VERSION = 4;
+export const CURRENT_VERSION = 5;
 
 /** Une migration transforme un projet de la version `n` vers `n + 1`. */
 type Migration = (raw: Record<string, unknown>) => Record<string, unknown>;
@@ -32,6 +32,15 @@ const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * défaut, ce qu'étaient tous les projets enregistrés).
    */
   3: (raw) => raw,
+  /*
+   * 4 → 5 : classe des tiges d'ancrage (`connections.columnBase.anchorClass`).
+   * Un fichier ancien reçoit la valeur par défaut, 4.6 : la 8.8 qu'il supposait
+   * n'a jamais figuré ni sur ses plans ni dans sa nomenclature — elle n'était
+   * qu'une hypothèse du calcul, non une prescription. Sa vérification de pied
+   * peut donc se durcir à la relecture, et c'est voulu : elle décrit enfin la
+   * tige que le chantier a reçue.
+   */
+  4: (raw) => raw,
 };
 
 export class FormatError extends Error {

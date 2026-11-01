@@ -6,6 +6,11 @@
   --fond-alt: #f0f2f5;
   --bord: #d8dce3;
   --bord-fort: #b6bdc9;
+  /*
+   * Contour des CHAMPS de saisie : ≥ 3:1 sur tous les fonds (WCAG 1.4.11).
+   * --bord (1,38:1) suffit à séparer deux cartes, pas à montrer où l'on écrit.
+   */
+  --bord-champ: #7f8896;
   --texte: #1a1d23;
   --texte-doux: #626b7a;
   --accent: #1f5fa9;
@@ -34,6 +39,7 @@
     --fond-alt: #21262e;
     --bord: #2f3641;
     --bord-fort: #434c59;
+    --bord-champ: #6b7684;
     --texte: #e6e9ef;
     --texte-doux: #9aa4b2;
     --accent: #6aa9f0;
@@ -55,6 +61,7 @@
   --fond-alt: #21262e;
   --bord: #2f3641;
   --bord-fort: #434c59;
+  --bord-champ: #6b7684;
   --texte: #e6e9ef;
   --texte-doux: #9aa4b2;
   --accent: #6aa9f0;

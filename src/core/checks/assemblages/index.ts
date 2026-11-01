@@ -190,25 +190,29 @@ export function verifierAssemblages(
    * Pieds de poteaux : un seul résultat, celui du pied le plus sollicité. Les
    * douze pieds d'un bâtiment ont la même platine ; sortir douze lignes
    * identiques noierait la seule qui compte.
+   *
+   * ⚠ Chaque pied est vérifié sous CHACUNE de ses combinaisons ultimes, avec
+   * ses efforts concomitants. Retenir d'abord « le pied le plus comprimé »
+   * puis lui associer le moment maximal d'une autre combinaison laissait de
+   * côté le pied qui se soulève sous son moment — celui qui arrache ses tiges.
+   * Les combinaisons de service (ELS) n'entrent pas : un assemblage se vérifie
+   * à l'état limite ultime.
    */
-  let pire: EnveloppeAppui | null = null;
   for (const a of reactions) {
-    if (!pire || a.compression.fz > pire.compression.fz) pire = a;
-  }
-  if (pire) {
+    const cas = (a.cas ?? [a.compression, a.soulevement, a.horizontal, a.moment]).filter(
+      (r) => !r.combinaison.startsWith('ELS'),
+    );
+    if (cas.length === 0) continue;
     retenir(
       verifierPiedPoteau(
         {
           id: 'pied',
-          libelle: `Pied de poteau (le plus chargé : ${pire.repere})`,
+          libelle: `Pied de poteau (le plus chargé : ${a.repere})`,
           cb: p.connections.columnBase,
           profilPoteau: p.frame.columnProfile,
           nuance: p.frame.grade,
         },
-        pire.compression,
-        pire.soulevement,
-        pire.horizontal,
-        pire.moment,
+        ...cas,
       ),
     );
   }

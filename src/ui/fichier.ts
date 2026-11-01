@@ -1,4 +1,5 @@
 import {
+  FormatError,
   PROJECT_EXTENSION,
   PROJECT_MIME,
   deserializeProject,
@@ -131,7 +132,7 @@ export async function ouvrir(): Promise<ProjectParams | null> {
     try {
       const [poignee] = await open({ types: FILTRE });
       if (!poignee) return null;
-      const texte = await (await poignee.getFile()).text();
+      const texte = await lireProjet(await poignee.getFile());
       const { project } = deserializeProject(texte);
       courant = poignee;
       return project;
@@ -147,9 +148,29 @@ export async function ouvrir(): Promise<ProjectParams | null> {
   return deserializeProject(texte).project;
 }
 
+/** Taille maximale d'un fichier de projet (octets). */
+export const TAILLE_MAX_PROJET = 5 * 1024 * 1024;
+
+/**
+ * Lit le texte d'un fichier de projet, APRÈS en avoir contrôlé la taille.
+ *
+ * ⚠ La relecture est synchrone : un fichier de plusieurs centaines de Mo
+ * choisi par erreur (une vidéo, une archive) figeait l'onglet le temps de le
+ * charger puis de l'analyser. Un projet réel pèse quelques centaines de Ko.
+ */
+export function lireProjet(f: Blob): Promise<string> {
+  if (f.size > TAILLE_MAX_PROJET) {
+    const mo = (f.size / (1024 * 1024)).toFixed(1).replace('.', ',');
+    return Promise.reject(
+      new FormatError(`Fichier trop volumineux (${mo} Mo) : un projet SteelPlan ne dépasse pas 5 Mo. Vérifier le fichier choisi.`),
+    );
+  }
+  return f.text();
+}
+
 /** Repli : un `input[type=file]` masqué. */
 function choisirParInput(): Promise<string | null> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = `${PROJECT_EXTENSION},application/json`;
@@ -159,7 +180,9 @@ function choisirParInput(): Promise<string | null> {
         resolve(null);
         return;
       }
-      f.text().then(resolve, () => resolve(null));
+      // Le refus pour taille remonte ; un échec de lecture vaut renoncement.
+      if (f.size > TAILLE_MAX_PROJET) lireProjet(f).catch(reject);
+      else f.text().then(resolve, () => resolve(null));
     };
     // Un `input` annulé n'émet aucun événement fiable partout : on ne promet
     // donc rien de plus que « soit un fichier, soit rien ».
