@@ -271,10 +271,13 @@ function planchHypotheses(rapport: ChecksReport, opts: NoteOptions): Sheet {
 
   section('Avertissement');
   paragraphe(AVERTISSEMENT, '⚠');
-  paragraphe(
-    'Les valeurs de neige et de vent sont celles saisies par l’utilisateur : elles ne sont ' +
-      'ni calculées ni vérifiées par le logiciel.',
-  );
+  // En mode Eurocode, neige et vent sont calculés depuis le site : les hypothèses le détaillent.
+  if (rapport.chargesSaisies) {
+    paragraphe(
+      'Les valeurs de neige et de vent sont celles saisies par l’utilisateur : elles ne sont ' +
+        'ni calculées ni vérifiées par le logiciel.',
+    );
+  }
 
   section('Synthèse');
   paragraphe(

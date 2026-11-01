@@ -52,6 +52,27 @@ describe('note de pré-dimensionnement', () => {
     expect(t).toContain('bracon');
   });
 
+  it('ne dit les charges climatiques saisies à la main que si elles le sont', () => {
+    /*
+     * ⚠ L'avertissement « valeurs saisies par l'utilisateur, ni calculées ni
+     * vérifiées » s'imprimait aussi en mode Eurocode, où neige et vent sont
+     * justement calculés depuis le site — et la note le disait trois lignes plus
+     * bas, dans ses hypothèses. Idem pour le vent « simplifié », zoné en Eurocode.
+     */
+    const note = (p: typeof P): string => {
+      const pl = sheetsNote(runChecks(p, buildProject(p)), { page: 1, total: 99, meta: p.meta });
+      return textes(pl[pl.length - 1]!).join(' ');
+    };
+    const manuel = note(P);
+    expect(manuel).toContain('saisies par l’utilisateur');
+    expect(manuel).toContain('Vent appliqué de façon simplifiée');
+
+    const eurocode = note({ ...P, site: { ...P.site, mode: 'eurocode' } });
+    expect(eurocode).not.toContain('saisies par l’utilisateur');
+    expect(eurocode).not.toContain('Vent appliqué de façon simplifiée');
+    expect(eurocode).toContain('vent PAR ZONES');
+  });
+
   it('numérote ses planches en continu', () => {
     const numeros = planches.map((_, i) => i + 1);
     expect(numeros).toEqual(planches.map((_, i) => i + 1));

@@ -215,6 +215,7 @@ export function runChecks(p: ProjectParams, model: StructuralModel, perimetre: P
     byMark,
     combinations: combs,
     hypotheses: complet ? hypotheses(p, model, pireSensibilite) : [],
+    chargesSaisies: p.site.mode === 'manuel',
     maxRatio: lines.reduce((m, l) => Math.max(m, l.ratio), 0),
     nonVerifies: lines.filter((l) => l.ratio > 1).length,
     ms: performance.now() - t0,
