@@ -240,7 +240,7 @@ Les tests (Vitest) sont rangés dans des dossiers `__tests__` à côté des modu
   - invariants géométriques : aucun perçage dans le vide, pinces minimales respectées, aucune pièce enfoncée dans une autre ;
   - gabarits, qui doivent tous sortir vérifiés du calcul ;
 - **les plans** : cartouche, cotation, élévations, façades, plans de fabrication, montage, repérage, diffusion par poste, retouches, géométrie et opérations 2D, translittération des textes ;
-- **les nomenclatures** : listes, calepinage, imbrication, et conservation de la masse entre le modèle, la nomenclature et la livraison (contrôlée sur le projet par défaut) ;
+- **les nomenclatures** : listes, calepinage, imbrication, et conservation de la masse entre le modèle, la nomenclature et la livraison ;
 - **les fichiers** : sérialisation et migrations, relecture de fichiers forgés (valeurs hors liste, clés d'`Object.prototype`, plafonds), sauvegarde automatique, grille de prix, et les exports DSTV (dont l'injection de texte dans l'en-tête), DXF de tôles, IFC (structure STEP, identifiants), contenu PDF et ZIP, ainsi que la tenue en charge de l'export d'un dossier complet ;
 - **le rendu et l'état** : cadrage et maillage 3D, cordons de soudure, historique d'annulation, état dérivé ;
 - **la logique de l'interface** : raccourcis, commandes de l'éditeur 2D, rubriques, aide, garde-fou. Le rendu des composants n'est pas testé.
@@ -277,7 +277,7 @@ SteelPlan est un outil de **pré-dimensionnement indicatif**. Chaque planche por
 
 - Aucun joint de dilatation n'est modélisé : un simple avertissement apparaît au-delà de 100 m.
 - Les grugeages sont prévus dans le format mais ne sont pas encore générés.
-- Ouvertures : la menuiserie n'est pas traitée, ni les percements de toiture. Les chevêtres ne sont encore ni colisés ni portés à l'ordre de montage.
+- Ouvertures : la menuiserie n'est pas traitée, ni les percements de toiture.
 
 **Fichiers et chiffrage**
 
