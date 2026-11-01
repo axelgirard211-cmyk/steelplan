@@ -150,6 +150,8 @@ export interface ChecksReport {
    * `horsDomaineSecondOrdre`.
    */
   readonly secondOrdre: SensibiliteSecondOrdre | null;
+  /** Neige et vent saisis à la main (site en mode manuel) plutôt que déduits du site. */
+  readonly chargesSaisies: boolean;
   readonly maxRatio: number;
   /** Nombre de repères dont le taux dépasse 1. */
   readonly nonVerifies: number;

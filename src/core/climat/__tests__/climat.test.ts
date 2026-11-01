@@ -282,4 +282,18 @@ describe('branchement au calcul', () => {
     const h = runChecks(DEFAULT_PROJECT, buildProject(DEFAULT_PROJECT)).hypotheses.join('\n');
     expect(h).toMatch(/SAISIS À LA MAIN/);
   });
+
+  it('ne dit le vent simplifié qu’en saisie manuelle : en Eurocode, il est zoné', () => {
+    /*
+     * ⚠ La note imprimait « vent appliqué de façon simplifiée » dans les deux
+     * modes. En Eurocode le portique reçoit ses huit cas zonés de l'EN 1991-1-4 :
+     * la phrase y contredisait le paragraphe du vent par zones juste au-dessus.
+     */
+    const simplifie = /Vent appliqué de façon simplifiée/;
+    const manuel = runChecks(DEFAULT_PROJECT, buildProject(DEFAULT_PROJECT)).hypotheses.join('\n');
+    expect(manuel).toMatch(simplifie);
+    const eurocode = runChecks(site(DEFAULT_PROJECT), buildProject(site(DEFAULT_PROJECT))).hypotheses.join('\n');
+    expect(eurocode).not.toMatch(simplifie);
+    expect(eurocode).toMatch(/vent PAR ZONES/);
+  });
 });

@@ -85,9 +85,15 @@ export function hypotheses(
       'automatique n’en propose jamais.',
     'C1 = 1,00 pour le moment critique de déversement (moment uniforme entre maintiens) : ' +
       'valeur conservative.',
-    'Vent appliqué de façon simplifiée : pression sur la façade au vent, dépression uniforme ' +
-      'sur les versants. Le zonage réel de l’EN 1991-1-4 demanderait d’appliquer chaque ' +
-      'coefficient sur sa propre bande de toiture.',
+    // En mode Eurocode le vent est zoné (hypothesesClimat le décrit) ; saisi à la
+    // main, il reste deux nombres sans qp, qu'on ne peut pas zoner.
+    ...(p.site.mode === 'manuel'
+      ? [
+          'Vent appliqué de façon simplifiée : pression sur la façade au vent, dépression uniforme ' +
+            'sur les versants. Le zonage réel de l’EN 1991-1-4 demanderait d’appliquer chaque ' +
+            'coefficient sur sa propre bande de toiture.',
+        ]
+      : []),
     'Les jarrets ne sont pas pris en compte comme raidisseurs : leur inertie supplémentaire ' +
       'est négligée, ce qui majore légèrement le moment en travée.',
     'Élancement λ = Lcr/i limité à 200 sur les éléments comprimés principaux, 250 sur les ' +

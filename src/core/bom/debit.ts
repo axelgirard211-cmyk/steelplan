@@ -1,7 +1,7 @@
 import { getProfile } from '../catalog/index';
 import { groupByMark } from '../build/marks';
 import { LIBELLE_TOLE, type Haunch, type Plate, type StructuralModel } from '../build/types';
-import { haunchMassKg, haunchPaintM2 } from '../build/buildProject';
+import { haunchMassKg, haunchPaintM2, platePaintM2 } from '../build/buildProject';
 import {
   cutAngleDeg,
   cutLengths,
@@ -125,6 +125,8 @@ export interface ToleLine {
   readonly quantity: number;
   readonly massUnit: number;
   readonly massTotal: number;
+  /** Deux faces et chant : une tôle se peint et se facture comme une barre. */
+  readonly paintM2: number;
 }
 
 
@@ -152,6 +154,7 @@ export function toleList(model: StructuralModel, masse: (pl: Plate) => number): 
       quantity: toles.length,
       massUnit,
       massTotal: massUnit * toles.length,
+      paintM2: platePaintM2(pl) * toles.length,
     });
   }
   return out;

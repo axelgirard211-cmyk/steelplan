@@ -24,7 +24,7 @@ export interface ProjectTotals {
   readonly massTotal: number;
   readonly massByGrade: Readonly<Partial<Record<SteelGradeId, number>>>;
 
-  /** Surface développée à peindre ou à galvaniser (m²). */
+  /** Surface développée à peindre ou à galvaniser, tôles comprises (m²). */
   readonly paintM2: number;
   /** Emprise au sol et toiture développée (m²). */
   readonly footprintM2: number;
@@ -58,7 +58,8 @@ export function projectTotals(
   }
 
   const footprintM2 = footprintArea(p.grid);
-  const paintM2 = debit.reduce((s, l) => s + l.paintM2, 0);
+  // Tôles comprises, comme au modèle : la Vue 3D et le chiffrage disent le même chiffre.
+  const paintM2 = [...debit, ...toles].reduce((s, l) => s + l.paintM2, 0);
 
   // Métal d'apport : la section d'un cordon d'angle vaut environ le carré de sa
   // gorge, ce qui suffit à estimer la consommation de fil.
