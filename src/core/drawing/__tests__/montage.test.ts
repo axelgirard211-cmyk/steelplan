@@ -145,6 +145,25 @@ describe('ordre de montage', () => {
     expect(manquants, `absents du tableau de montage : ${manquants.join(', ')}`).toEqual([]);
   });
 
+  it('porte aussi les chevêtres d’ouverture', () => {
+    // Le projet par défaut n'en a pas : sans ouverture, leur oubli ne se voyait pas.
+    const p = {
+      ...P,
+      ouvertures: {
+        enabled: true,
+        profile: 'UPE 160',
+        grade: 'S235',
+        items: [{ id: 'P1', face: 'long-pan-gauche', type: 'portail', position: 7000, largeur: 4000, hauteur: 4500, allege: 0 }],
+      },
+    } as const;
+    const m = buildProject(p);
+    const ordre = sheetsMontage(m, p, { page: 1, total: 60, meta: META }).find((s) => s.id === 'montage-ordre');
+    const listes = new Set(ordre ? textes(ordre) : []);
+    const chevetres = new Set(m.members.filter((x) => x.role === 'chevetre' && x.porteur === null).map((x) => x.assemblage));
+    expect(chevetres.size).toBeGreaterThan(0);
+    expect([...chevetres].filter((c) => !listes.has(c))).toEqual([]);
+  });
+
   it('donne la masse unitaire ET celle de la phase', () => {
     // L'une décide de l'engin, l'autre de la journée.
     expect(table).toContain('Masse de la phase');
