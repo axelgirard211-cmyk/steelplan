@@ -73,6 +73,19 @@ function Pastille({ onglet, etat }: { onglet: Onglet; etat: EtatDuProjet | null 
     );
   }
   if (onglet === 'verifications') {
+    if (etat.horsDomaine) {
+      return (
+        <span
+          className="pastille-onglet erreur"
+          title={
+            'Ossature sous αcr = 3 : analyse au second ordre requise, les taux ne valent pas vérification' +
+            (etat.enDefaut > 0 ? ` — et ${etat.enDefaut} repère(s) ou assemblage(s) au-delà de 1,00` : '')
+          }
+        >
+          hors domaine
+        </span>
+      );
+    }
     return etat.enDefaut > 0 ? (
       <span className="pastille-onglet erreur" title={`${etat.enDefaut} repère(s) ou assemblage(s) au-delà de 1,00`}>
         {etat.enDefaut} à reprendre

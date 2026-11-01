@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildProject } from '../../core/build/buildProject';
 import { dimensionnerEnFond, type Avancement } from '../dimensionnerEnFond';
 import { runChecks } from '../../core/checks/index';
+import { horsDomaineSecondOrdre } from '../../core/checks/types';
 import { DEFAULT_PROJECT } from '../../core/model/defaults';
 import { buildingLength } from '../../core/model/grid';
 import type { ProjectParams } from '../../core/model/project';
@@ -193,7 +194,8 @@ function Recapitulatif({ p, dimensionnerAuto, setDimensionnerAuto }: { p: Projec
   const bilan = useMemo(() => {
     try {
       const m = buildProject(p);
-      return { masse: m.stats.massKg, barres: m.stats.memberCount, taux: runChecks(p, m).maxRatio };
+      const rapport = runChecks(p, m);
+      return { masse: m.stats.massKg, barres: m.stats.memberCount, taux: rapport.maxRatio, horsDomaine: horsDomaineSecondOrdre(rapport) };
     } catch {
       return null;
     }
@@ -226,10 +228,20 @@ function Recapitulatif({ p, dimensionnerAuto, setDimensionnerAuto }: { p: Projec
             <dt>Masse d’acier</dt>
             <dd className="derive">{num(bilan.masse, 0)} kg</dd>
             <dt>Taux de travail maximal, profils du gabarit</dt>
-            <dd className={bilan.taux > 1 ? 'alerte' : 'derive'}>{num(bilan.taux, 2)}</dd>
+            <dd className={bilan.taux > 1 || bilan.horsDomaine ? 'alerte' : 'derive'}>{num(bilan.taux, 2)}</dd>
           </>
         )}
       </dl>
+      {/*
+        * ⚠ Ossature sous αcr = 3 : le taux ci-dessus n'est pas une vérification,
+        * et le dimensionnement automatique ne l'y ramène pas forcément — c'est
+        * la conception qui change (pieds, jarrets, hauteur de traverse).
+        */}
+      {bilan?.horsDomaine ? (
+        <p className="avertissement" style={{ marginTop: 10 }}>
+          {bilan.horsDomaine}
+        </p>
+      ) : null}
       <label className="etiquette" style={{ display: 'block', marginTop: 10 }}>
         <input type="checkbox" checked={dimensionnerAuto} onChange={(e) => setDimensionnerAuto(e.target.checked)} /> Dimensionner automatiquement les profils (le plus léger qui tient, dans la famille du gabarit)
       </label>

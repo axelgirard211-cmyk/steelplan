@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { buildBom } from '../core/bom/index';
 import { valoriser } from '../core/bom/valorisation';
+import { horsDomaineSecondOrdre, type ChecksReport } from '../core/checks/types';
 import { checksReport, projetEffectif, structuralModel } from '../state/derived';
 import { useProjectStore } from '../state/store';
 
@@ -24,8 +25,28 @@ export interface EtatDuProjet {
   readonly tauxMax: number;
   /** Repères et assemblages au-delà de 1,00. */
   readonly enDefaut: number;
+  /**
+   * Ossature sous αcr = 3 : aucun de ses taux n'est une vérification.
+   *
+   * ⚠ Distinct de `enDefaut`, et prioritaire sur lui à l'affichage : sans ce
+   * drapeau, une ossature hors domaine dont les taux au premier ordre restent
+   * sous 1,00 passait au vert sur les onglets.
+   */
+  readonly horsDomaine: boolean;
   readonly masseKg: number;
   readonly prixHT: number;
+}
+
+/** Ce que les onglets retiennent du rapport de vérification. */
+export function resumerVerifications(
+  rapport: ChecksReport,
+): Pick<EtatDuProjet, 'tauxMax' | 'enDefaut' | 'horsDomaine'> {
+  const assemblages = rapport.assemblages.map((a) => a.ratio);
+  return {
+    tauxMax: Math.max(rapport.maxRatio, ...assemblages, 0),
+    enDefaut: rapport.nonVerifies + assemblages.filter((r) => r > 1).length,
+    horsDomaine: horsDomaineSecondOrdre(rapport) !== null,
+  };
 }
 
 const DELAI = 350;
@@ -56,12 +77,10 @@ export function useEtatDuProjet(): EtatDuProjet | null {
         const bom = buildBom(p, model);
         // Les prix de la saisie : une grille corrigée se voit tout de suite.
         const prix = valoriser(bom, p.finition, project.prix);
-        const assemblages = rapport.assemblages.map((a) => a.ratio);
         const e: EtatDuProjet = {
           erreurs: issues.filter((i) => i.level === 'erreur').length,
           avertissements: issues.filter((i) => i.level === 'avertissement').length,
-          tauxMax: Math.max(rapport.maxRatio, ...assemblages, 0),
-          enDefaut: rapport.nonVerifies + assemblages.filter((r) => r > 1).length,
+          ...resumerVerifications(rapport),
           masseKg: bom.totals.massTotal,
           prixHT: prix.total,
         };
