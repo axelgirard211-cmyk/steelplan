@@ -1,6 +1,7 @@
 import type { SteelGradeId } from '../catalog/types';
 import type { MemberRole } from '../geometry/member';
 import type { Combination } from '../analysis/loadCases';
+import type { SensibiliteSecondOrdre } from '../analysis/secondOrdre';
 import type { AssemblageCheck } from './assemblages/types';
 import type { EnveloppeAppui } from './reactions';
 import type { SectionClass } from './section';
@@ -140,6 +141,15 @@ export interface ChecksReport {
   readonly combinations: readonly Combination[];
   /** Hypothèses de calcul, imprimées avec le rapport. */
   readonly hypotheses: readonly string[];
+  /**
+   * Sensibilité au second ordre la plus défavorable des portiques analysés,
+   * `null` quand aucun ne l'a été.
+   *
+   * ⚠ Sous αcr = 3, les taux du portique sont ceux du premier ordre : ils ne
+   * valent pas vérification, et le rapport doit le dire AVANT tout taux — voir
+   * `horsDomaineSecondOrdre`.
+   */
+  readonly secondOrdre: SensibiliteSecondOrdre | null;
   /** Neige et vent saisis à la main (site en mode manuel) plutôt que déduits du site. */
   readonly chargesSaisies: boolean;
   readonly maxRatio: number;
@@ -151,6 +161,26 @@ export interface ChecksReport {
 /** Avertissement permanent, affiché partout où un résultat de calcul apparaît. */
 export const AVERTISSEMENT =
   'Pré-dimensionnement indicatif — ne remplace pas la note de calcul d’un bureau d’études.';
+
+/**
+ * Ossature hors du domaine du calcul (αcr < 3) : le message à afficher en tête
+ * du rapport, ou `null` quand l'ossature est dans le domaine.
+ *
+ * ⚠ Sans lui, un portique trop souple sortait « vérifié » dès que ses taux au
+ * premier ordre restaient sous 1,00 : la seule mention du défaut était une ligne
+ * d'hypothèse en bas de page.
+ */
+export function horsDomaineSecondOrdre(rapport: Pick<ChecksReport, 'secondOrdre'>): string | null {
+  const s = rapport.secondOrdre;
+  if (s?.classe !== 'instable') return null;
+  const alpha = s.alphaCr > 0 ? `αcr = ${s.alphaCr.toFixed(1).replace('.', ',')}` : 'αcr non calculable';
+  return (
+    `Ossature hors domaine (${alpha}, sous le seuil de 3) : l’EN 1993-1-1 exige une analyse au ` +
+    'second ordre, que SteelPlan ne fait pas. Les taux du portique sont ceux du premier ordre, ' +
+    'sans amplification : ils ne valent pas vérification. Raidir l’ossature — pieds encastrés, ' +
+    'jarrets, traverse plus haute — la ramène dans le domaine couvert.'
+  );
+}
 
 /**
  * Fusion de deux lignes portant sur la même pièce, sous deux combinaisons.

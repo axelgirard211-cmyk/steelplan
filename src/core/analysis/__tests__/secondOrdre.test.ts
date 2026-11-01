@@ -4,10 +4,11 @@ import { DEFAULT_PROJECT } from '../../model/defaults';
 import type { ProjectParams } from '../../model/project';
 import { runChecks } from '../../checks/index';
 import { kFlambementPlan } from '../../checks/buckling';
+import { horsDomaineSecondOrdre } from '../../checks/types';
 import { solveFrame2d } from '../frame2d';
 import { buildFrameModel, chargerModele, currentFrameX, secondaryLoadKnM2 } from '../frameModel';
 import { combinations, intensities } from '../loadCases';
-import { defautAplomb, sensibilite } from '../secondOrdre';
+import { classer, defautAplomb, sensibilite } from '../secondOrdre';
 
 /**
  * IMPERFECTIONS ET SECOND ORDRE.
@@ -177,18 +178,30 @@ describe('classification et conséquences', () => {
     expect(kFlambementPlan('encastre', 'poteau', 'instable')).toBe(1.5);
   });
 
-  it('amplifie selon 1/(1−1/αcr), et seulement entre 3 et 10', () => {
-    // La formule diverge sous 3 : l'appliquer y serait un faux réconfort.
-    const cas: [number, 'rigide' | 'souple' | 'instable'][] = [
-      [20, 'rigide'],
-      [5, 'souple'],
-      [2, 'instable'],
+  it('amplifie selon 1/(1−1/αcr), et seulement pour 3 ≤ αcr < 10', () => {
+    /*
+     * ⚠ Ce test recopiait la formule au lieu d'appeler le code : il passait
+     * pendant que `sensibilite` amplifiait dès αcr > 1 — un facteur 2 à αcr = 2,
+     * sans aucune validité normative (EN 1993-1-1 § 5.2.2(6)B).
+     */
+    const cas: [number, 'rigide' | 'souple' | 'instable', number][] = [
+      [Infinity, 'rigide', 1],
+      [20, 'rigide', 1],
+      [10, 'rigide', 1],
+      [9.99, 'souple', 1 / (1 - 1 / 9.99)],
+      [5, 'souple', 1.25],
+      [3, 'souple', 1.5],
+      [2.99, 'instable', 1],
+      [2, 'instable', 1],
+      [1.5, 'instable', 1],
+      [0.5, 'instable', 1],
+      [0, 'instable', 1],
     ];
-    for (const [alphaCr, classe] of cas) {
-      const attendu = classe === 'souple' ? 1 / (1 - 1 / alphaCr) : 1;
-      expect(attendu).toBeGreaterThanOrEqual(1);
+    for (const [alphaCr, classe, amplification] of cas) {
+      const c = classer(alphaCr);
+      expect(c.classe, `αcr = ${alphaCr}`).toBe(classe);
+      expect(c.amplification, `αcr = ${alphaCr}`).toBeCloseTo(amplification, 12);
     }
-    expect(1 / (1 - 1 / 5)).toBeCloseTo(1.25, 6);
   });
 
   it('inscrit αcr et l’imperfection dans les hypothèses du rapport', () => {
@@ -201,5 +214,58 @@ describe('classification et conséquences', () => {
     expect(h).toMatch(/αcr/);
     expect(h).toMatch(/nœuds fixes/);
     expect(h).toMatch(/[Ii]mperfection d’aplomb/);
+  });
+});
+
+describe('αcr < 3 : l’absence de second ordre est DITE, pas compensée', () => {
+  /*
+   * Une ferme ne tient les poteaux que par ses membrures : sur pieds articulés,
+   * le portique par défaut tombe sous αcr = 3. C'est le cas réel où un facteur
+   * 1/(1 − 1/αcr) ≈ 1,9 était appliqué sans validité normative.
+   */
+  const ferme: ProjectParams = { ...P, truss: { ...P.truss, enabled: true } };
+
+  function pireSensibilite(p: ProjectParams): ReturnType<typeof sensibilite> {
+    const m = buildProject(p);
+    const fm = modele(p);
+    const q = intensities(p.loads, secondaryLoadKnM2(p, m));
+    return combinations(p.loads)
+      .map((c) => sensibilite(fm, chargerModele(fm, p, q, c)))
+      .reduce((a, b) => (b.alphaCr < a.alphaCr ? b : a));
+  }
+
+  it('garde les efforts au premier ordre entre 1 et 3', () => {
+    const s = pireSensibilite(ferme);
+    // Le cas doit bien tomber dans la plage fautive, sans quoi le test ne prouve rien.
+    expect(s.alphaCr).toBeGreaterThan(1);
+    expect(s.alphaCr).toBeLessThan(3);
+    expect(s.classe).toBe('instable');
+    expect(s.amplification).toBe(1);
+  });
+
+  it('le rapport déclare l’ossature hors domaine, en tête et sur chaque barre du portique', () => {
+    const r = runChecks(ferme, buildProject(ferme));
+    expect(r.secondOrdre?.classe).toBe('instable');
+
+    const message = horsDomaineSecondOrdre(r);
+    expect(message).not.toBeNull();
+    expect(message).toMatch(/αcr = \d+,\d/);
+    expect(message).toMatch(/second ordre/);
+
+    const poteaux = r.lines.filter((l) => l.role === 'poteau');
+    expect(poteaux.length).toBeGreaterThan(0);
+    for (const l of poteaux) {
+      expect(l.avertissements.join('\n'), l.mark).toMatch(/premier ordre/);
+    }
+    expect(r.hypotheses.join('\n')).toMatch(/premier ordre/);
+  });
+
+  it('ne dit rien de tel sur une ossature dans le domaine', () => {
+    const r = runChecks(P, buildProject(P));
+    expect(r.secondOrdre?.classe).toBe('rigide');
+    expect(horsDomaineSecondOrdre(r)).toBeNull();
+    for (const l of r.lines) {
+      expect(l.avertissements.join('\n'), l.mark).not.toMatch(/premier ordre/);
+    }
   });
 });

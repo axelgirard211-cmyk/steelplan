@@ -22,9 +22,15 @@ export function Parcours(): JSX.Element {
     },
     {
       titre: 'Vérifier',
-      detail: !etat ? '…' : etat.enDefaut > 0 ? `${etat.enDefaut} à reprendre` : `taux maximal ${num(etat.tauxMax, 2)}`,
+      detail: !etat
+        ? '…'
+        : etat.horsDomaine
+          ? 'hors domaine (αcr < 3)'
+          : etat.enDefaut > 0
+            ? `${etat.enDefaut} à reprendre`
+            : `taux maximal ${num(etat.tauxMax, 2)}`,
       onglet: 'verifications',
-      etat: !etat ? 'neutre' : etat.enDefaut > 0 ? 'ko' : 'ok',
+      etat: !etat ? 'neutre' : etat.horsDomaine || etat.enDefaut > 0 ? 'ko' : 'ok',
     },
     { titre: 'Sortir les plans', detail: 'dossier par poste, PDF, DXF', onglet: 'plans', etat: 'neutre' },
     {

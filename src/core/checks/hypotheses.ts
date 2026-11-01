@@ -49,9 +49,11 @@ export function hypotheses(
     if (sens.classe === 'instable') {
       h.push(
         '⚠ αcr < 3 : l’EN 1993-1-1 exige une ANALYSE AU SECOND ORDRE complète, que SteelPlan ' +
-          'ne réalise pas. Les longueurs de flambement forfaitaires sont conservées, mais le ' +
-          'résultat doit être repris par un bureau d’études. Raidir l’ossature — pieds encastrés, ' +
-          'jarrets, traverse plus haute — ramène αcr dans le domaine couvert.',
+          'ne réalise pas. Les efforts restent ceux du premier ordre — le facteur 1/(1 − 1/αcr) ' +
+          'n’est plus valable dans ce domaine — et les longueurs de flambement forfaitaires sont ' +
+          'conservées : les taux du portique ne valent pas vérification, le résultat doit être ' +
+          'repris par un bureau d’études. Raidir l’ossature — pieds encastrés, jarrets, traverse ' +
+          'plus haute — ramène αcr dans le domaine couvert.',
       );
     }
   }
