@@ -88,3 +88,33 @@ describe('garde sur le nombre de barres générées', () => {
     expect(isValid(issues)).toBe(false);
   });
 });
+
+describe('listes et répartitions forgées', () => {
+  const chemins = (p: ProjectParams) => erreurs(p).map((i) => i.path);
+
+  it('borne les rangées d’une éclisse posée, et elle seule', () => {
+    expect(chemins(avec((p) => Object.assign(p.connections.splice, { enabled: true, rows: 1_000_000 })))).toContain(
+      'connections.splice.rows',
+    );
+    expect(chemins(avec((p) => Object.assign(p.connections.splice, { enabled: true, rows: 1 })))).toContain(
+      'connections.splice.rows',
+    );
+    expect(chemins(avec((p) => Object.assign(p.connections.splice, { enabled: false, rows: 1_000_000 })))).not.toContain(
+      'connections.splice.rows',
+    );
+  });
+
+  it('refuse les travées de contreventement fractionnaires ou répétées, en un message', () => {
+    const roof = (bays: number[]) => avec((p) => Object.assign(p.bracing.roof, { enabled: true, bays }));
+    expect(chemins(roof([0.5]))).toContain('bracing.roof.bays');
+    expect(chemins(roof([0, 0]))).toContain('bracing.roof.bays');
+    const foule = erreurs(roof(Array(20_000).fill(0))).filter((i) => i.path === 'bracing.roof.bays');
+    expect(foule).toHaveLength(1);
+    expect(chemins(roof([0, 4]))).not.toContain('bracing.roof.bays');
+  });
+
+  it('veut un nombre entier de tiges d’ancrage', () => {
+    expect(chemins(avec((p) => (p.connections.columnBase.anchorCount = 2.5)))).toContain('connections.columnBase.anchorCount');
+    expect(chemins(avec((p) => (p.connections.columnBase.anchorCount = 0)))).toContain('connections.columnBase.anchorCount');
+  });
+});

@@ -285,3 +285,14 @@ describe('les trois formats montrent le même dessin', () => {
     expect(dxf).toContain('\r\n20\r\n40\r\n');
   });
 });
+
+describe('garde-fous du développement', () => {
+  const carre = [pt(0, 0), pt(100, 0), pt(100, 100), pt(0, 100)];
+
+  it('n’alloue ni hachure de pas infime ni arc de balayage démesuré', () => {
+    expect(hatchLines(carre, [], 1e-9, 45)).toEqual([]);
+    expect(hatchLines(carre, [], Number.NaN, 45)).toEqual([]);
+    expect(hatchLines(carre, [], 2, 45).length).toBeGreaterThan(0);
+    expect(flattenArc(pt(0, 0), 10, 0, 1e12).length).toBeLessThanOrEqual(4097);
+  });
+});

@@ -52,6 +52,12 @@ export function BarreDeFichier({
    */
   const [pret, setPret] = useState(false);
   const modifie = reference ? project !== reference : nbEditions > 0 || horsFichier;
+  /*
+   * ⚠ …mais seulement tant qu'on ne travaille pas : laissée sans réponse, la
+   * question coupait aussi la sauvegarde du travail NEUF, sans le dire. La
+   * session retrouvée reste restaurable pendant la visite : elle est en mémoire.
+   */
+  const actif = pret || modifie;
   // Ce que l'autosave retient : une session sans modification ne vaut pas d'être proposée.
   const aSauver = modifie ? Math.max(nbEditions, 1) : 0;
 
@@ -81,13 +87,13 @@ export function BarreDeFichier({
 
   /* --- Enregistrement automatique à chaque changement --- */
   useEffect(() => {
-    if (pret) autosave.current.planifier(project, aSauver);
-  }, [project, aSauver, pret]);
+    if (actif) autosave.current.planifier(project, aSauver);
+  }, [project, aSauver, actif]);
 
   /* --- Filet de fermeture : enregistrer, et prévenir --- */
   useEffect(() => {
     const avantFermeture = (e: BeforeUnloadEvent): void => {
-      if (pret) autosave.current.immediat(project, aSauver);
+      if (actif) autosave.current.immediat(project, aSauver);
       if (modifie) {
         e.preventDefault();
         // Les navigateurs imposent leur propre texte ; il suffit d'annuler.
@@ -96,7 +102,7 @@ export function BarreDeFichier({
     };
     window.addEventListener('beforeunload', avantFermeture);
     return () => window.removeEventListener('beforeunload', avantFermeture);
-  }, [project, aSauver, modifie, pret]);
+  }, [project, aSauver, modifie, actif]);
 
   /*
    * Une confirmation s'efface d'elle-même ; une ERREUR reste jusqu'à ce qu'on la
@@ -121,12 +127,18 @@ export function BarreDeFichier({
     [loadProject],
   );
 
+  /*
+   * ⚠ Le projet est lu dans le STORE au moment de l'action, pas dans la
+   * fermeture : Ctrl+S pendant la frappe d'un champ valide d'abord le champ
+   * (App), et le projet capturé au dernier rendu n'avait pas encore sa valeur.
+   */
   const faireEnregistrer = useCallback(
     async (sous: boolean): Promise<void> => {
+      const p = useProjectStore.getState().project;
       try {
-        const r = await enregistrer(project, sous);
+        const r = await enregistrer(p, sous);
         if (r === 'annule') return;
-        setReference(project);
+        setReference(p);
         setHorsFichier(false);
         signaler(
           r === 'telecharge'
@@ -137,12 +149,14 @@ export function BarreDeFichier({
         signaler(`Enregistrement impossible : ${(e as Error).message}`, true);
       }
     },
-    [project, signaler],
+    [signaler],
   );
 
   const faireOuvrir = useCallback(async (): Promise<void> => {
+    const s = useProjectStore.getState();
+    const modifieMaintenant = reference ? s.project !== reference : s.past.length > 0 || horsFichier;
     if (
-      modifie &&
+      modifieMaintenant &&
       !confirm('Le projet en cours a des modifications non enregistrées. Les abandonner pour ouvrir un autre fichier ?')
     )
       return;
@@ -157,7 +171,7 @@ export function BarreDeFichier({
         true,
       );
     }
-  }, [charger, modifie, signaler]);
+  }, [charger, reference, horsFichier, signaler]);
 
   const appliquerGabarit = useCallback(
     (t: Template): void => {
@@ -241,7 +255,9 @@ export function BarreDeFichier({
           : message
             ? ''
             : autosave.current.disponible
-              ? 'Sauvegarde automatique active'
+              ? actif
+                ? 'Sauvegarde automatique active'
+                : 'Sauvegarde automatique en attente de votre réponse'
               : 'Sauvegarde automatique indisponible sur ce navigateur'}
       </span>
 

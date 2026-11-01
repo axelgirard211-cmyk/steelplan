@@ -266,9 +266,14 @@ function equilibrePied(
   if (rhs <= 0) {
     /*
      * Traction dominante (N < 0, M ≤ |N|·zMax) : pas de béton comprimé. La
-     * rangée la plus tendue reçoit sa moitié de |N| plus le couple M / bras.
+     * rangée la plus tendue reçoit sa part de |N| plus le couple M / bras.
+     *
+     * ⚠ Sa part, pas sa moitié : une seule rangée centrée (zMax = 0, une tige
+     * seule) reprend TOUT le soulèvement — la moitié la dirait deux fois trop
+     * peu chargée.
      */
-    const rangee = -nEd / 2 + mEd / entreRangees;
+    const rangees = zMax < 1 ? 1 : 2;
+    const rangee = -nEd / rangees + mEd / entreRangees;
     return { compression: 0, compressionMax, longueurComprimee: 0, tractionParTige: Math.max(0, rangee) / parRangee };
   }
 
@@ -279,18 +284,35 @@ function equilibrePied(
      * Aucun bloc ne peut équilibrer : la platine est trop courte pour ce moment.
      * On rend la compression qu'il FAUDRAIT, pour que le taux dise de combien on
      * dépasse — un taux infini ne dit pas quoi changer.
+     *
+     * ⚠ Le taux doit alors DÉPASSER 1 : le pied est ruiné. Ramené au moment que
+     * le bloc le plus long peut équilibrer, il croît avec M ; l'ancienne
+     * « compression requise » restait sous N, et un massif écrasé passait.
      */
-    const requis = rhs / Math.max(1, dT - L / 4);
+    const xm = Math.min(L, dT);
+    const mMax = k * xm * (dT - xm / 2);
+    const requis = Math.max(rhs / Math.max(1, dT - L / 4), (compressionMax * rhs) / Math.max(1, mMax));
+    const compression = Math.max(nEd, requis);
     return {
-      compression: Math.max(nEd, requis),
+      compression,
       compressionMax,
       longueurComprimee: L,
-      tractionParTige: Math.max(0, requis - nEd) / parRangee,
+      tractionParTige: Math.max(0, compression - nEd) / parRangee,
     };
   }
 
   const x = Math.max(0, Math.min(L, dT - Math.sqrt(disc)));
   const c = k * x;
+  if (c < nEd) {
+    /*
+     * Le bloc qui équilibrerait le moment AVEC des tiges tendues porterait moins
+     * que N : les tiges devraient pousser. Aucune ne tire, et l'équilibre
+     * vertical impose C = N, sur un bloc de N / (fjd·b) — plus long, donc plus
+     * chargé que celui de l'équation aux moments.
+     */
+    const xN = nEd / k;
+    return { compression: nEd, compressionMax, longueurComprimee: Math.min(L, xN), tractionParTige: 0 };
+  }
   return {
     compression: c,
     compressionMax,

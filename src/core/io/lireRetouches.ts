@@ -31,6 +31,16 @@ function nombre(v: unknown, path: string): number {
   return v;
 }
 
+/**
+ * Nombre BORNÉ : un pas de hachure de 10⁻⁹ mm ou un cercle d'un million de
+ * kilomètres sont des nombres finis, et chacun figeait le rendu de la planche.
+ */
+function borne(v: unknown, path: string, min: number, max: number): number {
+  const x = nombre(v, path);
+  if (x < min || x > max) throw echec(path, `un nombre entre ${min} et ${max}`, v);
+  return x;
+}
+
 function texte(v: unknown, path: string): string {
   if (typeof v !== 'string') throw echec(path, 'un texte', v);
   return v;
@@ -69,15 +79,15 @@ function entite(v: unknown, path: string): EntiteDessin {
     case 'polyligne':
       return { kind: 'polyligne', points: points(o['points'], `${path}.points`), fermee: booleen(o['fermee'], `${path}.fermee`), layer: layer() };
     case 'cercle':
-      return { kind: 'cercle', c: p('c'), r: n('r'), layer: layer() };
+      return { kind: 'cercle', c: p('c'), r: borne(o['r'], `${path}.r`, 1e-6, 1e6), layer: layer() };
     case 'arc':
-      return { kind: 'arc', c: p('c'), r: n('r'), a0: n('a0'), a1: n('a1'), layer: layer() };
+      return { kind: 'arc', c: p('c'), r: borne(o['r'], `${path}.r`, 1e-6, 1e6), a0: n('a0'), a1: n('a1'), layer: layer() };
     case 'texte':
       return {
         kind: 'texte',
         at: p('at'),
         texte: texte(o['texte'], `${path}.texte`),
-        hauteur: n('hauteur'),
+        hauteur: borne(o['hauteur'], `${path}.hauteur`, 0.1, 500),
         ancrage: parmi(o['ancrage'], ['gauche', 'centre', 'droite'] as const, `${path}.ancrage`),
         ligneDeBase: parmi(o['ligneDeBase'], ['bas', 'milieu', 'haut'] as const, `${path}.ligneDeBase`),
         rotation: n('rotation'),
@@ -89,7 +99,7 @@ function entite(v: unknown, path: string): EntiteDessin {
         kind: 'hachure',
         contour: points(o['contour'], `${path}.contour`),
         trous: liste(o['trous'], `${path}.trous`).map((t, i) => points(t, `${path}.trous[${i}]`)),
-        pas: n('pas'),
+        pas: borne(o['pas'], `${path}.pas`, 0.1, 1e4),
         angle: n('angle'),
         layer: 'hachure',
       };

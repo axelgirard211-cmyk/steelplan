@@ -129,3 +129,22 @@ describe('références orphelines', () => {
     expect(lireRetouches([{ planche: 'plan', ajouts: [{ id: 'r1', entite: ligne }] }], 'retouches')[0]?.ajouts[0]?.origine).toBe('');
   });
 });
+
+describe('grandeurs démesurées', () => {
+  const avecEntite = (entite: unknown) => () =>
+    lireRetouches([{ planche: 'plan', masques: [], ajouts: [{ id: 'r1', origine: '', entite }] }], 'retouches');
+  const contour = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }];
+  const hachure = (pas: number) => ({ kind: 'hachure', contour, trous: [], pas, angle: 45, layer: 'hachure' });
+  const cercle = (r: number) => ({ kind: 'cercle', c: { x: 0, y: 0 }, r, layer: 'contour' });
+
+  it('refuse un pas de hachure infime, qui figeait le rendu', () => {
+    expect(erreurDe(avecEntite(hachure(1e-9)))).toBeInstanceOf(FormatError);
+    expect(erreurDe(avecEntite(hachure(1e-9))).message).toContain('retouches[0].ajouts[0].entite.pas');
+    expect(avecEntite(hachure(2))).not.toThrow();
+  });
+
+  it('refuse un cercle de rayon démesuré', () => {
+    expect(erreurDe(avecEntite(cercle(1e15))).message).toContain('entite.r');
+    expect(avecEntite(cercle(25))).not.toThrow();
+  });
+});

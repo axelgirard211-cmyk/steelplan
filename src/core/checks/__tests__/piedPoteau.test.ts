@@ -163,3 +163,57 @@ describe('pied de poteau calculé à la main', () => {
     expect(p.verifs.some((v) => /traction/.test(v.nom))).toBe(false);
   });
 });
+
+describe('pied de poteau aux limites de l’équilibre', () => {
+  const ctx = (cb: BasePlateParams = CB) => ({ id: 'PP', libelle: 'Pied', cb, profilPoteau: 'HEA 200', nuance: 'S235' as const });
+
+  it('déclare ruiné le pied qu’aucun bloc ne peut équilibrer, d’autant plus que M croît', () => {
+    /*
+     * N = 1 000 kN. Le bloc le plus long, jusqu'à la rangée tendue, équilibre
+     * au plus k·dT²/2 = 3 333,3 × 361² / 2 = 217,2 kN·m autour des tiges.
+     *   M = 67 kN·m  : rhs = 10⁶ × 161 + 67·10⁶ = 228·10⁶ → taux 1,050
+     *   M = 100 kN·m : rhs = 261·10⁶                   → taux 1,202
+     * (l'ancienne « compression requise » restait sous N : taux 0,75, conforme.)
+     */
+    const a = verifierPiedPoteau(ctx(), R(1000, 0, 67));
+    const b = verifierPiedPoteau(ctx(), R(1000, 0, 100));
+    taux(/pression sur béton/, 1.0497, a.verifs);
+    taux(/pression sur béton/, 1.2017, b.verifs);
+    expect(b.ratio).toBeGreaterThan(a.ratio);
+    expect(a.verifs.some((v) => /traction des tiges/.test(v.nom))).toBe(true);
+  });
+
+  it('impose C = N quand les tiges devraient pousser', () => {
+    /*
+     * N = 200 kN, M = 14 kN·m : e = 70 mm, juste au-delà de L/6. L'équation aux
+     * moments donnerait x = 40,7 mm et C = 135,6 kN < N. Aucune tige ne tire :
+     *   x = N / (fjd·b) = 200 000 / 3 333,3 = 60 mm, C = N = 200 kN
+     *   béton 200 / 1 333,33 = 0,150
+     *   platine : fjd × 60² / 2 = 20 000 N·mm/mm, / 23 500 = 0,851
+     */
+    const p = verifierPiedPoteau(ctx(), R(200, 0, 14));
+    taux(/pression sur béton/, 0.15, p.verifs);
+    taux(/flexion de la platine/, 0.851, p.verifs);
+    expect(p.verifs.some((v) => /traction/.test(v.nom))).toBe(false);
+  });
+
+  it('ne fait pas baisser le taux quand M croît, à N fixé, hors du tiers central', () => {
+    let avant = 0;
+    for (let m = 14; m <= 80; m += 2) {
+      const t = verifierPiedPoteau(ctx(), R(200, 0, m)).ratio;
+      expect(t, `M = ${m} kN·m`).toBeGreaterThanOrEqual(avant - 1e-9);
+      avant = t;
+    }
+  });
+
+  it('charge une tige seule de tout le soulèvement', () => {
+    const seule: BasePlateParams = { ...CB, anchorCount: 1 };
+    expect(positionsDesAncrages(seule)).toHaveLength(1);
+    const p = verifierPiedPoteau(ctx(seule), R(-60, 0, 0));
+    const v = p.verifs.find((x) => /^traction des tiges/.test(x.nom))!;
+    expect(v.ed).toBeCloseTo(60, 1);
+    // Deux tiges sur une rangée centrale se partagent le même soulèvement.
+    const deux = verifierPiedPoteau(ctx({ ...CB, anchorCount: 2 }), R(-60, 0, 0));
+    expect(deux.verifs.find((x) => /^traction des tiges/.test(x.nom))!.ed).toBeCloseTo(30, 1);
+  });
+});

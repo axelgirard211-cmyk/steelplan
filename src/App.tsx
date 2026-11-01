@@ -5,7 +5,7 @@ import { selectCanRedo, selectCanUndo, useProjectStore } from './state/store';
 import { AideRaccourcis } from './ui/AideRaccourcis';
 import { BarreDeFichier } from './ui/BarreDeFichier';
 import { BandeauModele, BarriereErreur } from './ui/GardeFou';
-import { trouverRaccourci } from './ui/raccourcis';
+import { dansUnChamp, trouverRaccourci } from './ui/raccourcis';
 import { useNavigation, type Onglet } from './state/navigation';
 import { useEtatDuProjet, type EtatDuProjet } from './ui/useEtatDuProjet';
 import { num } from './ui/format';
@@ -203,10 +203,15 @@ export function App(): JSX.Element {
           return;
         case 'ouvrir':
         case 'enregistrer':
-        case 'enregistrer-sous':
+        case 'enregistrer-sous': {
           e.preventDefault();
+          // Le brouillon d'un champ en cours de frappe passe d'abord au projet :
+          // sinon on enregistrait la valeur d'avant, sans rien signaler.
+          const actif = document.activeElement;
+          if (actif instanceof HTMLElement && dansUnChamp(actif)) actif.blur();
           window.dispatchEvent(new Event(`steelplan:${r.id}`));
           return;
+        }
         default:
           // Les raccourcis de vue 3D sont traités par le panneau lui-même : il
           // est le seul à détenir la scène.
